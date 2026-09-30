@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clippo · Protótipo v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* =====================================================================
+   TOKENS — espelham docs/design-tokens.json (v2.0.0).
+   Novos na v2 (propostas): --t-impact, tamanhos de miniatura 16:9,
+   textMuted claro a 64 %. Ver README.md.
+   ===================================================================== */
+:root{
+  --wine:#741A2F; --wineDeep:#5C1425; --onWine:#FFF1E8;
+  --peach:#FFC6A8; --onPeach:#241014;
+  --black:#000000;
+  --cap-overlay:rgba(20,16,19,.60);
+  --cap-chip:rgba(255,241,232,.12); --cap-chipBorder:rgba(255,241,232,.22);
+  --cap-muted:rgba(255,241,232,.70); --cap-ring:rgba(255,241,232,.35);
+  --cap-ghost:rgba(255,241,232,.32);
+  --scrim-play:rgba(20,16,19,.55);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --display:"Bricolage Grotesque","Arial Narrow",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.theme-light{
+  --bg:#FBF4F0; --surface:#F3E4DC; --text:#241014;
+  --muted:rgba(36,16,20,.64); --divider:rgba(36,16,20,.10);
+  --accentFg:#741A2F; --accentSoft:rgba(116,26,47,.13);
+  --skeleton:#EAD5C9; --scrim:rgba(251,244,240,.95);
+}
+.theme-dark{
+  --bg:#141013; --surface:#1E1719; --text:#F6ECE7;
+  --muted:rgba(246,236,231,.62); --divider:rgba(246,236,231,.13);
+  --accentFg:#FFC6A8; --accentSoft:rgba(116,26,47,.42);
+  --skeleton:#2A2023; --scrim:rgba(20,16,19,.95);
+}
+
+/* ---------- página (fora do celular) ---------- */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#0D0A0C;color:#F6ECE7;font-family:var(--body);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+.chrome{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:14px 20px;background:#0D0A0C;border-bottom:1px solid rgba(246,236,231,.10)}
+.chrome .brand{font:800 20px/1 var(--display);letter-spacing:-.02em;color:#FFC6A8}
+.chrome .brand small{font:600 12px/1 var(--body);letter-spacing:0;color:rgba(246,236,231,.6);margin-left:8px}
+.seg{display:flex;gap:2px;padding:3px;border-radius:999px;background:#1E1719;border:1px solid rgba(246,236,231,.13)}
+.seg button{padding:8px 14px;border-radius:999px;font:600 13px/1 var(--body);color:rgba(246,236,231,.7)}
+.seg button[aria-pressed="true"]{background:#741A2F;color:#FFF1E8}
+.jump{display:flex;flex-wrap:wrap;gap:6px}
+.jump button{padding:7px 11px;border-radius:999px;border:1px solid rgba(246,236,231,.13);font:600 12px/1 var(--body);color:rgba(246,236,231,.75)}
+.jump button[aria-current="true"]{border-color:#FFC6A8;color:#FFC6A8}
+.chrome .spacer{flex:1}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #FFC6A8;outline-offset:2px}
+
+.stage{display:flex;justify-content:center;align-items:flex-start;gap:32px;padding:24px 20px 40px}
+.side{width:260px;display:flex;flex-direction:column;gap:14px;padding-top:40px}
+.side h2{margin:0;font:800 22px/1.1 var(--display);letter-spacing:-.02em}
+.side p{margin:0;font:400 14px/1.5 var(--body);color:rgba(246,236,231,.72)}
+.side .act{align-self:flex-start;padding:14px 20px;border-radius:999px;background:#741A2F;color:#FFF1E8;font:600 14px/1 var(--body)}
+.side .act b{font-family:var(--display);font-weight:800}
+.side .kbd{font:600 12px/1 var(--body);color:rgba(246,236,231,.5)}
+@media (max-width:820px){.side{display:none}}
+
+/* ---------- aparelho ---------- */
+.device-wrap{flex:none}
+.device{width:436px;height:916px;padding:12px;border-radius:58px;background:#050405;box-shadow:0 0 0 1px rgba(246,236,231,.10);transform-origin:top left}
+.screen{position:relative;width:412px;height:892px;border-radius:46px;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--body);isolation:isolate}
+.status{position:absolute;inset:0 0 auto 0;height:40px;padding:0 26px;display:flex;align-items:center;justify-content:space-between;font:600 14px/1 var(--body);z-index:4;color:var(--text);background:var(--bg)}
+.status.wine{background:var(--wine);color:var(--onWine)}
+.status.black{background:#000;color:#FFF1E8}
+.status.clear{background:transparent;color:#FFF1E8}
+.status svg{display:block}
+.homebar{position:absolute;left:50%;bottom:8px;width:120px;height:4px;margin-left:-60px;border-radius:99px;background:currentColor;opacity:.35;z-index:6;color:var(--text)}
+.homebar.light{color:#FFF1E8}
+.view{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-top:40px}
+.view::-webkit-scrollbar{display:none}
+.enter{animation:enter .28s var(--ease) both}
+@keyframes enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ---------- tipografia (docs 04 §3) ---------- */
+.d{font-family:var(--display)}
+.t-screen{font:800 38px/1.02 var(--display);letter-spacing:-.03em}
+.t-session{font:800 36px/1.02 var(--display);letter-spacing:-.03em}
+.t-form{font:800 32px/1.04 var(--display);letter-spacing:-.03em}
+.t-stat{font:800 34px/1 var(--display)}
+.t-profile{font:800 30px/1.1 var(--display);letter-spacing:-.02em}
+.t-cardOpen{font:800 25px/1.1 var(--display);letter-spacing:-.02em}
+.t-section{font:800 22px/1.1 var(--display);letter-spacing:-.02em}
+.t-card{font:700 20px/1.1 var(--display);letter-spacing:-.02em}
+.t-toast{font:800 20px/1.2 var(--display);letter-spacing:-.01em}
+.t-field{font:700 20px/1.2 var(--display)}
+.t-item{font:700 18px/1.15 var(--display);letter-spacing:-.01em}
+.t-impact{font:800 64px/.9 var(--display);letter-spacing:-.03em}
+.t-button{font:600 15px/1.2 var(--body)}
+.t-btnsm{font:600 13.5px/1.2 var(--body)}
+.t-body{font:400 14px/1.4 var(--body)}
+.t-bodyS{font:600 14px/1.4 var(--body)}
+.t-caption{font:400 13px/1.4 var(--body)}
+.t-meta{font:600 12.5px/1.3 var(--body)}
+.t-over{font:600 11.5px/1.3 var(--body);letter-spacing:.04em;text-transform:uppercase}
+.t-nav{font:600 10.5px/1.2 var(--body)}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.accent{color:var(--accentFg)}
+h1,h2,h3,p{margin:0}
+
+/* ---------- blocos comuns ---------- */
+.gut{padding-left:20px;padding-right:20px}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.dot{width:3px;height:3px;border-radius:50%;background:currentColor;opacity:.6;flex:none}
+.ico{display:inline-flex;flex:none}
+.ico svg{display:block}
+
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:999px;min-height:48px}
+.btn-primary{background:var(--wine);color:var(--onWine);padding:18px 24px;width:100%}
+.btn-primary:active,.btn-card:active,.btn-compact:active{background:var(--wineDeep)}
+.btn-card{background:var(--wine);color:var(--onWine);padding:14px 20px;width:100%}
+.btn-compact{background:var(--wine);color:var(--onWine);padding:11px 17px;gap:7px;min-height:44px}
+.btn-outline{border:1px solid var(--divider);color:var(--accentFg);padding:15px 22px;width:100%}
+.btn-text{color:var(--muted);font:600 13px/1 var(--body);padding:16px;width:100%}
+
+.avatar{border-radius:50%;background:var(--peach);color:var(--onPeach);display:flex;align-items:center;justify-content:center;font:600 12px/1 var(--body);flex:none}
+.avatar-more{border-radius:999px;border:1px solid var(--divider);color:var(--muted);display:flex;align-items:center;justify-content:center;font:600 12px/1 var(--body);padding:0 12px;height:30px}
+
+/* miniatura de vídeo: canto reto, só o botão de play por cima */
+.thumb{position:relative;overflow:hidden;background:#2E2327;flex:none;display:block}
+.thumb>svg.scene{position:absolute;inset:0;width:100%;height:100%}
+.thumb .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:var(--scrim-play);color:var(--onWine);display:flex;align-items:center;justify-content:center}
+
+/* ---------- barra de navegação flutuante (7.1) ---------- */
+.nav{position:absolute;left:24px;right:24px;bottom:22px;height:66px;border-radius:999px;background:var(--surface);border:1px solid var(--divider);display:flex;align-items:center;justify-content:space-around;padding:0 6px;z-index:3}
+.nav button{width:82px;height:52px;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted);transition:background .25s var(--ease),color .25s var(--ease)}
+.nav button[aria-current="page"]{background:var(--accentSoft);color:var(--accentFg)}
+
+/* ---------- navegação em roda (proposta v2) ----------
+   Um círculo vinho no centro inferior. Toque abre; segurar e arrastar até a
+   opção e soltar escolhe (estilo roda do GTA / menu do Pinterest). */
+.wheel{position:absolute;inset:0;z-index:5;pointer-events:none}
+.wheel .scrim{position:absolute;inset:0;width:100%;height:100%;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .22s var(--ease);cursor:default}
+.wheel.open .scrim{opacity:1;pointer-events:auto}
+.wheel svg.guide{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none;transition:opacity .22s var(--ease)}
+.wheel.open svg.guide{opacity:1}
+.wheel .wedge{fill:var(--accentSoft);opacity:0;transition:opacity .12s linear}
+.wheel .wedge.on{opacity:1}
+.wcenter{position:absolute;left:0;right:0;top:604px;display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0;transform:translateY(8px);transition:opacity .2s var(--ease),transform .3s var(--ease);pointer-events:none}
+.wheel.open .wcenter{opacity:1;transform:none}
+.witem{position:absolute;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:var(--surface);border:1px solid var(--divider);color:var(--text);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;
+  transform:translate(var(--dx),var(--dy)) scale(.4);transition:transform .18s var(--ease),opacity .12s linear,background .15s,color .15s,border-color .15s}
+.witem.cur{color:var(--accentFg)}
+.witem .wl{position:absolute;top:62px;left:50%;transform:translateX(-50%);white-space:nowrap;color:var(--muted);transition:color .15s}
+.wheel.open .witem{opacity:1;pointer-events:auto;transform:none;
+  transition:transform .36s cubic-bezier(.34,1.4,.64,1) var(--d),opacity .2s linear var(--d),background .15s,color .15s,border-color .15s}
+.wheel.open .witem.hi{transform:scale(1.14);background:var(--wine);border-color:var(--wine);color:var(--onWine)}
+.wheel.open .witem.hi .wl{color:var(--text)}
+.fab{position:absolute;left:178px;bottom:28px;width:56px;height:56px;border-radius:50%;background:var(--wine);color:var(--onWine);box-shadow:0 0 0 4px var(--bg);display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .15s var(--ease),background .15s}
+.fab:active{background:var(--wineDeep);transform:scale(.96)}
+.fab .i1,.fab .i2{position:absolute;display:flex;transition:transform .3s var(--ease),opacity .2s var(--ease)}
+.fab .i2{opacity:0;transform:rotate(-90deg)}
+.wheel.open .fab .i1{opacity:0;transform:rotate(90deg)}
+.wheel.open .fab .i2{opacity:1;transform:none}
+.wheel.still *,.wheel.still{transition:none!important}
+@media (prefers-reduced-motion:reduce){.witem,.wheel.open .witem,.fab .i1,.fab .i2,.wcenter{transition:opacity .15s linear!important}}
+
+/* ---------- 0 · Boas-vindas ---------- */
+.welcome-hero{background:var(--wine);color:var(--onWine);padding:28px 22px 30px;margin-top:-40px;padding-top:68px}
+.gesture-big{font:800 118px/.82 var(--display);letter-spacing:-.04em;color:var(--peach);white-space:nowrap}
+.step{display:flex;gap:16px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--divider)}
+.step:last-child{border-bottom:0}
+.step .n{font:800 22px/1 var(--display);color:var(--accentFg);width:30px;flex:none}
+
+/* ---------- 1 · Início ---------- */
+.feature{background:var(--surface);border:1px solid var(--divider);border-radius:30px;padding:10px;display:flex;flex-direction:column}
+.feature .body{padding:16px 10px 10px;display:flex;flex-direction:column;gap:12px}
+.feature .strip{display:flex;gap:6px;margin-top:6px}
+.srow{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--divider);border-radius:22px;padding:10px 12px 10px 10px;width:100%;text-align:left}
+.srow .chev{width:32px;height:32px;border-radius:50%;border:1px solid var(--divider);display:flex;align-items:center;justify-content:center;color:var(--muted);flex:none}
+.ellip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- 2 · Sessão ---------- */
+.impact{background:var(--wine);color:var(--onWine)}
+.impact .back{display:inline-flex;align-items:center;gap:6px;min-height:44px;margin-left:-6px;padding-right:10px;color:rgba(255,241,232,.85);font:600 13px/1 var(--body)}
+.stack{display:flex}
+.stack .avatar{width:34px;height:34px;box-shadow:0 0 0 2px var(--wine)}
+.stack .avatar+.avatar{margin-left:-9px}
+.hl{display:flex;flex-direction:column;gap:12px;width:100%;text-align:left}
+.hl .meta{display:flex;gap:14px;align-items:flex-start}
+.hl .idx{font:800 22px/1 var(--display);color:var(--muted);width:30px;flex:none;padding-top:1px}
+
+/* ---------- Player ---------- */
+.player{background:#000;color:var(--onWine);position:absolute;inset:0;padding-top:40px;display:flex;flex-direction:column}
+.circ42{width:42px;height:42px;border-radius:50%;background:var(--cap-overlay);border:1px solid var(--cap-chipBorder);display:flex;align-items:center;justify-content:center;color:var(--onWine);flex:none}
+.track{position:relative;height:4px;border-radius:99px;background:rgba(255,241,232,.20)}
+.track .fill{position:absolute;inset:0 auto 0 0;width:40%;border-radius:99px;background:var(--peach)}
+.track .knob{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--peach);left:40%}
+.playing .track .fill{animation:fill 30s linear forwards}
+.playing .track .knob{animation:knob 30s linear forwards}
+@keyframes fill{from{width:40%}to{width:100%}}
+@keyframes knob{from{left:40%}to{left:100%}}
+
+/* ---------- 3 · Gravação ---------- */
+.cam{position:absolute;inset:0;background:#000;color:var(--onWine)}
+.cam svg.scene{position:absolute;inset:0;width:100%;height:100%}
+.pill-tip{display:flex;align-items:center;gap:8px;padding:12px 18px;border-radius:999px;background:var(--cap-overlay);font:600 12.5px/1 var(--body);color:var(--onWine)}
+.coach{display:flex;gap:14px;align-items:center;padding:14px 18px 14px 14px;border-radius:22px;background:var(--cap-overlay);border:1px solid var(--cap-chipBorder)}
+.coach .g{width:52px;height:52px;border-radius:50%;background:var(--peach);color:var(--onPeach);display:flex;align-items:center;justify-content:center;flex:none}
+.chips{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;padding:0 20px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:flex;align-items:center;gap:6px;padding:10px 16px;min-height:44px;border-radius:999px;background:var(--cap-chip);border:1px solid var(--cap-chipBorder);color:var(--onWine);font:600 13px/1 var(--body);transition:background .2s var(--ease),color .2s var(--ease)}
+.chip[aria-pressed="true"]{background:var(--peach);border-color:var(--peach);color:var(--onPeach)}
+.chip .ck{display:none}
+.chip[aria-pressed="true"] .ck{display:inline-flex}
+.rec{width:88px;height:88px;border-radius:50%;background:var(--wine);box-shadow:0 0 0 3px var(--cap-ring);color:var(--onWine);display:flex;align-items:center;justify-content:center}
+.rec:active{background:var(--wineDeep)}
+
+.standby{position:absolute;inset:0;background:#000;color:var(--onWine)}
+.sdot{pointer-events:none;position:absolute;left:50%;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:var(--wine);animation:pulse 2.6s var(--ease) infinite alternate}
+@keyframes pulse{from{transform:scale(1);opacity:.45}to{transform:scale(1.9);opacity:1}}
+.tapzone{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.ctrls{position:absolute;left:26px;right:26px;bottom:48px;display:flex;flex-direction:column;gap:11px;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease)}
+.ctrls-top{pointer-events:none;position:absolute;left:0;right:0;top:64px;text-align:center;opacity:0;transition:opacity .25s var(--ease);color:var(--cap-muted)}
+.show-ctrls .ctrls{opacity:1;transform:none;pointer-events:auto}
+.show-ctrls .ctrls-top{opacity:1}
+.btn-light{background:var(--onWine);color:var(--onPeach);padding:16px;font:600 13.5px/1 var(--body)}
+.btn-ghostdark{border:1px solid var(--cap-ghost);color:rgba(255,241,232,.82);padding:16px;font:600 13.5px/1 var(--body)}
+
+/* "Highlight salvo" — o único momento que grita */
+.saved{position:absolute;left:26px;right:26px;bottom:120px;background:var(--wine);color:var(--onWine);padding:22px 24px 0;opacity:0;pointer-events:none;overflow:hidden}
+.saved .g{font:800 64px/.9 var(--display);letter-spacing:-.03em;color:var(--peach);transform-origin:left bottom;white-space:nowrap}
+.saved .bar{height:3px;background:var(--peach);margin:20px -24px 0;transform-origin:left}
+.saved.go{animation:toast 2.6s var(--ease) both}
+.saved.go .g{animation:pop .5s cubic-bezier(.34,1.56,.64,1) both .05s}
+.saved.go .bar{animation:shrink 2.6s linear both}
+.saved.still{opacity:1}
+@keyframes toast{0%{opacity:0;transform:translateY(14px)}12%{opacity:1;transform:none}82%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-6px)}}
+@keyframes pop{from{transform:scale(.8)}to{transform:scale(1)}}
+@keyframes shrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+
+/* ---------- 3D · Confirme ---------- */
+.field{background:var(--surface);border:1px solid var(--divider);border-radius:22px;padding:14px 20px;display:flex;flex-direction:column;gap:5px}
+.field input{background:none;border:0;padding:0;margin:0;width:100%;font:700 20px/1.2 var(--display);color:var(--text);outline:none}
+.pchip{display:inline-flex;align-items:center;padding:7px 13px;border-radius:999px;background:var(--peach);color:var(--onPeach);font:600 12.5px/1.3 var(--body)}
+.pchip.add{background:none;border:1px solid var(--divider);color:var(--muted)}
+.dock{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--divider);padding:14px 20px 22px;z-index:2}
+
+/* ---------- 4 · Amigos ---------- */
+.search{display:flex;align-items:center;gap:10px;padding:13px 20px;border-radius:999px;background:var(--surface);border:1px solid var(--divider);color:var(--muted)}
+.search input{flex:1;background:none;border:0;outline:none;font:400 14px/1.4 var(--body);color:var(--text)}
+.search input::placeholder{color:var(--muted)}
+.frow{display:flex;align-items:center;gap:14px;padding:11px 0}
+.kebab{width:48px;height:48px;margin-right:-14px;display:flex;align-items:center;justify-content:center;color:var(--muted);border-radius:50%}
+
+/* ---------- 5 · Perfil ---------- */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px}
+.stats>div{background:var(--wine);color:var(--onWine);padding:16px 14px;display:flex;flex-direction:column;gap:6px}
+.set{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 22px;border-radius:999px;background:var(--surface);border:1px solid var(--divider);min-height:52px;width:100%;text-align:left}
+.switch{width:50px;height:29px;border-radius:999px;background:var(--divider);padding:3px;display:flex;transition:background .25s var(--ease);flex:none}
+.switch i{width:23px;height:23px;border-radius:50%;background:var(--muted);transition:transform .25s var(--ease),background .25s var(--ease)}
+.switch[aria-checked="true"]{background:var(--wine)}
+.switch[aria-checked="true"] i{transform:translateX(21px);background:var(--onWine)}
+
+/* ---------- visão geral ---------- */
+.overview{display:none;padding:28px 20px 60px;max-width:1500px;margin:0 auto}
+.overview h2{font:800 30px/1.05 var(--display);letter-spacing:-.03em;margin:0 0 6px}
+.overview .sub{font:400 14px/1.5 var(--body);color:rgba(246,236,231,.7);margin:0 0 26px;max-width:760px}
+.grid{display:flex;flex-wrap:wrap;gap:28px 24px}
+.cell{display:flex;flex-direction:column;gap:10px}
+.cell .lbl{font:600 13px/1.3 var(--body);color:rgba(246,236,231,.85);display:flex;gap:8px;align-items:center}
+.cell .tag{font:600 11px/1 var(--body);padding:4px 8px;border-radius:999px;background:#741A2F;color:#FFF1E8}
+.mini{overflow:hidden}
+.mini .device{pointer-events:none}
+body.mode-all .stage{display:none}
+body.mode-all .overview{display:block}
+
+@media (prefers-reduced-motion:reduce){
+  .enter,.saved.go .g{animation:none}
+  .sdot{animation:fade 2.6s linear infinite alternate}
+  @keyframes fade{from{opacity:.45}to{opacity:1}}
+  .saved.go{animation:toastfade 2.6s linear both}
+  @keyframes toastfade{0%{opacity:0}10%,85%{opacity:1}100%{opacity:0}}
+}
+</style>
+</head>
+<body class="mode-app">
+
+<header class="chrome">
+  <div class="brand">Clippo <small>protótipo v2</small></div>
+  <div class="seg" role="group" aria-label="Modo">
+    <button type="button" data-mode="app" aria-pressed="true">Navegar</button>
+    <button type="button" data-mode="all" aria-pressed="false">Todas as telas</button>
+  </div>
+  <div class="seg" role="group" aria-label="Navegação">
+    <button type="button" data-navstyle="roda" aria-pressed="true">Roda</button>
+    <button type="button" data-navstyle="barra" aria-pressed="false">Barra</button>
+  </div>
+  <div class="seg" role="group" aria-label="Tema">
+    <button type="button" data-theme="dark" aria-pressed="true">Escuro</button>
+    <button type="button" data-theme="light" aria-pressed="false">Claro</button>
+  </div>
+  <div class="spacer"></div>
+  <nav class="jump" aria-label="Ir para tela" id="jump"></nav>
+</header>
+
+<main class="stage">
+  <aside class="side" id="sideL"></aside>
+  <div class="device-wrap" id="wrap"><div class="device" id="device"><div class="screen" id="screen"></div></div></div>
+  <aside class="side" id="sideR"></aside>
+</main>
+
+<section class="overview" id="overview" aria-label="Todas as telas">
+  <h2>Todas as telas</h2>
+  <p class="sub">Mesma ordem das capturas da v1 (docs/prototipos/telas), mais duas telas que a v1 não tinha e o fluxo da demo precisa: Boas-vindas e Player. Troque o tema no topo.</p>
+  <div class="grid" id="grid"></div>
+</section>
+
+<script>
+/* =====================================================================
+   ÍCONES — mesmos traços de docs/assets/icons (grade 24, traço 1,6).
+   Novos na v2: gesture, share, pause (mesmo estilo).
+   ===================================================================== */
+const P = {
+  home:'<path d="M3.5 10.5 12 3.8l8.5 6.7V20a.8.8 0 0 1-.8.8h-4.3V14H9.6v6.8H5.3a.8.8 0 0 1-.8-.8z"/>',
+  capture:'<rect x="2.8" y="6.5" width="12.5" height="11" rx="3"/><path d="m15.3 12 5.9-3.6v7.2L15.3 12z"/>',
+  friends:'<circle cx="9" cy="9" r="3.4"/><path d="M2.8 19c.6-3.1 3.1-4.8 6.2-4.8s5.6 1.7 6.2 4.8M16.4 6.2a3.2 3.2 0 0 1 0 6.1M18 14.5c2 .6 3.2 2.1 3.5 4.5"/>',
+  profile:'<circle cx="12" cy="8" r="3.8"/><path d="M4.6 20c.7-3.7 3.7-5.6 7.4-5.6s6.7 1.9 7.4 5.6"/>',
+  play:'<path d="M8.5 5.6 18 12l-9.5 6.4z"/>',
+  pause:'<path d="M9 6v12M15 6v12"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  pin:'<path d="M12 21s6.5-6.1 6.5-10.6A6.5 6.5 0 0 0 5.5 10.4C5.5 14.9 12 21 12 21Z"/><circle cx="12" cy="10.2" r="2.4"/>',
+  search:'<circle cx="11" cy="11" r="6.6"/><path d="m16 16 4.5 4.5"/>',
+  plus:'<path d="M12 5.5v13M5.5 12h13"/>',
+  check:'<path d="M4 12.5 9.5 18 20 6.5"/>',
+  left:'<path d="M14.5 5.5 8 12l6.5 6.5"/>',
+  right:'<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
+  down:'<path d="M5.5 9.5 12 16l6.5-6.5"/>',
+  more:'<circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/>',
+  edit:'<path d="M16.5 4.5l3 3L9 18l-4 1 1-4z"/>',
+  logout:'<path d="M14 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H14M17 8.5 20.5 12 17 15.5M20.5 12H10"/>',
+  tripod:'<path d="M12 3v3M12 18v3M4 8.5 12 12l8-3.5M6 20l6-8 6 8"/>',
+  close:'<path d="M6 6l12 12M18 6 6 18"/>',
+  highlights:'<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M10.5 9.5v5l4-2.5z"/>',
+  gesture:'<circle cx="12" cy="5" r="2.2"/><path d="M12 9v6.2M12 15.2 9.2 20.5M12 15.2l2.8 5.3M12 10.4 6.2 4.8M12 10.4l5.8-5.6"/>',
+  share:'<path d="M12 3.8v11M8 7.6l4-3.8 4 3.8M7 11H5.8a1 1 0 0 0-1 1v7.2a1 1 0 0 0 1 1h12.4a1 1 0 0 0 1-1V12a1 1 0 0 0-1-1H17"/>'
+};
+function ic(n, s=24){return `<span class="ico" aria-hidden="true"><svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg></span>`}
+const GESTURE = '\\ o /';
+
+/* =====================================================================
+   MINIATURAS — representam o frame do vídeo (no app: Image do thumbnail).
+   Tons de docs/design-tokens.json › thumbnailPlaceholder. Sem gradiente.
+   ===================================================================== */
+const TONES=['#3A2A2F','#2E2327','#43302F','#2A2226'];
+function fig(x,y,s,c){return `<g stroke="${c}" stroke-width="${(1.1*s).toFixed(2)}" stroke-linecap="round" fill="none"><circle cx="${x}" cy="${y-7*s}" r="${1.5*s}"/><path d="M${x} ${y-5.3*s}V${y-2.4*s}M${x} ${y-2.4*s}l${-1.4*s} ${2.4*s}M${x} ${y-2.4*s}l${1.4*s} ${2.4*s}M${x} ${y-4.6*s}l${-1.7*s} ${1.9*s}M${x} ${y-4.6*s}l${1.7*s} ${1.9*s}"/></g>`}
+function scene(seed){
+  const v=seed%3, j=(seed*7)%13-6, L='rgba(255,241,232,.17)', F='rgba(255,241,232,.55)', B='#FFF1E8';
+  let g='';
+  if(v===0){
+    g+=`<path d="M6 88 44 24h72l38 64" stroke="${L}" fill="none"/><path d="M80 24v64" stroke="${L}"/><ellipse cx="80" cy="52" rx="17" ry="6.5" stroke="${L}" fill="none"/>`;
+    g+=fig(50+j,64,1.4,F)+fig(96-j,46,1.1,F)+fig(122,74,1.5,F)+fig(70-j,82,1.6,F);
+    g+=`<circle cx="${104-j}" cy="66" r="1.8" fill="${B}"/>`;
+  }else if(v===1){
+    g+=`<path d="M54 50V22h52v28" stroke="rgba(255,241,232,.34)" fill="none"/><path d="M62 22v28M70 22v28M78 22v28M86 22v28M94 22v28M54 32h52M54 42h52" stroke="rgba(255,241,232,.08)"/><path d="M14 90 34 50h92l20 40" stroke="${L}" fill="none"/>`;
+    g+=fig(80+j,50,1.3,F)+fig(58,80,1.6,F)+fig(104-j,84,1.7,F);
+    g+=`<circle cx="${70+j}" cy="30" r="1.9" fill="${B}"/>`;
+  }else{
+    g+=`<path d="M0 64 160 34M0 90 160 56" stroke="${L}"/><path d="M58 90c10-14 34-22 58-24" stroke="${L}" fill="none"/>`;
+    g+=fig(40+j,74,1.6,F)+fig(88,58,1.3,F)+fig(126-j,50,1.1,F)+fig(110,84,1.7,F);
+    g+=`<circle cx="${64+j}" cy="70" r="1.8" fill="${B}"/>`;
+  }
+  return `<svg class="scene" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="160" height="90" fill="${TONES[seed%4]}"/>${g}</svg>`;
+}
+function thumb(seed,w,h,play=30,label=''){
+  const ps=Math.round(play/2);
+  return `<span class="thumb" style="width:${w};height:${h}px">${scene(seed)}${play?`<span class="play" style="width:${play}px;height:${play}px">${ic('play',ps)}</span>`:''}</span>`;
+}
+
+/* =====================================================================
+   DADOS FICTÍCIOS (os mesmos nomes da v1, para comparar lado a lado)
+   ===================================================================== */
+const ME={name:'Gustavo Ribeiro',first:'Gustavo',ini:'GR',user:'@guga.rib'};
+const FRIENDS=[
+  {n:'Rafa Menezes',i:'RM',s:12},{n:'Bruno Kato',i:'BK',s:9},{n:'Thiago Alves',i:'TA',s:8},
+  {n:'Léo Barros',i:'LB',s:6},{n:'Diego Farias',i:'DF',s:4},{n:'Caio Nunes',i:'CN',s:2},
+  {n:'Marina Souza',i:'MS',s:0},{n:'Pedro Lima',i:'PL',s:3},{n:'Vini Salles',i:'VS',s:1}
+];
+function mkSessions(){return [
+  {name:'Pelada da Quinta',date:'11 set 2026',place:'Arena Bom Retiro, Quadra 2',dur:'1h 42min',time:'19:30 – 21:12',people:['RM','BK','TA','LB','DF'],total:10,seed:1,
+   hl:[['Golaço de fora da área','00:12:40'],['Defesa do Bruno no ângulo','00:24:05'],['Cruzamento e cabeçada do Léo','00:41:18'],['Chapéu do Diego no zagueiro','00:55:30'],['Drible duplo do Rafa','01:02:55'],['Tabela e gol do Thiago','01:21:07'],['Voleio no último minuto','01:38:12']]},
+  {name:'Society dos Amigos',date:'6 set 2026',place:'Society Vila Nova',dur:'1h 20min',time:'20:00 – 21:20',people:['RM','TA','PL','CN'],total:8,seed:5,
+   hl:[['Gol de letra do Pedro','00:08:12'],['Defesa com o pé','00:19:44'],['Contra-ataque em três toques','00:37:03'],['Chute cruzado do Rafa','00:58:21'],['Gol olímpico','01:11:40']]},
+  {name:'Treino de Sábado',date:'30 ago 2026',place:'Quadra do Taquaral',dur:'58min',time:'09:00 – 09:58',people:['BK','LB','DF'],total:6,seed:9,
+   hl:[['Finta no goleiro','00:14:02'],['Bicicleta do Léo','00:31:55'],['Gol de cabeça','00:49:10']]},
+  {name:'Rachão de Domingo',date:'24 ago 2026',place:'Campo do Parque Ecológico',dur:'2h 05min',time:'16:10 – 18:15',people:['RM','BK','TA','LB','DF'],total:14,seed:3,
+   hl:[['Lance 1','00:06:10'],['Lance 2','00:15:33'],['Lance 3','00:22:48'],['Lance 4','00:40:02'],['Lance 5','00:51:19'],['Lance 6','01:05:44'],['Lance 7','01:18:30'],['Lance 8','01:40:12'],['Lance 9','01:59:03']]}
+];}
+
+/* =====================================================================
+   ESTADO
+   ===================================================================== */
+const S={
+  theme:'dark', stack:['home'], sessions:mkSessions(),
+  cur:0, pIdx:0, playing:true,
+  chips:{solo:true}, count:0, t0:0, notif:true, q:'',
+  lastTab:'home', navStyle:'roda', wOpts:null
+};
+const TABS=['home','prep','friends','profile'];
+const SCREENS=[
+  ['welcome','Boas-vindas'],['home','1 · Início'],['session','2 · Sessão'],['player','Player'],
+  ['prep','3A · Preparar'],['standby','3B · Gravando'],['saved','3C · Highlight salvo'],['confirm','3D · Confirme'],
+  ['friends','4 · Amigos'],['profile','5 · Perfil']
+];
+const topScreen=()=>S.stack[S.stack.length-1];
+
+/* =====================================================================
+   PEÇAS
+   ===================================================================== */
+function status(kind){
+  const cls=kind==='wine'?'wine':kind==='black'?'black':kind==='clear'?'clear':'';
+  return `<div class="status ${cls}" aria-hidden="true"><span class="num">21:14</span><span class="row" style="gap:8px">
+  <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4.2a10 10 0 0 1 14 0M4 7a6.3 6.3 0 0 1 9 0"/><circle cx="8.5" cy="10" r=".9" fill="currentColor"/></svg>
+  <svg width="24" height="12" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1.5" width="19" height="9" rx="2.5"/><rect x="3" y="3.5" width="12" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M22.5 4.5v3" stroke-linecap="round"/></svg></span></div>`;
+}
+/* Roda: da esquerda para a direita Perfil, Início, Amigos, Gravar
+   (ordem do design system publicado: a ação principal fica sob o polegar direito). */
+const WH=[['profile','profile','Perfil',162],['home','home','Início',114],['friends','friends','Amigos',66],['prep','capture','Gravar',18]];
+const WC={x:206,y:836,r:118};
+function wpos(a){const t=a*Math.PI/180;return [WC.x+WC.r*Math.cos(t),WC.y-WC.r*Math.sin(t)]}
+function wedge(a){
+  const p=(r,d)=>{const t=d*Math.PI/180;return (WC.x+r*Math.cos(t)).toFixed(1)+' '+(WC.y-r*Math.sin(t)).toFixed(1)};
+  return `M${p(162,a-26)}A162 162 0 0 0 ${p(162,a+26)}L${p(44,a+26)}A44 44 0 0 1 ${p(44,a-26)}Z`;
+}
+function wheel(active,o={}){
+  const cur=WH.find(w=>w[0]===active);
+  const hi=o.hi??-1;
+  const items=WH.map(([k,i,l,a],n)=>{const [x,y]=wpos(a);
+    return `<button type="button" class="witem ${k===active?'cur':''} ${hi===n?'hi':''}" data-wi="${n}" role="menuitem" tabindex="-1" aria-label="${l}${k===active?', seção atual':''}"
+      style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;--d:${n*30}ms;--dx:${(WC.x-x).toFixed(1)}px;--dy:${(WC.y-y).toFixed(1)}px">${ic(i,24)}<span class="wl t-nav">${l}</span></button>`}).join('');
+  return `<div class="wheel ${o.open?'open still':''}" data-active="${active}">
+    <button type="button" class="scrim" data-wclose tabindex="-1" aria-hidden="true"></button>
+    <svg class="guide" viewBox="0 0 412 892" aria-hidden="true">
+      ${WH.map((w,n)=>`<path class="wedge ${hi===n?'on':''}" d="${wedge(w[3])}"/>`).join('')}
+      <path d="M${WC.x-WC.r} ${WC.y}A${WC.r} ${WC.r} 0 0 1 ${WC.x+WC.r} ${WC.y}" fill="none" stroke="var(--divider)" stroke-width="1"/>
+    </svg>
+    <div class="wcenter" aria-hidden="true"><span class="t-cardOpen" data-wname>${hi>=0?WH[hi][2]:cur[2]}</span><span class="t-meta muted" data-whint>${hi>=0?'Solte para abrir':'Toque ou arraste até uma seção'}</span></div>
+    <div role="menu" aria-label="Seções">${items}</div>
+    <button type="button" class="fab" aria-haspopup="menu" aria-expanded="${!!o.open}" aria-label="Navegação. Seção atual: ${cur[2]}">
+      <span class="i1">${ic(cur[1],24)}</span><span class="i2">${ic('close',24)}</span></button>
+  </div>`;
+}
+function nav(active){
+  if(S.navStyle==='roda')return wheel(active,S.wOpts||{});
+  const it=[['home','home','Início'],['prep','capture','Gravar'],['friends','friends','Amigos'],['profile','profile','Perfil']];
+  return `<nav class="nav" aria-label="Navegação principal">${it.map(([k,i,l])=>`<button type="button" data-tab="${k}" ${k===active?'aria-current="page"':''}>${ic(i,23)}<span class="t-nav">${l}</span></button>`).join('')}</nav>`;
+}
+function avatars(list,size,more){
+  return `<div class="row" style="gap:7px">${list.map(i=>`<span class="avatar" style="width:${size}px;height:${size}px">${i}</span>`).join('')}${more>0?`<span class="avatar-more num">+${more}</span>`:''}</div>`;
+}
+function greeting(){const h=21;return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'}
+
+/* ---------- 0 · Boas-vindas (nova) ---------- */
+function vWelcome(){
+  return `${status('wine')}<div class="view">
+  <section class="welcome-hero">
+    <div class="row" style="justify-content:space-between;margin-bottom:54px"><span class="d" style="font-weight:800;font-size:22px;letter-spacing:-.02em">Clippo</span><span class="t-over" style="opacity:.82">Como funciona</span></div>
+    <div class="gesture-big" aria-label="gesto braços para cima">${GESTURE}</div>
+    <h1 class="t-screen" style="margin-top:26px">Levantou os braços, o lance está salvo.</h1>
+  </section>
+  <div class="gut" style="padding-top:12px;padding-bottom:150px">
+    <div class="step"><span class="n num">01</span><div class="col" style="gap:3px"><span class="t-item">Apoie o celular</span><span class="t-caption muted">Em qualquer canto da quadra, enquadrando o campo.</span></div></div>
+    <div class="step"><span class="n num">02</span><div class="col" style="gap:3px"><span class="t-item">Jogue</span><span class="t-caption muted">O Clippo guarda sempre os últimos 30 segundos.</span></div></div>
+    <div class="step"><span class="n num">03</span><div class="col" style="gap:3px"><span class="t-item">Lance bom? Faça ${GESTURE}</span><span class="t-caption muted">Olhe para a câmera e levante os dois braços.</span></div></div>
+  </div>
+  </div>
+  <div class="dock" style="border-top:0"><button type="button" class="btn btn-primary t-button" data-go="home">Começar</button></div>`;
+}
+
+/* ---------- 1 · Início ---------- */
+function vHome(){
+  const [f,...rest]=S.sessions;
+  const more=Math.max(0,f.total-f.people.length);
+  const last=f.hl.length-1;
+  return `${status()}<div class="view enter"><div class="gut" style="padding-top:14px;padding-bottom:130px">
+  <div class="row" style="justify-content:space-between;gap:16px">
+    <div class="col" style="gap:4px"><span class="t-caption muted" style="font-weight:600">${greeting()}, ${ME.first}</span><h1 class="t-screen">Suas sessões</h1></div>
+    <button type="button" class="avatar" style="width:44px;height:44px;font-size:14px" data-tab="profile" aria-label="Seu perfil">${ME.ini}</button>
+  </div>
+
+  <article class="feature" style="margin-top:22px">
+    <button type="button" data-play="0:${last}" aria-label="Assistir: ${f.hl[last][0]}" style="display:block;width:100%">${thumb(f.seed+last,'100%',198,52)}</button>
+    ${f.hl.length>=3?`<div class="strip" aria-label="Outros lances">
+      ${f.hl.slice(0,Math.min(3,last)).map((h,i)=>`<button type="button" data-play="0:${i}" aria-label="Assistir: ${h[0]}" style="flex:1;min-width:0">${thumb(f.seed+i,'100%',58,0)}</button>`).join('')}
+      ${f.hl.length>4?`<button type="button" data-open="0" aria-label="Ver todos os highlights" style="flex:1;min-width:0;height:58px;background:var(--wine);color:var(--onWine);display:flex;align-items:center;justify-content:center" class="t-stat num"><span style="font-size:22px">+${f.hl.length-4}</span></button>`:''}
+    </div>`:''}
+    <div class="body">
+      <div class="col" style="gap:6px">
+        <h2 class="t-cardOpen ellip">${f.name}</h2>
+        <div class="row t-meta" style="gap:8px"><span class="accent num">${f.date}</span><span class="dot muted"></span><span class="muted num">${f.hl.length} highlights</span></div>
+      </div>
+      <div class="row t-caption muted" style="gap:8px">${ic('pin',15)}<span>${f.place}</span></div>
+      <div class="row" style="justify-content:space-between">${avatars(f.people,30,more)}</div>
+      <hr style="border:0;border-top:1px solid var(--divider);margin:2px 0;width:100%">
+      <div class="row t-meta muted num" style="gap:18px"><span class="row" style="gap:6px">${ic('clock',15)}${f.dur}</span><span class="row" style="gap:6px">${ic('friends',15)}${f.total} participantes</span></div>
+      <button type="button" class="btn btn-card t-btnsm" style="font-size:14px" data-open="0">Ver highlights ${ic('right',17)}</button>
+    </div>
+  </article>
+
+  <div class="row" style="justify-content:space-between;margin:26px 0 12px"><h2 class="t-section">Anteriores</h2><span class="t-meta muted num">${rest.length} sessões</span></div>
+  <div class="col" style="gap:12px">
+  ${rest.map((s,k)=>`<button type="button" class="srow" data-open="${k+1}">
+      ${thumb(s.seed,'108px',68,0)}
+      <span class="col" style="gap:5px;flex:1;min-width:0"><span class="t-card ellip">${s.name}</span><span class="row t-meta" style="gap:8px"><span class="accent num">${s.date}</span><span class="dot muted"></span><span class="muted num">${s.hl.length} highlights</span></span></span>
+      <span class="chev">${ic('right',17)}</span></button>`).join('')}
+  </div>
+  </div></div>${nav('home')}`;
+}
+
+/* ---------- 2 · Sessão ---------- */
+function vSession(){
+  const s=S.sessions[S.cur];
+  const more=Math.max(0,s.total-s.people.length);
+  return `${status('wine')}<div class="view enter">
+  <header class="impact" style="padding:16px 22px 26px">
+    <button type="button" class="back" data-back>${ic('left',19)}Sessões</button>
+    <h1 class="t-session" style="margin-top:14px">${s.name}</h1>
+    <p class="num" style="font:400 13.5px/1.45 var(--body);color:rgba(255,241,232,.82);margin-top:10px">${s.date} · ${s.dur}<br>${s.place}</p>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;margin-top:20px">
+      <div class="row" style="gap:12px"><div class="stack">${s.people.map(i=>`<span class="avatar">${i}</span>`).join('')}</div><span class="t-meta num" style="color:rgba(255,241,232,.85)">${s.total} participantes</span></div>
+      <div class="col" style="align-items:flex-end;gap:2px"><span class="num" style="font:800 44px/.9 var(--display);letter-spacing:-.03em;color:var(--peach)">${s.hl.length}</span><span class="t-meta" style="color:rgba(255,241,232,.85)">lances</span></div>
+    </div>
+  </header>
+  <div class="gut" style="padding-top:22px;padding-bottom:40px">
+    <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:16px"><h2 class="t-section">Highlights</h2><span class="t-meta muted num">${s.hl.length} lances salvos</span></div>
+    <div class="col" style="gap:26px">
+    ${s.hl.map((h,i)=>`<button type="button" class="hl" data-play="${S.cur}:${i}">
+      ${thumb(s.seed+i,'100%',209,48)}
+      <span class="meta"><span class="idx num">${String(i+1).padStart(2,'0')}</span><span class="col" style="gap:6px;min-width:0"><span class="t-item">${h[0]}</span><span class="row t-meta muted num" style="gap:6px">${ic('clock',14)}${h[1]} · 30s</span></span></span>
+    </button>`).join('')}
+    </div>
+  </div></div>`;
+}
+
+/* ---------- Player (nova) ---------- */
+function vPlayer(){
+  const s=S.sessions[S.cur], h=s.hl[S.pIdx];
+  return `${status('black')}<div class="player ${S.playing?'playing':''}" id="player">
+    <div class="row gut" style="justify-content:space-between;padding-top:10px">
+      <button type="button" class="circ42" data-back aria-label="Fechar">${ic('close',19)}</button>
+      <div class="col" style="align-items:center;gap:2px"><span class="t-meta" style="color:var(--cap-muted)">${s.name}</span><span class="t-meta num">${S.pIdx+1} de ${s.hl.length}</span></div>
+      <button type="button" class="circ42" aria-label="Compartilhar highlight">${ic('share',19)}</button>
+    </div>
+    <div style="flex:1;display:flex;align-items:center">
+      <button type="button" data-toggleplay aria-label="${S.playing?'Pausar':'Reproduzir'}" style="position:relative;display:block;width:100%">${thumb(s.seed+S.pIdx,'100%',232,S.playing?0:64)}</button>
+    </div>
+    <div class="gut" style="padding-bottom:44px;display:flex;flex-direction:column;gap:18px">
+      <div class="col" style="gap:8px"><h1 class="t-cardOpen">${h[0]}</h1><span class="row t-meta num" style="gap:6px;color:var(--cap-muted)">${ic('clock',14)}${h[1]} · 30s</span></div>
+      <div class="col" style="gap:8px"><div class="track" role="progressbar" aria-label="Progresso" aria-valuemin="0" aria-valuemax="30" aria-valuenow="12"><span class="fill"></span><span class="knob"></span></div>
+        <div class="row t-meta num" style="justify-content:space-between;color:var(--cap-muted)"><span>0:12</span><span>0:30</span></div></div>
+      <div class="row" style="justify-content:center;gap:28px">
+        <button type="button" class="circ42" style="width:52px;height:52px;${S.pIdx===0?'opacity:.4':''}" data-step="-1" aria-label="Lance anterior" ${S.pIdx===0?'disabled':''}>${ic('left',22)}</button>
+        <button type="button" data-toggleplay class="rec" style="width:72px;height:72px;box-shadow:none" aria-label="${S.playing?'Pausar':'Reproduzir'}">${ic(S.playing?'pause':'play',28)}</button>
+        <button type="button" class="circ42" style="width:52px;height:52px;${S.pIdx===s.hl.length-1?'opacity:.4':''}" data-step="1" aria-label="Próximo lance" ${S.pIdx===s.hl.length-1?'disabled':''}>${ic('right',22)}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 3A · Preparar ---------- */
+function camScene(){
+  const L='rgba(255,241,232,.20)', F='rgba(255,241,232,.50)';
+  const f=(x,y,s)=>fig(x,y,s,F);
+  return `<svg class="scene" viewBox="0 0 412 892" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <rect width="412" height="892" fill="#1B1518"/><rect width="412" height="300" fill="#141013"/>
+  <path d="M0 300h412" stroke="rgba(255,241,232,.10)"/>
+  <path d="M-70 892 96 330h220l166 562" stroke="${L}" stroke-width="1.6" fill="none"/>
+  <path d="M-8 560h428" stroke="${L}" stroke-width="1.6"/><ellipse cx="206" cy="560" rx="78" ry="26" stroke="${L}" stroke-width="1.6" fill="none"/>
+  <path d="M160 330v-34h92v34" stroke="rgba(255,241,232,.32)" stroke-width="1.6" fill="none"/>
+  <path d="M130 330 118 392h176l-12-62" stroke="${L}" stroke-width="1.6" fill="none"/>
+  ${f(206,330,2.2)}${f(150,420,3)}${f(262,446,3.2)}${f(110,520,3.8)}${f(300,540,4)}
+  <circle cx="232" cy="500" r="4" fill="#FFF1E8"/>
+  </svg>`;
+}
+function vPrep(){
+  const chip=(k,l)=>`<button type="button" class="chip" data-chip="${k}" aria-pressed="${!!S.chips[k]}">${ic('check',15).replace('class="ico"','class="ico ck"')}${l}</button>`;
+  const corner=(x,y,r)=>`<path d="${r}" transform="translate(${x} ${y})"/>`;
+  return `${status('black')}<div class="cam enter">${camScene()}
+    <svg aria-hidden="true" viewBox="0 0 412 892" style="position:absolute;inset:0;width:100%;height:100%" fill="none" stroke="rgba(255,241,232,.7)" stroke-width="2" stroke-linecap="round">
+      ${corner(36,150,'M0 26V0h26')}${corner(376,150,'M0 26V0h-26')}${corner(36,560,'M0 -26V0h26')}${corner(376,560,'M0 -26V0h-26')}
+    </svg>
+    <div class="row gut" style="position:absolute;top:56px;left:0;right:0;justify-content:space-between;gap:12px">
+      <button type="button" class="circ42" data-back aria-label="Voltar">${ic('left',19)}</button>
+      <span class="pill-tip">${ic('tripod',15)}Apoie o celular e enquadre o campo</span>
+    </div>
+    <div style="position:absolute;left:0;right:0;bottom:36px;display:flex;flex-direction:column;gap:16px">
+      <div class="gut"><div class="coach">
+        <span class="g">${ic('gesture',30)}</span>
+        <span class="col" style="gap:3px"><span class="t-item" style="color:var(--onWine)">Lance bom? Faça ${GESTURE}</span><span class="t-meta" style="color:var(--cap-muted);font-weight:400">Olhe para a câmera e levante os dois braços. O Clippo salva os últimos 30s.</span></span>
+      </div></div>
+      <div class="col" style="gap:9px"><span class="t-meta gut" style="color:var(--cap-muted)">Gravar com</span>
+        <div class="chips" role="group" aria-label="Gravar com">${chip('solo','Gravar sozinho')}${FRIENDS.slice(0,5).map(fr=>chip(fr.i,'Com '+fr.n.split(' ')[0])).join('')}</div>
+      </div>
+      <div class="col" style="align-items:center;gap:12px;margin-top:4px">
+        <button type="button" class="rec" data-go="standby" aria-label="Iniciar gravação">${ic('capture',34)}</button>
+        <span class="t-meta" style="color:var(--cap-muted)">Iniciar detecção de gesto <b class="d" style="font-weight:700">${GESTURE}</b></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 3B / 3C · Gravando e Highlight salvo ---------- */
+function fmtT(sec){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=Math.floor(sec%60);return [h,m,s].map(n=>String(n).padStart(2,'0')).join(':')}
+function vStandby(opts={}){
+  const cnt=opts.count??S.count;
+  return `${status('black')}<div class="standby ${opts.ctrls?'show-ctrls':''}" id="standby">
+    <button type="button" class="tapzone" data-tapstandby aria-label="Mostrar controles da gravação"></button>
+    <span class="sdot" aria-hidden="true"></span>
+    <p class="ctrls-top t-meta num" aria-live="polite"><span id="elapsed">${opts.elapsed||'00:00:00'}</span> · <span id="cnt">${cnt}</span> highlight${cnt===1?'':'s'}</p>
+    <div class="ctrls">
+      <button type="button" class="btn btn-light" data-go="confirm">Encerrar sessão</button>
+      <button type="button" class="btn btn-ghostdark" data-cancel>Cancelar gravação</button>
+    </div>
+    <div class="saved ${opts.still?'still':''}" id="saved" role="status" aria-live="assertive">
+      <div class="row" style="justify-content:space-between;align-items:flex-end"><div class="g">${GESTURE}</div><span class="num" style="font:800 20px/1 var(--display);color:var(--peach)" id="savedN">#${opts.n||cnt||1}</span></div>
+      <p class="t-form" style="margin-top:14px">Highlight salvo</p>
+      <p class="t-meta" style="color:rgba(255,241,232,.82);font-weight:400;margin-top:6px">últimos 30s · gesto ${GESTURE} detectado</p>
+      <div class="bar"></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 3D · Confirme a sessão ---------- */
+function vConfirm(opts={}){
+  const n=opts.count??S.count;
+  const sel=Object.keys(S.chips).filter(k=>S.chips[k]&&k!=='solo');
+  const names=sel.map(i=>FRIENDS.find(f=>f.i===i).n);
+  return `${status()}<div class="view enter" style="padding-bottom:150px">
+    <header class="impact" style="padding:16px 22px 26px">
+      <button type="button" class="back" data-go="prep">${ic('left',19)}Voltar à câmera</button>
+      <div class="row" style="align-items:flex-end;gap:12px;margin-top:18px">
+        <span class="t-impact num" style="color:var(--peach)">${n}</span>
+        <span class="col" style="gap:2px;padding-bottom:4px"><span class="t-bodyS">highlight${n===1?'':'s'} salvo${n===1?'':'s'}</span><span class="t-caption num" style="color:rgba(255,241,232,.82)">Gravação encerrada · 1h 42min</span></span>
+      </div>
+      <h1 class="t-form" style="margin-top:20px">Confirme a sessão</h1>
+    </header>
+    ${n>0?`<div style="padding-top:20px"><span class="t-over muted gut" style="display:block;margin-bottom:10px">Seus lances</span>
+      <div class="chips" style="gap:6px">${Array.from({length:n},(_,i)=>thumb(20+i,'136px',77,28)).join('')}</div></div>`
+     :`<p class="gut t-caption muted" style="padding-top:20px">Nenhum lance salvo nessa sessão. Na próxima, faça ${GESTURE} quando rolar um lance bom.</p>`}
+    <div class="gut col" style="gap:14px;padding-top:20px">
+      <label class="field"><span class="t-over muted">Nome da sessão</span><input id="fName" value="${opts.name||'Pelada de Terça'}" aria-label="Nome da sessão"></label>
+      <div class="row" style="gap:11px;align-items:stretch">
+        <div class="field" style="flex:1"><span class="t-over muted">Data</span><span class="t-field num">29 set 2026</span></div>
+        <div class="field" style="flex:1"><span class="t-over muted">Horário</span><span class="t-field num">19:30 – 21:12</span></div>
+      </div>
+      <div class="field"><span class="t-over muted">Local · sugerido por GPS</span><span class="row t-field" style="gap:10px"><span class="accent">${ic('pin',18)}</span>Arena Bom Retiro, Quadra 2</span></div>
+      <div class="field" style="gap:10px"><span class="t-over muted">Participantes</span>
+        <div class="row" style="gap:8px;flex-wrap:wrap">${names.map(x=>`<span class="pchip">${x}</span>`).join('')}<span class="pchip">Você</span><button type="button" class="pchip add">+ adicionar</button></div></div>
+    </div>
+  </div>
+  <div class="dock"><button type="button" class="btn btn-primary t-button" data-savesession>Salvar sessão</button><button type="button" class="btn btn-text" data-go="prep" style="min-height:44px;padding:12px 16px 0">Descartar</button></div>`;
+}
+
+/* ---------- 4 · Amigos ---------- */
+function friendRows(list){
+  return list.map(f=>`<div class="frow"><span class="avatar" style="width:46px;height:46px;font-size:14px">${f.i}</span>
+        <span class="col" style="gap:3px;flex:1;min-width:0"><span class="t-item" style="font-size:19px">${f.n}</span><span class="t-meta muted num" style="font-weight:400">${f.s?f.s+(f.s===1?' sessão':' sessões')+' juntos':'nenhuma sessão ainda'}</span></span>
+        <button type="button" class="kebab" aria-label="Ações para ${f.n}">${ic('more',20)}</button></div>`).join('')
+    +(list.length?'':`<p class="t-caption muted" style="padding:20px 0">Ninguém com esse nome. Que tal convidar?</p>`);
+}
+function vFriends(){
+  const q=S.q.trim().toLowerCase();
+  const list=FRIENDS.filter(f=>!q||f.n.toLowerCase().includes(q));
+  return `${status()}<div class="view enter"><div class="gut" style="padding-top:14px;padding-bottom:130px">
+    <div class="row" style="justify-content:space-between;gap:12px"><h1 class="t-screen">Amigos</h1><button type="button" class="btn btn-compact t-btnsm" style="font-size:13px">${ic('plus',17)}Convidar</button></div>
+    <label class="search" style="margin-top:22px">${ic('search',18)}<input type="search" id="q" placeholder="Buscar amigo ou usuário" value="${S.q}" aria-label="Buscar amigo ou usuário"></label>
+    <div class="row" style="justify-content:space-between;margin:24px 0 4px"><span class="t-over muted">Jogaram com você</span><span class="t-meta muted num">${FRIENDS.length} amigos</span></div>
+    <div class="col" id="flist">${friendRows(list)}</div>
+  </div></div>${nav('friends')}`;
+}
+
+/* ---------- 5 · Perfil ---------- */
+function vProfile(){
+  const f=S.sessions[0];
+  const totalHl=114+S.sessions.reduce((a,s)=>a+s.hl.length,0);
+  return `${status()}<div class="view enter"><div class="gut" style="padding-top:26px;padding-bottom:130px">
+    <div class="col" style="align-items:center;gap:6px">
+      <div style="position:relative;width:104px;height:104px"><span class="avatar" style="width:104px;height:104px;font:800 38px/1 var(--display)">${ME.ini}</span>
+        <button type="button" aria-label="Trocar foto" style="position:absolute;right:-4px;bottom:-4px;width:34px;height:34px;border-radius:50%;background:var(--wine);color:var(--onWine);box-shadow:0 0 0 3px var(--bg);display:flex;align-items:center;justify-content:center">${ic('edit',16)}</button></div>
+      <h1 class="t-profile" style="margin-top:12px">${ME.name}</h1><span class="t-caption muted">${ME.user}</span>
+    </div>
+    <div class="stats" style="margin-top:24px">
+      <div><span class="t-stat num">${20+S.sessions.length}</span><span class="t-meta" style="color:rgba(255,241,232,.82)">sessões</span></div>
+      <div><span class="t-stat num">${totalHl}</span><span class="t-meta" style="color:rgba(255,241,232,.82)">highlights</span></div>
+      <div><span class="t-stat num">${FRIENDS.length}</span><span class="t-meta" style="color:rgba(255,241,232,.82)">amigos</span></div>
+    </div>
+    <div class="row" style="justify-content:space-between;margin:26px 0 12px"><h2 class="t-section">Seus últimos lances</h2></div>
+    <div class="row" style="gap:6px">${[0,1,2].map(i=>`<button type="button" data-play="0:${f.hl.length-1-i}" aria-label="Assistir: ${f.hl[f.hl.length-1-i][0]}" style="flex:1;min-width:0">${thumb(f.seed+f.hl.length-1-i,'100%',70,26)}</button>`).join('')}</div>
+    <div class="col" style="gap:11px;margin-top:26px">
+      <button type="button" class="set"><span class="t-bodyS muted">Nome</span><span class="row t-bodyS" style="gap:8px">${ME.name}<span class="muted">${ic('right',17)}</span></span></button>
+      <button type="button" class="set"><span class="t-bodyS muted">Usuário</span><span class="row t-bodyS" style="gap:8px">${ME.user}<span class="muted">${ic('right',17)}</span></span></button>
+      <div class="set"><span class="t-bodyS muted" id="nlabel">Notificações</span><button type="button" class="switch" role="switch" aria-labelledby="nlabel" aria-checked="${S.notif}" data-notif><i></i></button></div>
+      <button type="button" class="btn btn-outline t-button" data-go="welcome" style="margin-top:4px">${ic('logout',18)}Sair da conta</button>
+    </div>
+  </div></div>${nav('profile')}`;
+}
+
+/* =====================================================================
+   RENDERIZAÇÃO
+   ===================================================================== */
+const VIEWS={welcome:vWelcome,home:vHome,session:vSession,player:vPlayer,prep:vPrep,standby:vStandby,saved:()=>vStandby({still:true,count:4,n:4,elapsed:'00:41:18'}),confirm:vConfirm,friends:vFriends,profile:vProfile};
+function homebar(k){return `<span class="homebar ${['player','prep','standby','saved'].includes(k)?'light':''}"></span>`}
+function screenHTML(k){return VIEWS[k]()+homebar(k)}
+
+const $screen=document.getElementById('screen');
+let tick=null, ctrlTimer=null, savedTimer=null;
+
+function render(){
+  const k=topScreen();
+  $screen.className='screen theme-'+S.theme;
+  $screen.innerHTML=screenHTML(k);
+  clearInterval(tick); WS={open:false,drag:false,moved:false,hi:-1,fromPtr:false};
+  if(k==='standby'){
+    const el=()=>{const e=document.getElementById('elapsed');if(e)e.textContent=fmtT((Date.now()-S.t0)/1000)};
+    el(); tick=setInterval(el,1000);
+  }
+  document.querySelectorAll('#jump button').forEach(b=>b.setAttribute('aria-current',b.dataset.jump===k));
+  side(k);
+}
+function go(k){
+  if(k==='standby'){S.count=0;S.t0=Date.now()}
+  if(TABS.includes(k)&&k!=='prep'){S.stack=[k];S.lastTab=k}
+  else if(k==='prep'){S.stack=[S.lastTab,'prep']}
+  else if(k==='home'||k==='welcome'){S.stack=[k]}
+  else if(k==='standby'||k==='confirm'){S.stack=[S.lastTab,k]}
+  else S.stack.push(k);
+  render();
+}
+function back(){if(S.stack.length>1)S.stack.pop();render()}
+
+function gesture(){
+  if(topScreen()!=='standby')return;
+  S.count++;
+  const sv=document.getElementById('saved'); if(!sv)return;
+  document.getElementById('cnt').textContent=S.count;
+  document.getElementById('savedN').textContent='#'+S.count;
+  sv.classList.remove('go'); void sv.offsetWidth; sv.classList.add('go');
+  if(navigator.vibrate)navigator.vibrate(60);
+  clearTimeout(savedTimer); savedTimer=setTimeout(()=>sv.classList.remove('go'),2600);
+}
+
+$screen.addEventListener('click',e=>{
+  if(e.target.closest('.fab')){ if(WS.fromPtr){WS.fromPtr=false;return} if(WS.open)wClose(true);else{wOpen();const f=$screen.querySelector('.witem.cur')||$screen.querySelector('.witem');f&&f.focus()} return}
+  const wi=e.target.closest('[data-wi]'); if(wi){wSelect(+wi.dataset.wi);return}
+  if(e.target.closest('[data-wclose]')){wClose();return}
+  const t=e.target.closest('button,[data-go],[data-tab]'); if(!t)return;
+  const d=t.dataset;
+  if(d.tab){go(d.tab);return}
+  if(d.go){go(d.go);return}
+  if('back' in d){back();return}
+  if(d.open){S.cur=+d.open;go('session');return}
+  if(d.play){const [a,b]=d.play.split(':').map(Number);S.cur=a;S.pIdx=b;S.playing=true;go('player');return}
+  if('toggleplay' in d){S.playing=!S.playing;render();return}
+  if(d.step){S.pIdx=Math.min(Math.max(0,S.pIdx+ +d.step),S.sessions[S.cur].hl.length-1);S.playing=true;render();return}
+  if(d.chip){
+    const k=d.chip;
+    if(k==='solo'){S.chips={solo:true}}
+    else{delete S.chips.solo;S.chips[k]=!S.chips[k];if(!Object.values(S.chips).some(Boolean))S.chips={solo:true}}
+    document.querySelectorAll('[data-chip]').forEach(b=>b.setAttribute('aria-pressed',!!S.chips[b.dataset.chip]));return}
+  if('tapstandby' in d){const sb=document.getElementById('standby');sb.classList.add('show-ctrls');clearTimeout(ctrlTimer);ctrlTimer=setTimeout(()=>sb.classList.remove('show-ctrls'),3200);return}
+  if('cancel' in d){go('prep');return}
+  if('notif' in d){S.notif=!S.notif;t.setAttribute('aria-checked',S.notif);return}
+  if('savesession' in d){
+    const name=(document.getElementById('fName').value||'Sessão sem nome').trim();
+    const sel=Object.keys(S.chips).filter(k=>S.chips[k]&&k!=='solo');
+    S.sessions.unshift({name,date:'Hoje',place:'Arena Bom Retiro, Quadra 2',dur:'1h 42min',time:'19:30 – 21:12',people:[...sel,'GR'],total:sel.length+1,seed:20,
+      hl:Array.from({length:Math.max(S.count,0)},(_,i)=>['Lance '+(i+1),fmtT(300+i*611)])});
+    if(!S.sessions[0].hl.length)S.sessions[0].hl=[['Lance 1','00:05:00']];
+    S.lastTab='home';go('home');return}
+});
+/* ---------- roda: toque, segurar-arrastar-soltar, teclado ---------- */
+let WS={open:false,drag:false,moved:false,hi:-1,fromPtr:false};
+const wEl=()=>$screen.querySelector('.wheel');
+function wOpen(){const w=wEl();if(!w)return;WS.open=true;w.classList.remove('still');w.classList.add('open');
+  w.querySelector('.fab').setAttribute('aria-expanded','true');w.querySelectorAll('.witem').forEach(b=>b.tabIndex=0);WS.hi=-2;setHi(-1);
+  if(navigator.vibrate)navigator.vibrate(10)}
+function wClose(focusFab){const w=wEl();WS.open=false;WS.drag=false;if(!w)return;w.classList.remove('open');
+  const f=w.querySelector('.fab');f.setAttribute('aria-expanded','false');w.querySelectorAll('.witem').forEach(b=>b.tabIndex=-1);setHi(-1);if(focusFab)f.focus()}
+function setHi(n){
+  if(n===WS.hi)return; WS.hi=n; const w=wEl(); if(!w)return;
+  w.querySelectorAll('.witem').forEach((b,i)=>b.classList.toggle('hi',i===n));
+  w.querySelectorAll('.wedge').forEach((p,i)=>p.classList.toggle('on',i===n));
+  const cur=WH.find(x=>x[0]===w.dataset.active);
+  w.querySelector('[data-wname]').textContent=n>=0?WH[n][2]:cur[2];
+  w.querySelector('[data-whint]').textContent=n>=0?(WS.drag?'Solte para abrir':'Toque para abrir'):'Toque ou arraste até uma seção';
+  if(n>=0&&navigator.vibrate)navigator.vibrate(6);
+}
+function wSelect(n){const k=WH[n][0];if(navigator.vibrate)navigator.vibrate(18);wClose();
+  setTimeout(()=>{if(k!==topScreen())go(k)},170)}
+$screen.addEventListener('pointerdown',e=>{
+  const fab=e.target.closest('.fab'); if(!fab)return;
+  WS.fromPtr=true;
+  if(WS.open){wClose();return}
+  e.preventDefault(); wOpen(); WS.drag=true; WS.moved=false;
+  const r=fab.getBoundingClientRect(); WS.cx=r.left+r.width/2; WS.cy=r.top+r.height/2; WS.s=r.width/56;
+  try{fab.setPointerCapture(e.pointerId)}catch(_){}
+});
+$screen.addEventListener('pointermove',e=>{
+  if(WS.drag){
+    const dx=(e.clientX-WS.cx)/WS.s, dy=(WS.cy-e.clientY)/WS.s, d=Math.hypot(dx,dy);
+    if(d>14)WS.moved=true;
+    if(d<44||dy<-30){setHi(-1);return}
+    const a=Math.atan2(Math.max(dy,0),dx)*180/Math.PI;
+    let best=0,bd=1e9; WH.forEach((w,i)=>{const dd=Math.abs(w[3]-a);if(dd<bd){bd=dd;best=i}});
+    setHi(best); return;
+  }
+  if(WS.open&&e.pointerType==='mouse'){const it=e.target.closest('[data-wi]');setHi(it?+it.dataset.wi:-1)}
+});
+function wUp(cancel){
+  if(!WS.drag)return; WS.drag=false;
+  if(WS.moved){ if(!cancel&&WS.hi>=0)wSelect(WS.hi); else wClose(); }
+  else setHi(-1);            /* foi um toque: a roda fica aberta para escolher */
+}
+$screen.addEventListener('pointerup',()=>wUp(false));
+$screen.addEventListener('pointercancel',()=>wUp(true));
+document.addEventListener('keydown',e=>{
+  if(!WS.open)return;
+  if(e.key==='Escape'){e.preventDefault();wClose(true);return}
+  const dir=e.key==='ArrowRight'||e.key==='ArrowDown'?1:e.key==='ArrowLeft'||e.key==='ArrowUp'?-1:0;
+  if(dir){e.preventDefault();const n=((WS.hi<0?(dir>0?-1:0):WS.hi)+dir+WH.length)%WH.length;setHi(n);$screen.querySelectorAll('.witem')[n].focus()}
+});
+
+$screen.addEventListener('input',e=>{
+  if(e.target.id==='q'){S.q=e.target.value;const q=S.q.trim().toLowerCase();document.getElementById('flist').innerHTML=friendRows(FRIENDS.filter(f=>!q||f.n.toLowerCase().includes(q)))}
+});
+document.addEventListener('keydown',e=>{if((e.key==='g'||e.key==='G')&&!(e.target instanceof HTMLInputElement))gesture()});
+
+/* ---------- texto lateral por tela ---------- */
+const NOTES={
+  welcome:['Boas-vindas','Tela nova. A frase-assinatura e o gesto viram a primeira coisa que a pessoa vê: um bloco vinho de impacto com o \\ o / enorme em pêssego. Três passos, um botão.'],
+  home:['Início','O lance vira o herói: a sessão mais recente abre com o vídeo do último lance e uma tira dos outros. As anteriores ficam compactas, cada uma com a miniatura. Toque no vídeo, na tira ou em "Ver highlights".'],
+  session:['Sessão','Cabeçalho vinho com o número de lances em destaque. Os highlights viram um feed vertical com miniatura grande 16:9, numerados como numa súmula. Toque num lance para abrir o Player.'],
+  player:['Player','Tela nova, fecha o fluxo da demo (… toca um → assiste). Preto, vídeo no centro, só o play sobre a imagem. Anterior e próximo embaixo.'],
+  prep:['3A · Preparar','O gesto é ensinado na hora de gravar, com o boneco \\ o / em pêssego. Cantos de enquadramento no lugar do retângulo. "Gravar com" aceita vários amigos (regra R10).'],
+  standby:['3B · Gravando','Preto puro, só o ponto vinho pulsando. Toque na tela para ver tempo, contador e os botões por 3,2 s. Use o botão ao lado (ou a tecla G) para simular o gesto.'],
+  saved:['3C · Highlight salvo','O único momento que grita: bloco vinho de canto reto, \\ o / gigante que entra com impulso, número do lance e uma barra que mostra os 2,6 s até sumir sozinho.'],
+  confirm:['3D · Confirme','O cabeçalho comemora o placar da noite (nº de highlights em 64 px). Logo abaixo, os lances gravados. O botão "Salvar sessão" fica fixo embaixo.'],
+  friends:['Amigos','Mesma estrutura da v1, com busca funcionando. A lista não é ranking: é "quem jogou com você".'],
+  profile:['Perfil','Blocos de estatística mantidos. Entra "Seus últimos lances": até no perfil, o lance vem antes do dado.']
+};
+function side(k){
+  const [h,p]=NOTES[k]||['',''];
+  document.getElementById('sideL').innerHTML=`<h2>${h}</h2><p>${p}</p>`;
+  document.getElementById('sideR').innerHTML=k==='standby'
+    ?`<button type="button" class="act" id="gbtn">Fazer o gesto <b>${GESTURE}</b></button><span class="kbd">ou aperte G</span><p>Toque na tela preta para encerrar a sessão.</p>`
+    :(['home','friends','profile'].includes(k)&&S.navStyle==='roda')?`<h2>Navegação em roda</h2><p><b>Toque</b> no círculo vinho para abrir e toque numa seção.</p><p><b>Ou segure e arraste</b> até a seção e solte, como no Pinterest. A fatia ativa acende como na roda do GTA.</p><p>No teclado: Enter abre, setas escolhem, Esc fecha.</p>`+(k==='home'?`<p>Fluxo da demo: Gravar → Iniciar → gesto → Encerrar → Salvar sessão.</p>`:'')
+    :k==='home'?`<p>Fluxo da demo: Gravar → Iniciar → gesto → Encerrar → Salvar sessão. A sessão nova aparece no topo da Início.</p>`:'';
+  const gb=document.getElementById('gbtn'); if(gb)gb.onclick=gesture;
+}
+
+/* ---------- visão geral ---------- */
+function overview(){
+  const saveS={...S,stack:[...S.stack]};
+  const grid=document.getElementById('grid'); const sc=.62;
+  const list=S.navStyle==='roda'?[SCREENS[0],SCREENS[1],['wheel','Navegação · roda aberta'],...SCREENS.slice(2)]:SCREENS;
+  grid.innerHTML=list.map(([k,l])=>{
+    let html;
+    if(k==='wheel'){S.wOpts={open:true,hi:2};html=screenHTML('home');S.wOpts=null}
+    else if(k==='confirm')html=vConfirm({count:4,name:'Pelada de Terça'})+homebar(k);
+    else if(k==='standby')html=vStandby({ctrls:true,count:3,elapsed:'00:38:52'})+homebar(k);
+    else{S.cur=0;S.pIdx=2;S.playing=false;html=screenHTML(k)}
+    const isNew=k==='welcome'||k==='player'||k==='wheel';
+    const note=k==='standby'?' (após um toque)':k==='wheel'?' (arrastando até Amigos)':'';
+    return `<div class="cell"><div class="lbl">${l}${note}${isNew?'<span class="tag">nova</span>':''}</div>
+      <div class="mini" style="width:${436*sc}px;height:${916*sc}px"><div class="device" style="transform:scale(${sc})"><div class="screen theme-${S.theme}">${html}</div></div></div></div>`;
+  }).join('');
+  grid.querySelectorAll('.enter').forEach(n=>n.classList.remove('enter'));
+  Object.assign(S,saveS);
+}
+
+/* ---------- chrome ---------- */
+document.getElementById('jump').innerHTML=SCREENS.map(([k,l])=>`<button type="button" data-jump="${k}">${l}</button>`).join('');
+document.getElementById('jump').addEventListener('click',e=>{
+  const b=e.target.closest('[data-jump]');if(!b)return;const k=b.dataset.jump;
+  setMode('app');
+  if(k==='saved'){go('standby');setTimeout(gesture,350);return}
+  if(k==='session'){S.cur=0}
+  if(k==='player'){S.cur=0;S.pIdx=0;S.playing=true}
+  if(k==='confirm'&&S.count===0)S.count=4;
+  go(k);
+});
+function setMode(m){
+  document.body.className='mode-'+m;
+  document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));
+  if(m==='all')overview();
+}
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{
+  S.theme=b.dataset.theme;
+  document.querySelectorAll('[data-theme]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  render(); if(document.body.classList.contains('mode-all'))overview();
+});
+document.querySelectorAll('[data-navstyle]').forEach(b=>b.onclick=()=>{
+  S.navStyle=b.dataset.navstyle;
+  document.querySelectorAll('[data-navstyle]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  render(); if(document.body.classList.contains('mode-all'))overview();
+});
+function fit(){
+  const avail=window.innerHeight-document.querySelector('.chrome').offsetHeight-48;
+  const s=Math.min(1,avail/916, (window.innerWidth-40)/436);
+  const d=document.getElementById('device');d.style.transform=`scale(${s})`;
+  const w=document.getElementById('wrap');w.style.width=436*s+'px';w.style.height=916*s+'px';
+}
+window.addEventListener('resize',fit);
+fit(); render();
+</script>
+</body>
+</html>
