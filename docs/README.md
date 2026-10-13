@@ -2,7 +2,7 @@
 
 > **Levantou os braços, o lance está salvo.**
 
-Esta pasta reúne tudo o que um integrante precisa para criar telas e funcionalidades novas no Clippo sem ter participado das conversas de brainstorm e design. Ela descreve **o quê** o app faz e **como ele deve parecer e soar**. As escolhas técnicas (linguagem do backend, banco, arquitetura, bibliotecas, gerenciamento de estado) ficam a critério de quem implementa cada área.
+Esta pasta reúne tudo o que um integrante precisa para criar telas e funcionalidades novas no Clippo sem ter participado das conversas de brainstorm e design. Ela descreve **o quê** o app faz, **como ele deve parecer e soar** e, desde a versão de outubro, **as decisões técnicas já tomadas** ([07 — Arquitetura](07-arquitetura.md)) e **como contribuir** ([08 — Como contribuir](08-como-contribuir.md)). Escolhas técnicas ainda em aberto estão listadas no 07.
 
 ## Por onde começar
 
@@ -13,6 +13,8 @@ Esta pasta reúne tudo o que um integrante precisa para criar telas e funcionali
 | Criar ou alterar uma tela | [03 — Telas](03-telas.md) → [Protótipo](prototipos/README.md) → [04 — Design system](04-design-system.md) |
 | Escrever qualquer texto que aparece no app | [05 — Conteúdo e voz](05-conteudo-e-voz.md) |
 | Abrir um PR com tela nova | [06 — Checklist de nova tela](06-checklist-nova-tela.md) |
+| Entender a arquitetura, o modelo de dados e o que está decidido | [07 — Arquitetura](07-arquitetura.md) |
+| Criar uma tela, uma Cloud Function ou mudar uma regra; combinados de Git | [08 — Como contribuir](08-como-contribuir.md) |
 | Configurar cores/fontes no código | [`design-tokens.json`](design-tokens.json) |
 | Usar os ícones da marca | [`assets/icons/`](assets/icons/) |
 
@@ -27,6 +29,8 @@ docs/
 ├── 04-design-system.md        ← cores, tipografia, espaço, forma, ícones, componentes, movimento
 ├── 05-conteudo-e-voz.md       ← tom de voz, microcopy, glossário PT ↔ nomes no código
 ├── 06-checklist-nova-tela.md  ← o que conferir antes de entregar uma tela
+├── 07-arquitetura.md          ← decisões técnicas, modelo de dados, ambientes, pendências
+├── 08-como-contribuir.md      ← Git, PR, passo a passo de tela, Function e regra
 ├── design-tokens.json         ← todos os valores visuais em formato neutro (qualquer stack lê)
 ├── assets/icons/              ← ícones outline oficiais em SVG
 └── prototipos/                ← protótipo navegável do Claude Design + capturas de cada tela

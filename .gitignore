@@ -1,0 +1,23 @@
+# Dependências e builds
+node_modules/
+backend/functions/lib/
+
+# Firebase CLI e Emulator
+.firebase/
+*-debug.log
+firebase-debug.*.log
+ui-debug.log
+*.local
+
+# Credenciais
+*service-account*.json
+*-adminsdk-*.json
+.runtimeconfig.json
+.env
+.env.*
+
+.idea/
+*.iml
+# Editores
+.idea/
+*.iml
