@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Estado inicial: TUDO BLOQUEADO.
+// Os caminhos dos vídeos e miniaturas ganham regras quando o modelo de dados for definido.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
