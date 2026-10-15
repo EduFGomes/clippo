@@ -31,6 +31,7 @@ Celular de quem grava                      Firebase (us-east1)                  
 | D7 | **O app não grava dados validados**; só Functions gravam | Ninguém pula a validação mexendo no app | Toda escrita nova precisa de uma Function |
 | D8 | **Fontes embutidas no app** (Anton e Archivo em `app/assets/fonts/`, sem o pacote `google_fonts`) | Funciona sem internet na quadra; nada é baixado na primeira abertura | ~1 MB a mais no app |
 | D9 | **Valores visuais só em `clippo_tokens.dart`** (sem JSON paralelo) | Uma fonte só evita divergência entre docs e código | Quem não usa Flutter lê os valores pelo [design.md](design.md) |
+| D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/users/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
 
@@ -59,6 +60,7 @@ Regras de modelagem:
 | **App** | Telas, câmera, buffer, detecção, upload. Lê o Firestore direto. Chama Functions para gravar. |
 | **Security Rules** | Porteiro: decide cada leitura (e bloqueia escritas do app). Testadas em `backend/tests/`. |
 | **Functions chamáveis** | Ações do usuário que precisam de validação no servidor (ex.: `completeProfile`). |
+| **Funções de bloqueio do Auth** | Rodam antes de a conta ser criada e podem recusá-la (ex.: `validateNewAccount`, que confere o e-mail). |
 | **Functions de gatilho** | Efeitos colaterais de eventos: contadores, notificações, limpeza. Idempotentes. |
 
 O catálogo de funções planejadas está no [`backend/README.md`](../backend/README.md#catálogo-de-funções-rascunho).
@@ -83,6 +85,7 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 | Modelo de Sessão, Participante, Highlight e Amizade | Back-end + grupo |
 | Validar "participantes são amigos do dono" (R10): regras ou Function `createSession` | Back-end |
 | Login com Google (precisa do projeto real) | Back-end |
+| Função de bloqueio `validateNewAccount` no projeto real: exige o Firebase Authentication com Identity Platform (no Emulator funciona sem nada a mais). Sem ela, a validação do e-mail no servidor fica só no app | Back-end |
 | Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
 | Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
@@ -113,6 +116,7 @@ A parte de Git é uma **proposta** — ajustem na reunião se quiserem.
 - [ ] Testei o fluxo no emulador com o Firebase Emulator rodando
 - [ ] Tela nova: [checklist de tela nova](design.md#6-checklist-de-tela-nova) conferido e tela adicionada ao catálogo
 - [ ] Coleção ou campo novo no Firestore: modelo de dados deste arquivo atualizado
+- [ ] Campo novo que o usuário preenche: validado no app e no servidor, com testes nos dois lados (regra 0 do `AGENTS.md`)
 - [ ] Escrevi no PR o que **não** testei
 
 ### Criar uma tela nova
@@ -123,9 +127,10 @@ Modelo para copiar: `app/lib/features/onboarding/`.
 2. Crie `screens/<nome>_screen.dart` com uma classe `<Nome>Screen`. Nomes em inglês, textos em português.
 3. Monte a tela com os componentes de `app/lib/core/widgets/` (lista em [design.md › Componentes](design.md#4-componentes)). Valores visuais **só com tokens**. Referência visual: os canvas linkados no [design.md](design.md#7-referências-no-claude).
 4. Precisa de dados? Use (ou crie) um repositório em `app/lib/core/data/`. A tela nunca chama `FirebaseFirestore`/`FirebaseFunctions` direto.
-5. Adicione uma linha em `app/lib/dev/screen_catalog.dart` para o time conseguir abrir a tela.
-6. Escreva pelo menos um teste em `app/test/` (a tela abre, o texto principal aparece).
-7. Rode o checklist do PR.
+5. Tem campo para o usuário preencher? Valide com as regras de `app/lib/core/validation/input_validation.dart` no envio (erro embaixo do campo, nada é enviado se houver erro) e de novo dentro do repositório. Regra que não existe ainda: crie nos dois lados, app e servidor, com testes.
+6. Adicione uma linha em `app/lib/dev/screen_catalog.dart` para o time conseguir abrir a tela.
+7. Escreva pelo menos um teste em `app/test/` (a tela abre, o texto principal aparece, um dado inválido mostra o erro sem enviar nada).
+8. Rode o checklist do PR.
 
 ### Criar uma Cloud Function
 
@@ -137,7 +142,7 @@ Modelo para copiar: `backend/functions/src/users/completeProfile.ts` (chamável)
 2. Crie o arquivo no domínio certo (`users/`, `friends/`, `sessions/`, `highlights/`, `maintenance/`) e exporte no `index.ts` **do domínio**. A região vem de `src/config.ts`.
 3. Estrutura de uma chamável:
    1. `request.auth?.uid` — sem login, `HttpsError("unauthenticated", ...)`;
-   2. valide e normalize os dados **antes** de tocar no banco (regras em arquivo separado, sem Firebase, com testes em `functions/test/`);
+   2. valide e normalize os dados **antes** de tocar no banco (regras em arquivo separado, sem Firebase, com testes em `functions/test/`; a mesma regra precisa existir no app, em `app/lib/core/validation/`);
    3. grave tudo numa **transação** quando houver mais de um documento;
    4. seja **idempotente** (chamar duas vezes não pode duplicar nada);
    5. erros com `HttpsError` e mensagem em português pronta para a tela (`details: { field }` quando for de um campo).

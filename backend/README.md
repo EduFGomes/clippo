@@ -77,6 +77,7 @@ Será ajustado quando o modelo de dados estiver definido.
 | Função | Gatilho | O que faz | Requisito |
 |---|---|---|---|
 | `completeProfile` ✅ | Chamada pelo app | Cria `users/{uid}`, reserva `usernames/{username}` e guarda a data de nascimento em `userPrivate/{uid}`, numa transação | Conta e perfil |
+| `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
 | `onHighlightCreated` | Highlight criado no Firestore | Atualiza contadores e avisa os participantes por push | R16, Perfil |
 | `onVideoUploaded` | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
 | `acceptFriendInvite` | Chamada pelo app | Grava a amizade nos dois perfis de uma vez | R15 🟡 |

@@ -88,6 +88,17 @@ Use exatamente assim.
 | Olho da senha (acessibilidade) | Mostrar senha · Ocultar senha |
 | Voltar (acessibilidade) | Voltar |
 
+**Erros de validação** (iguais no app e no servidor; aparecem embaixo do campo, em `label` / `error`)
+
+| Campo | Texto |
+|---|---|
+| E-mail | Informe seu e-mail. · Esse e-mail não parece válido. |
+| Senha | Informe a senha. · Use uma senha com pelo menos 6 caracteres. · A senha pode ter até 128 caracteres. |
+| Confirmação | Repita a senha. · As senhas não são iguais. |
+| Nome | Informe seu nome. · O nome pode ter até 50 caracteres. |
+| Nome de usuário | Escolha um nome de usuário. · O nome de usuário precisa ter de 3 a 20 caracteres. · Use só letras sem acento, números, "_" e ".". · O ponto não pode ficar no começo, no fim ou repetido. |
+| Data de nascimento | Informe a data de nascimento. · Data de nascimento inválida. |
+
 **Telas internas** (vindas do protótipo v1; revisar quando forem redesenhadas na C)
 
 | Onde | Texto |
@@ -222,8 +233,8 @@ Famílias: **Anton** (display) e **Archivo** (resto), embutidas em `app/assets/f
 | Token | Família · peso | Tamanho | Altura de linha | Espaçamento | Uso |
 |---|---|---|---|---|---|
 | `heroMark` | Anton 400 | 184 | 0,82 | +1 % | `\O/` da boas-vindas |
-| `displayL` | Anton 400 | 48 | 1,0 | +1 % | Título de tela (MAIÚSCULAS, 2 linhas) |
-| `displayM` | Anton 400 | 40 | 1,02 | +1 % | Frase da boas-vindas |
+| `displayL` | Anton 400 | 48 | 1,3 | +1 % | Título de tela (MAIÚSCULAS, 2 linhas) |
+| `displayM` | Anton 400 | 40 | 1,3 | +1 % | Frase da boas-vindas |
 | `wordmark` | Anton 400 | 20 | 1,0 | +14 % | "CLIPPO" no topo da boas-vindas |
 | `titleS` | Archivo 700 | 19 | 1,2 | 0 | Título de passo/item |
 | `input` | Archivo 500 | 18 | 1,25 | 0 | Valor digitado |
@@ -238,6 +249,8 @@ Famílias: **Anton** (display) e **Archivo** (resto), embutidas em `app/assets/f
 | `errorInline` | Archivo 600 | 14 | 1,3 | 0 | Erro na linha do "Esqueci a senha" |
 
 Números que mudam (contadores, tempo) usam algarismos de largura fixa (`ClippoText.tabular`).
+
+Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no design C). Os acentos das maiúsculas sobem até 1,10 da altura da fonte e a cedilha desce 0,31; com menos que isso, "QUASE / LÁ." e "BRAÇOS, / O LANCE" se encostam. Só uma cedilha exatamente em cima de uma letra acentuada ainda pode tocar; evite essa combinação em títulos novos. Ajustado em 14/10/2026 depois do teste no emulador.
 
 ### 3.4 Espaço, forma e tamanhos (`ClippoSpace`, `ClippoRadius`, `ClippoSize`)
 

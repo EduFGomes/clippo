@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_link_line.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
@@ -26,8 +27,15 @@ class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
+
+  /// Erro de cada campo (validação do app ou resposta do Firebase).
+  final Map<String, String> _fieldErrors = {};
+
+  /// Erro da linha do "Esqueci a senha" (credenciais erradas, sem internet…).
   String? _error;
-  String? _errorField;
+
+  /// "E-mail ou senha incorretos.": os dois campos ficam marcados.
+  bool _credentialsError = false;
 
   @override
   void dispose() {
@@ -36,28 +44,48 @@ class _SignInScreenState extends State<SignInScreen> {
     super.dispose();
   }
 
+  void _clearError(String field) {
+    if (_fieldErrors.containsKey(field) || _error != null) {
+      setState(() {
+        _fieldErrors.remove(field);
+        _error = null;
+        _credentialsError = false;
+      });
+    }
+  }
+
   Future<void> _submit() async {
+    final errors = <String, String?>{
+      'email': validateEmail(_email.text),
+      'password': validateExistingPassword(_password.text),
+    }..removeWhere((_, error) => error == null);
     setState(() {
-      _loading = true;
+      _fieldErrors
+        ..clear()
+        ..addAll(errors.cast<String, String>());
       _error = null;
-      _errorField = null;
+      _credentialsError = false;
     });
+    if (errors.isNotEmpty) return; // nada vai para o Firebase sem passar na validação
+
+    setState(() => _loading = true);
     try {
       await authRepository.signIn(email: _email.text, password: _password.text);
       // A raiz do app (AuthGate) percebe o login e mostra a tela certa; aqui só fechamos a pilha.
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on AuthFailure catch (e) {
       setState(() {
-        _error = e.message;
-        _errorField = e.field;
+        if (e.field == null || e.field == AuthFailure.credentialsField) {
+          _error = e.message;
+          _credentialsError = e.field == AuthFailure.credentialsField;
+        } else {
+          _fieldErrors[e.field!] = e.message;
+        }
       });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
-
-  bool _fieldHasError(String field) =>
-      _error != null && (_errorField == field || _errorField == AuthFailure.credentialsField);
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +127,9 @@ class _SignInScreenState extends State<SignInScreen> {
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
             autocorrect: false,
-            hasError: _fieldHasError('email'),
+            hasError: _credentialsError,
+            errorText: _fieldErrors['email'],
+            onChanged: (_) => _clearError('email'),
           ),
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.password(
@@ -108,7 +138,9 @@ class _SignInScreenState extends State<SignInScreen> {
             controller: _password,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.password],
-            hasError: _fieldHasError('password'),
+            hasError: _credentialsError,
+            errorText: _fieldErrors['password'],
+            onChanged: (_) => _clearError('password'),
             onSubmitted: (_) {
               if (!_loading) _submit();
             },

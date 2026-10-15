@@ -13,6 +13,10 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - `docs/` — três arquivos: `produto.md` (visão, regras de negócio R1–R16, telas, equipe), `design.md` (voz, glossário, tokens, componentes) e `arquitetura.md` (decisões, modelo de dados, como contribuir).
 
 ## Regras que não podem ser quebradas
+0. **REGRA ABSOLUTA — nada sem validação.** Nenhum dado digitado pelo usuário vai para o Firebase Auth, o Firestore, o Storage ou uma Cloud Function sem ser validado **duas vezes, com as mesmas regras e mensagens**:
+   - **no app**, antes de enviar: regras em `app/lib/core/validation/input_validation.dart`, aplicadas pela tela (erro embaixo do campo) **e** dentro do repositório de `app/lib/core/data/` (que lança erro sem chamar o Firebase);
+   - **no servidor**: na Function chamável (`backend/functions/src/users/validation.ts`) ou, no caso do Auth, na função de bloqueio `validateNewAccount`.
+   Campo novo = regra nos dois lados + testes nos dois lados (`app/test/input_validation_test.dart` e `backend/functions/test/validation.test.ts`), no mesmo PR. "O Firebase já valida" não conta: o Auth aceita e-mails como `nome@g`.
 1. **Código em inglês, interface em português (PT-BR)**, com os nomes do glossário de `docs/design.md` (`Session`, `Highlight`, `Capture`, `Home`…). Textos da interface seguem a voz de `docs/design.md`.
 2. **Nada de valores visuais escritos à mão.** Cores, fontes, espaços, raios e animações vêm de `app/lib/core/theme/clippo_tokens.dart` (`ClippoColors`, `ClippoText`, `ClippoSpace`…). Precisa de um valor que não existe? Proponha no design system antes.
 3. **Uma feature não importa nada de dentro de outra feature.** O que duas features usam vai para `app/lib/core/`.
@@ -25,6 +29,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 10. Mudanças em `app/android/` só quando necessário (permissões, minSdk, Firebase) e explicadas no PR.
 
 ## Padrões a copiar
+- **Validação:** `app/lib/core/validation/input_validation.dart` (app) espelha `backend/functions/src/users/validation.ts` (servidor). Telas validam todos os campos no envio e mostram o erro embaixo de cada um; o repositório valida de novo antes de chamar o Firebase.
 - **Cloud Function chamável:** `backend/functions/src/users/completeProfile.ts` — (1) quem chamou? (2) valida antes de tocar no banco (validação em arquivo separado e testável), (3) grava tudo numa transação, (4) idempotente, (5) erros com `HttpsError` e mensagem em português pronta para a tela.
 - **Gatilhos** (ex.: highlight criado) podem rodar mais de uma vez: escreva de forma idempotente.
 - **Nova Function:** arquivo no domínio certo (`users/`, `friends/`, `sessions/`, `highlights/`, `maintenance/`) e exportada no `index.ts` **do domínio**. Região vem de `src/config.ts`.

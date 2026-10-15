@@ -26,8 +26,8 @@ class ClippoTextField extends StatefulWidget {
     this.onSubmitted,
     this.hasError = false,
     this.errorText,
-  })  : _variant = _Variant.plain,
-        password = null;
+  }) : _variant = _Variant.plain,
+       password = null;
 
   /// Senha com botão de mostrar/ocultar.
   const ClippoTextField.password({
@@ -42,14 +42,14 @@ class ClippoTextField extends StatefulWidget {
     this.onSubmitted,
     this.hasError = false,
     this.errorText,
-  })  : _variant = _Variant.password,
-        password = null,
-        keyboardType = TextInputType.visiblePassword,
-        textCapitalization = TextCapitalization.none,
-        autocorrect = false,
-        prefixText = null,
-        readOnly = false,
-        onTap = null;
+  }) : _variant = _Variant.password,
+       password = null,
+       keyboardType = TextInputType.visiblePassword,
+       textCapitalization = TextCapitalization.none,
+       autocorrect = false,
+       prefixText = null,
+       readOnly = false,
+       onTap = null;
 
   /// Confirmação de senha: mostra ✓ quando bate com [password] e "Não bate" quando não.
   const ClippoTextField.confirmation({
@@ -64,14 +64,14 @@ class ClippoTextField extends StatefulWidget {
     this.onSubmitted,
     this.hasError = false,
     this.errorText,
-  })  : _variant = _Variant.confirmation,
-        keyboardType = TextInputType.visiblePassword,
-        autofillHints = null,
-        textCapitalization = TextCapitalization.none,
-        autocorrect = false,
-        prefixText = null,
-        readOnly = false,
-        onTap = null;
+  }) : _variant = _Variant.confirmation,
+       keyboardType = TextInputType.visiblePassword,
+       autofillHints = null,
+       textCapitalization = TextCapitalization.none,
+       autocorrect = false,
+       prefixText = null,
+       readOnly = false,
+       onTap = null;
 
   final String label;
   final String? hint;
@@ -183,35 +183,42 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
                   children: [
                     Text(widget.label, style: ClippoText.label.copyWith(color: colors.textLabel)),
                     const SizedBox(height: ClippoSpace.labelToValue),
-                    TextField(
-                      controller: widget.controller,
-                      focusNode: _focus,
-                      keyboardType: widget.keyboardType,
-                      textInputAction: widget.textInputAction,
-                      autofillHints: widget.autofillHints,
-                      textCapitalization: widget.textCapitalization,
-                      autocorrect: widget.autocorrect,
-                      enableSuggestions: !_isSecret,
-                      obscureText: _isSecret && _obscured,
-                      readOnly: widget.readOnly,
-                      showCursor: !widget.readOnly,
-                      // Campo só de toque: o bloco inteiro chama onTap uma vez.
-                      ignorePointers: widget.readOnly,
-                      onChanged: widget.onChanged,
-                      onSubmitted: widget.onSubmitted,
-                      style: ClippoText.input.copyWith(color: colors.text),
-                      cursorColor: colors.accent,
-                      decoration: InputDecoration(
-                        isCollapsed: true,
-                        border: InputBorder.none,
-                        hintText: widget.hint,
-                        hintStyle: ClippoText.input.copyWith(color: colors.placeholder),
-                        // prefixIcon (e não prefixText) para o "@" aparecer mesmo com o campo vazio.
-                        prefixIcon: widget.prefixText == null
-                            ? null
-                            : Text(widget.prefixText!, style: ClippoText.input.copyWith(color: colors.text)),
-                        prefixIconConstraints: const BoxConstraints(),
-                      ),
+                    // O prefixo ("@") fica fora do TextField: aparece mesmo com o campo vazio e
+                    // evita um erro de semântica do prefixo do InputDecoration dentro do MergeSemantics.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        if (widget.prefixText != null)
+                          Text(widget.prefixText!, style: ClippoText.input.copyWith(color: colors.text)),
+                        Expanded(
+                          child: TextField(
+                            controller: widget.controller,
+                            focusNode: _focus,
+                            keyboardType: widget.keyboardType,
+                            textInputAction: widget.textInputAction,
+                            autofillHints: widget.autofillHints,
+                            textCapitalization: widget.textCapitalization,
+                            autocorrect: widget.autocorrect,
+                            enableSuggestions: !_isSecret,
+                            obscureText: _isSecret && _obscured,
+                            readOnly: widget.readOnly,
+                            showCursor: !widget.readOnly,
+                            // Campo só de toque: o bloco inteiro chama onTap uma vez.
+                            ignorePointers: widget.readOnly,
+                            onChanged: widget.onChanged,
+                            onSubmitted: widget.onSubmitted,
+                            style: ClippoText.input.copyWith(color: colors.text),
+                            cursorColor: colors.accent,
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: widget.hint,
+                              hintStyle: ClippoText.input.copyWith(color: colors.placeholder),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -223,15 +230,22 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
       ),
     );
 
-    if (widget.errorText == null) return field;
+    // Mesma estrutura com e sem erro: assim o campo não é recriado (nem perde o foco)
+    // quando a mensagem aparece ou some.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         field,
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(ClippoSpace.spaceL, ClippoSpace.spaceS, ClippoSpace.spaceL, 0),
-          child: Text(widget.errorText!, style: ClippoText.label.copyWith(color: colors.error)),
-        ),
+        if (widget.errorText != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              ClippoSpace.spaceL,
+              ClippoSpace.spaceS,
+              ClippoSpace.spaceL,
+              0,
+            ),
+            child: Text(widget.errorText!, style: ClippoText.label.copyWith(color: colors.error)),
+          ),
       ],
     );
   }
@@ -293,4 +307,3 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
     }
   }
 }
-

@@ -21,6 +21,12 @@ Widget _app(Widget home, {Brightness brightness = Brightness.light, double textS
   );
 }
 
+Future<void> _phone(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(412, 915);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 void main() {
   final screens = <String, Widget>{
     'Boas-vindas': const WelcomeScreen(),
@@ -58,6 +64,48 @@ void main() {
     expect(find.text('QUASE\nLÁ.'), findsOneWidget);
     expect(find.text('Continuar'), findsOneWidget);
     expect(find.text('Sair'), findsOneWidget);
+  });
+
+  // Nestes testes não existe Firebase: se a tela tentasse enviar algo, o teste quebraria.
+  testWidgets('Criar conta recusa e-mail inválido sem chamar o Firebase', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const SignUpScreen()));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'capovill@g');
+    await tester.enterText(fields.at(1), 'abc123');
+    await tester.enterText(fields.at(2), 'abc123');
+    await tester.pump();
+    await tester.tap(find.text('Criar conta').last);
+    await tester.pump();
+    expect(find.text('Esse e-mail não parece válido.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(fields.at(0), 'capovill@gmail.com');
+    await tester.pump();
+    expect(find.text('Esse e-mail não parece válido.'), findsNothing); // some ao corrigir
+  });
+
+  testWidgets('Entrar pede e-mail e senha antes de enviar', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const SignInScreen()));
+    await tester.tap(find.text('Entrar'));
+    await tester.pump();
+    expect(find.text('Informe seu e-mail.'), findsOneWidget);
+    expect(find.text('Informe a senha.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Complete seu perfil confere os três campos antes de enviar', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const CompleteProfileScreen()));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'ra..fa');
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(find.text('Informe seu nome.'), findsOneWidget);
+    expect(find.text('O ponto não pode ficar no começo, no fim ou repetido.'), findsOneWidget);
+    expect(find.text('Informe a data de nascimento.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('"Criar conta" só habilita com senha de 6+ e confirmação igual', (tester) async {

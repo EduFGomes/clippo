@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_link_line.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
@@ -25,8 +26,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   bool _loading = false;
+
+  /// Erro de cada campo (validação do app ou resposta do Firebase).
+  final Map<String, String> _fieldErrors = {};
+
+  /// Erro que não é de um campo (ex.: sem internet).
   String? _error;
-  String? _errorField;
 
   @override
   void initState() {
@@ -45,38 +50,50 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _refresh() => setState(() {});
 
-  /// O e-mail é validado pelo Firebase ao enviar; aqui só a senha e a confirmação.
+  /// Habilita o botão; o e-mail é conferido ao tocar (o erro aparece embaixo do campo).
   bool get _valid =>
-      _password.text.length >= ClippoPasswordMeter.minLength && _confirm.text == _password.text;
+      validateNewPassword(_password.text) == null &&
+      validatePasswordConfirmation(_password.text, _confirm.text) == null;
+
+  void _clearError(String field) {
+    if (_fieldErrors.containsKey(field) || _error != null) {
+      setState(() {
+        _fieldErrors.remove(field);
+        _error = null;
+      });
+    }
+  }
 
   Future<void> _submit() async {
-    if (_password.text != _confirm.text) {
-      setState(() {
-        _error = 'As senhas não são iguais.';
-        _errorField = 'password';
-      });
-      return;
-    }
+    final errors = <String, String?>{
+      'email': validateEmail(_email.text),
+      'password': validateNewPassword(_password.text),
+      'confirm': validatePasswordConfirmation(_password.text, _confirm.text),
+    }..removeWhere((_, error) => error == null);
     setState(() {
-      _loading = true;
+      _fieldErrors
+        ..clear()
+        ..addAll(errors.cast<String, String>());
       _error = null;
-      _errorField = null;
     });
+    if (errors.isNotEmpty) return; // nada vai para o Firebase sem passar na validação
+
+    setState(() => _loading = true);
     try {
       await authRepository.signUp(email: _email.text, password: _password.text);
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on AuthFailure catch (e) {
       setState(() {
-        _error = e.message;
-        _errorField = e.field;
+        if (e.field == null) {
+          _error = e.message;
+        } else {
+          _fieldErrors[e.field!] = e.message;
+        }
       });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
-
-  bool _fieldHasError(String field) =>
-      _error != null && (_errorField == field || _errorField == AuthFailure.credentialsField);
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +139,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
             autocorrect: false,
-            hasError: _fieldHasError('email'),
+            errorText: _fieldErrors['email'],
+            onChanged: (_) => _clearError('email'),
           ),
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.password(
@@ -131,7 +149,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             controller: _password,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.newPassword],
-            hasError: _fieldHasError('password'),
+            errorText: _fieldErrors['password'],
+            onChanged: (_) => _clearError('password'),
           ),
           ClippoPasswordMeter(length: _password.text.length),
           const SizedBox(height: ClippoSpace.spaceM),
@@ -141,6 +160,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             controller: _confirm,
             password: _password,
             textInputAction: TextInputAction.done,
+            errorText: _fieldErrors['confirm'],
+            onChanged: (_) => _clearError('confirm'),
             onSubmitted: (_) {
               if (_valid && !_loading) _submit();
             },

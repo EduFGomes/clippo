@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:clippo/core/firebase/firebase_setup.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 
 /// Erro com uma mensagem pronta para mostrar na tela.
 /// [field] diz qual campo do formulário marcar, quando houver
@@ -23,6 +24,9 @@ class AuthFailure implements Exception {
 ///
 /// As telas não falam direto com o Firebase: chamam estes métodos. Assim, quem mexe
 /// numa tela não precisa saber como o Firebase funciona, e a regra fica num lugar só.
+///
+/// Todo método que envia dados valida antes (core/validation/input_validation.dart) e
+/// lança [AuthFailure] sem chamar o Firebase se algo não passar. O servidor valida de novo.
 class AuthRepository {
   AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore, FirebaseFunctions? functions})
       : _auth = auth ?? FirebaseAuth.instance,
@@ -39,16 +43,20 @@ class AuthRepository {
   User? get currentUser => _auth.currentUser;
 
   Future<void> signIn({required String email, required String password}) async {
+    _check('email', validateEmail(email));
+    _check('password', validateExistingPassword(password));
     try {
-      await _auth.signInWithEmailAndPassword(email: email.trim(), password: password);
+      await _auth.signInWithEmailAndPassword(email: normalizeEmail(email), password: password);
     } on FirebaseAuthException catch (e) {
       throw _translateAuthError(e);
     }
   }
 
   Future<void> signUp({required String email, required String password}) async {
+    _check('email', validateEmail(email));
+    _check('password', validateNewPassword(password));
     try {
-      await _auth.createUserWithEmailAndPassword(email: email.trim(), password: password);
+      await _auth.createUserWithEmailAndPassword(email: normalizeEmail(email), password: password);
     } on FirebaseAuthException catch (e) {
       throw _translateAuthError(e);
     }
@@ -69,10 +77,13 @@ class AuthRepository {
     required String username,
     required String birthDate,
   }) async {
+    _check('name', validateName(name));
+    _check('username', validateUsername(username));
+    _check('birthDate', validateBirthDate(DateTime.tryParse(birthDate)));
     try {
       await _functions.httpsCallable('completeProfile').call<Map<String, dynamic>>({
-        'name': name,
-        'username': username,
+        'name': normalizeName(name),
+        'username': normalizeUsername(username),
         'birthDate': birthDate,
       });
     } on FirebaseFunctionsException catch (e) {
@@ -82,7 +93,16 @@ class AuthRepository {
     }
   }
 
+  /// Barra o envio quando a validação do app encontrou um erro.
+  static void _check(String field, String? error) {
+    if (error != null) throw AuthFailure(error, field: field);
+  }
+
   AuthFailure _translateAuthError(FirebaseAuthException e) {
+    // Recusa da função de bloqueio validateNewAccount (backend), que hoje só confere o e-mail.
+    if (e.code.contains('blocking') || (e.message ?? '').contains('BLOCKING_FUNCTION')) {
+      return const AuthFailure('Esse e-mail não parece válido.', field: 'email');
+    }
     switch (e.code) {
       case 'invalid-email':
         return const AuthFailure('Esse e-mail não parece válido.', field: 'email');
