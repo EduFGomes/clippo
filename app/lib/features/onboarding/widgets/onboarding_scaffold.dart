@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 
-/// Estrutura comum das telas de entrada (03-telas.md §7):
+/// Estrutura comum das telas de entrada (docs/produto.md › 4.1):
 /// fundo do tema, título screenTitle, conteúdo e UM botão primário no rodapé.
 class OnboardingScaffold extends StatelessWidget {
   const OnboardingScaffold({

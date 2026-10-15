@@ -1,12 +1,9 @@
-// Copiado de docs/prototipos-v2/flutter/clippo_tokens.dart em 13/10/2026.
-// Itens marcados com "v2" são propostas do protótipo v2 e só valem se o grupo aprovar a v2.
-// Para mudar um valor: altere aqui E em docs/design-tokens.json, e avise o time.
+// Fonte única dos valores visuais. Para mudar um valor: altere aqui E a tabela de docs/design.md.
+// (Será reescrito para a direção C; ver docs/design.md.)
 
 // Clippo — tokens de design para Flutter.
 //
-// Espelha docs/design-tokens.json (v2.0.0). Itens marcados com "v2" são
-// propostas do protótipo v2 (docs/prototipos-v2) e só devem ir para o
-// design-tokens.json se o grupo aprovar.
+// Itens marcados com "v2" vieram do protótipo v2 (no histórico do Git).
 //
 // Fontes: declare no pubspec.yaml as famílias "BricolageGrotesque"
 // (700, 800) e "InstrumentSans" (400, 600), ou troque os TextStyle abaixo

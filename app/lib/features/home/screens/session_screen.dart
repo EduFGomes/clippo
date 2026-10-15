@@ -8,6 +8,6 @@ class SessionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Sessão', docSection: '03-telas.md · 2. Sessão');
+    return const PlaceholderScreen(title: 'Sessão', docSection: 'produto.md · 4.3 Sessão');
   }
 }

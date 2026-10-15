@@ -8,6 +8,6 @@ class PlayerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Player', docSection: '03-telas.md · 3. Player');
+    return const PlaceholderScreen(title: 'Player', docSection: 'produto.md · 4.4 Player');
   }
 }

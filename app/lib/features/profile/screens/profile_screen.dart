@@ -8,6 +8,6 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Perfil', docSection: '03-telas.md · 6. Perfil');
+    return const PlaceholderScreen(title: 'Perfil', docSection: 'produto.md · 4.7 Perfil');
   }
 }

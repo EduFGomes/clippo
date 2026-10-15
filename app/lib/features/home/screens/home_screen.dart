@@ -8,6 +8,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Início', docSection: '03-telas.md · 1. Início');
+    return const PlaceholderScreen(title: 'Início', docSection: 'produto.md · 4.2 Início');
   }
 }

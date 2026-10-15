@@ -5,7 +5,7 @@ import 'package:clippo/features/onboarding/screens/how_it_works_screen.dart';
 import 'package:clippo/features/onboarding/screens/sign_in_screen.dart';
 import 'package:clippo/features/onboarding/widgets/onboarding_scaffold.dart';
 
-/// Entrada · 1. Boas-vindas (03-telas.md §7).
+/// Entrada · 1. Boas-vindas (docs/produto.md › 4.1).
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 

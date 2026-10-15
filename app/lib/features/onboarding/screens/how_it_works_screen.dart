@@ -4,7 +4,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/features/onboarding/screens/sign_up_screen.dart';
 import 'package:clippo/features/onboarding/widgets/onboarding_scaffold.dart';
 
-/// Entrada · 2. Como funciona: o gesto em até 3 passos (03-telas.md §7).
+/// Entrada · 2. Como funciona: o gesto em até 3 passos (docs/produto.md › 4.1).
 /// Provisório: só texto. A versão final mostra o gesto com traço outline ou vídeo curto.
 class HowItWorksScreen extends StatelessWidget {
   const HowItWorksScreen({super.key});
