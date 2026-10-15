@@ -29,9 +29,10 @@ void main() {
     await tester.pumpWidget(const ClippoApp(home: ScreenCatalog()));
     await tester.tap(find.text('Boas-vindas'));
     await tester.pumpAndSettle();
-    expect(find.text('Levantou os braços, o lance está salvo.'), findsOneWidget);
+    expect(find.text('LEVANTOU OS BRAÇOS,\nO LANCE ESTÁ SALVO.'), findsOneWidget);
     await tester.tap(find.text('Começar'));
     await tester.pumpAndSettle();
-    expect(find.text('Como funciona'), findsOneWidget);
+    expect(find.text('TRÊS PASSOS.\nZERO TOQUES.'), findsOneWidget);
+    expect(find.text('Apoie o celular'), findsOneWidget);
   });
 }

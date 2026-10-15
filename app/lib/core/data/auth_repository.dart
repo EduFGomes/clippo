@@ -5,8 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clippo/core/firebase/firebase_setup.dart';
 
 /// Erro com uma mensagem pronta para mostrar na tela.
-/// [field] diz qual campo do formulário marcar, quando houver.
+/// [field] diz qual campo do formulário marcar, quando houver
+/// ([credentialsField] quando o erro vale para e-mail e senha juntos).
 class AuthFailure implements Exception {
+  static const String credentialsField = 'credentials';
+
   const AuthFailure(this.message, {this.field});
 
   final String message;
@@ -90,7 +93,7 @@ class AuthRepository {
       case 'invalid-credential':
       case 'wrong-password':
       case 'user-not-found':
-        return const AuthFailure('E-mail ou senha incorretos.');
+        return const AuthFailure('E-mail ou senha incorretos.', field: AuthFailure.credentialsField);
       case 'too-many-requests':
         return const AuthFailure('Muitas tentativas. Espere um pouco e tente de novo.');
       case 'network-request-failed':

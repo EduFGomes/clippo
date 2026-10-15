@@ -29,7 +29,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - **Gatilhos** (ex.: highlight criado) podem rodar mais de uma vez: escreva de forma idempotente.
 - **Nova Function:** arquivo no domínio certo (`users/`, `friends/`, `sessions/`, `highlights/`, `maintenance/`) e exportada no `index.ts` **do domínio**. Região vem de `src/config.ts`.
 - **Componentes visuais:** use os prontos de `app/lib/core/widgets/` (lista em `docs/design.md` › Componentes). Componentes novos são feitos pelo Gabriel; se nenhum serve, avise em vez de criar um parecido dentro da feature.
-- **Tela:** veja `app/lib/features/onboarding/` (scaffold compartilhado em `widgets/`, uma tela por arquivo em `screens/`, erros traduzidos pelo repositório). Toda tela nova entra no catálogo `app/lib/dev/screen_catalog.dart` até a navegação definitiva existir.
+- **Tela:** veja `app/lib/features/onboarding/` (telas montadas com os componentes de `core/widgets/` sobre `ClippoScreenGround`, uma tela por arquivo em `screens/`, erros traduzidos pelo repositório). Toda tela nova entra no catálogo `app/lib/dev/screen_catalog.dart` até a navegação definitiva existir.
 - **Gerenciamento de estado:** ainda não escolhido 🟡 (área de front-end). Use `StatefulWidget`/`StreamBuilder` simples até a decisão; não adicione Provider/Riverpod/Bloc por conta própria.
 
 ## Ambiente local

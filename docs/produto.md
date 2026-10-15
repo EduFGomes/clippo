@@ -220,8 +220,8 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | **Complete seu perfil** | Dados públicos e data de nascimento | Nome, Nome de usuário (@), Data de nascimento | "Continuar" → Início · "Sair" → Boas-vindas |
 
 **Estados**
-- **Criar conta:** o botão "Criar conta" fica desabilitado até a senha ter 6+ caracteres, a confirmação ser igual e o e-mail ser válido.
-- **Erros** (e-mail já usado, senha errada, sem internet…) aparecem em português abaixo dos campos, com o texto vindo do `AuthRepository`. No Entrar, os dois campos também ficam marcados como erro.
+- **Criar conta:** o botão "Criar conta" fica desabilitado até a senha ter 6+ caracteres e a confirmação ser igual. O e-mail é conferido pelo Firebase ao enviar.
+- **Erros** (e-mail já usado, senha errada, sem internet…) aparecem em português abaixo dos campos, com o texto vindo do `AuthRepository`, e o campo do erro fica marcado. Em "E-mail ou senha incorretos.", os dois campos ficam marcados. No Complete seu perfil, o erro de um campo aparece logo abaixo dele.
 - **Carregando:** o botão primário mostra que está trabalhando e não aceita um segundo toque.
 
 🟡 **Permissões** — câmera (obrigatória) e localização (opcional, só para sugerir o local), cada uma com o porquê em uma frase, pedidas quando fizerem sentido. Ainda sem tela.

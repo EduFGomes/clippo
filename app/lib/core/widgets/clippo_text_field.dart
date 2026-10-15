@@ -195,7 +195,8 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
                       obscureText: _isSecret && _obscured,
                       readOnly: widget.readOnly,
                       showCursor: !widget.readOnly,
-                      onTap: widget.readOnly ? widget.onTap : null,
+                      // Campo só de toque: o bloco inteiro chama onTap uma vez.
+                      ignorePointers: widget.readOnly,
                       onChanged: widget.onChanged,
                       onSubmitted: widget.onSubmitted,
                       style: ClippoText.input.copyWith(color: colors.text),

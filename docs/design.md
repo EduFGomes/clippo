@@ -82,7 +82,8 @@ Use exatamente assim.
 | Entrar — link | Esqueci a senha |
 | Entrar — rodapé | Entrar · Ainda não tem conta? Criar conta |
 | Completar perfil — título | QUASE / LÁ. · Escolha como seus amigos vão te achar. |
-| Completar perfil — campos | Nome · Nome de usuário (@) · Data de nascimento |
+| Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa) |
+| Completar perfil — nota da data | Não aparece no seu perfil. Usamos só para estatísticas gerais. |
 | Completar perfil — ações | Continuar · Sair |
 | Olho da senha (acessibilidade) | Mostrar senha · Ocultar senha |
 | Voltar (acessibilidade) | Voltar |
