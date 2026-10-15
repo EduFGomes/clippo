@@ -206,8 +206,11 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
                         border: InputBorder.none,
                         hintText: widget.hint,
                         hintStyle: ClippoText.input.copyWith(color: colors.placeholder),
-                        prefixText: widget.prefixText,
-                        prefixStyle: ClippoText.input.copyWith(color: colors.text),
+                        // prefixIcon (e não prefixText) para o "@" aparecer mesmo com o campo vazio.
+                        prefixIcon: widget.prefixText == null
+                            ? null
+                            : Text(widget.prefixText!, style: ClippoText.input.copyWith(color: colors.text)),
+                        prefixIconConstraints: const BoxConstraints(),
                       ),
                     ),
                   ],
