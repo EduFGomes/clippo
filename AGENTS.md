@@ -1,7 +1,7 @@
 # AGENTS.md — regras do projeto Clippo para assistentes de IA
 
 Leia isto antes de escrever qualquer código. Em caso de dúvida, os detalhes estão em
-`docs/07-arquitetura.md` (decisões e modelo de dados) e `docs/08-como-contribuir.md` (passo a passo).
+`docs/arquitetura.md` (decisões, modelo de dados e passo a passo de contribuição) e `docs/design.md` (visual, voz e componentes).
 
 ## O projeto em uma frase
 App Android (Flutter) que guarda os últimos 30 s de uma partida; o gesto \ o / salva o trecho como highlight
@@ -10,10 +10,14 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 ## Estrutura
 - `app/` — Flutter. Organização **por funcionalidade**: `lib/features/<feature>/{screens,widgets,state,data}` e `lib/core/` para o que é compartilhado.
 - `backend/` — `firestore.rules`, `storage.rules`, `functions/` (TypeScript, Cloud Functions 2ª geração) e `tests/` (testes das regras no Emulator).
-- `docs/` — produto, regras de negócio (R1–R16), telas, design system, voz, arquitetura, como contribuir.
+- `docs/` — três arquivos: `produto.md` (visão, regras de negócio R1–R16, telas, equipe), `design.md` (voz, glossário, tokens, componentes) e `arquitetura.md` (decisões, modelo de dados, como contribuir).
 
 ## Regras que não podem ser quebradas
-1. **Código em inglês, interface em português (PT-BR)**, com os nomes do glossário de `docs/05-conteudo-e-voz.md` (`Session`, `Highlight`, `Capture`, `Home`…). Textos da interface seguem a voz de `docs/05`.
+0. **REGRA ABSOLUTA — nada sem validação.** Nenhum dado digitado pelo usuário vai para o Firebase Auth, o Firestore, o Storage ou uma Cloud Function sem ser validado **duas vezes, com as mesmas regras e mensagens**:
+   - **no app**, antes de enviar: regras em `app/lib/core/validation/input_validation.dart`, aplicadas pela tela (erro embaixo do campo) **e** dentro do repositório de `app/lib/core/data/` (que lança erro sem chamar o Firebase);
+   - **no servidor**: na Function chamável (`backend/functions/src/users/validation.ts`) ou, no caso do Auth, na função de bloqueio `validateNewAccount`.
+   Campo novo = regra nos dois lados + testes nos dois lados (`app/test/input_validation_test.dart` e `backend/functions/test/validation.test.ts`), no mesmo PR. "O Firebase já valida" não conta: o Auth aceita e-mails como `nome@g`.
+1. **Código em inglês, interface em português (PT-BR)**, com os nomes do glossário de `docs/design.md` (`Session`, `Highlight`, `Capture`, `Home`…). Textos da interface seguem a voz de `docs/design.md`.
 2. **Nada de valores visuais escritos à mão.** Cores, fontes, espaços, raios e animações vêm de `app/lib/core/theme/clippo_tokens.dart` (`ClippoColors`, `ClippoText`, `ClippoSpace`…). Precisa de um valor que não existe? Proponha no design system antes.
 3. **Uma feature não importa nada de dentro de outra feature.** O que duas features usam vai para `app/lib/core/`.
 4. **Telas não falam direto com o Firebase.** Usam repositórios em `app/lib/core/data/` (ex.: `AuthRepository`).
@@ -25,10 +29,12 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 10. Mudanças em `app/android/` só quando necessário (permissões, minSdk, Firebase) e explicadas no PR.
 
 ## Padrões a copiar
+- **Validação:** `app/lib/core/validation/input_validation.dart` (app) espelha `backend/functions/src/users/validation.ts` (servidor). Telas validam todos os campos no envio e mostram o erro embaixo de cada um; o repositório valida de novo antes de chamar o Firebase.
 - **Cloud Function chamável:** `backend/functions/src/users/completeProfile.ts` — (1) quem chamou? (2) valida antes de tocar no banco (validação em arquivo separado e testável), (3) grava tudo numa transação, (4) idempotente, (5) erros com `HttpsError` e mensagem em português pronta para a tela.
 - **Gatilhos** (ex.: highlight criado) podem rodar mais de uma vez: escreva de forma idempotente.
 - **Nova Function:** arquivo no domínio certo (`users/`, `friends/`, `sessions/`, `highlights/`, `maintenance/`) e exportada no `index.ts` **do domínio**. Região vem de `src/config.ts`.
-- **Tela:** veja `app/lib/features/onboarding/` (scaffold compartilhado em `widgets/`, uma tela por arquivo em `screens/`, erros traduzidos pelo repositório). Toda tela nova entra no catálogo `app/lib/dev/screen_catalog.dart` até a navegação definitiva existir.
+- **Componentes visuais:** use os prontos de `app/lib/core/widgets/` (lista em `docs/design.md` › Componentes). Componentes novos são feitos pelo Gabriel; se nenhum serve, avise em vez de criar um parecido dentro da feature.
+- **Tela:** veja `app/lib/features/onboarding/` (telas montadas com os componentes de `core/widgets/` sobre `ClippoScreenGround`, uma tela por arquivo em `screens/`, erros traduzidos pelo repositório). Toda tela nova entra no catálogo `app/lib/dev/screen_catalog.dart` até a navegação definitiva existir.
 - **Gerenciamento de estado:** ainda não escolhido 🟡 (área de front-end). Use `StatefulWidget`/`StreamBuilder` simples até a decisão; não adicione Provider/Riverpod/Bloc por conta própria.
 
 ## Ambiente local
@@ -41,5 +47,5 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - `app/`: `flutter analyze` sem avisos e `flutter test` passando.
 - `backend/functions/`: `npm run build` e `npm test` passando.
 - Mexeu em regras: `cd backend/tests && npm test` (com o Emulator desligado).
-- Tela nova: confira `docs/06-checklist-nova-tela.md`.
+- Tela nova: confira o checklist de tela nova em `docs/design.md`.
 - Diga explicitamente o que **não** foi testado.

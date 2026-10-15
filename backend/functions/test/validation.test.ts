@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ValidationError,
   normalizeBirthDate,
+  normalizeEmail,
   normalizeName,
   normalizeUsername,
 } from "../src/users/validation";
@@ -44,5 +45,37 @@ describe("normalizeBirthDate", () => {
 
   it.each(["2001-02-30", "2027-01-01", "1899-12-31", "13/10/2001", ""])("recusa %s", (value) => {
     expect(() => normalizeBirthDate(value, today)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeEmail", () => {
+  it("tira espaços e deixa minúsculo", () => {
+    expect(normalizeEmail("  Voce@Email.com ")).toBe("voce@email.com");
+  });
+
+  it.each(["rafa+jogo@gmail.com", "a.b_c@sub.dominio.com.br", "x@y.io"])("aceita %s", (value) => {
+    expect(normalizeEmail(value)).toBe(value);
+  });
+
+  it.each([
+    "",
+    "   ",
+    "capovill@g",
+    "sem-arroba.com",
+    "nome@dominio",
+    "nome@dominio.c",
+    "nome @dominio.com",
+    ".nome@dominio.com",
+    "nome.@dominio.com",
+    "no..me@dominio.com",
+    "nome@-dominio.com",
+    "nome@dominio..com",
+    "nome@dominio.c0m",
+    `${"a".repeat(65)}@dominio.com`,
+    `nome@${"a".repeat(250)}.com`,
+    null,
+    42,
+  ])("recusa %s", (value) => {
+    expect(() => normalizeEmail(value)).toThrow(ValidationError);
   });
 });

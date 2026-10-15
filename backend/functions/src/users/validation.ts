@@ -1,20 +1,49 @@
 /**
- * Regras de validação do perfil, sem dependência do Firebase.
+ * Regras de validação da conta e do perfil, sem dependência do Firebase.
  * Ficam separadas para poder ser testadas sozinhas (validation.test.ts).
+ *
+ * O app tem uma cópia destas regras (app/lib/core/validation/input_validation.dart),
+ * com as mesmas mensagens. Mudou uma? Mude a outra no mesmo PR.
  */
 
 export const NAME_MAX = 50;
 export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 20;
+export const EMAIL_MAX = 254;
+export const EMAIL_LOCAL_MAX = 64;
 
 /** Erro de validação com uma mensagem pronta para mostrar ao usuário. */
 export class ValidationError extends Error {
   constructor(
-    readonly field: "name" | "username" | "birthDate",
+    readonly field: "email" | "name" | "username" | "birthDate",
     message: string,
   ) {
     super(message);
   }
+}
+
+/**
+ * E-mail: sem espaços nas pontas, minúsculo, no formato nome@dominio.tld.
+ * O Firebase Auth aceita endereços como "nome@g"; esta regra não.
+ */
+const EMAIL_PATTERN =
+  /^[a-z0-9._%+-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+export function normalizeEmail(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    throw new ValidationError("email", "Informe seu e-mail.");
+  }
+  const email = raw.trim().toLowerCase();
+  const local = email.split("@")[0];
+  const valid =
+    email.length <= EMAIL_MAX &&
+    local.length <= EMAIL_LOCAL_MAX &&
+    EMAIL_PATTERN.test(email) &&
+    !local.startsWith(".") &&
+    !local.endsWith(".") &&
+    !email.includes("..");
+  if (!valid) throw new ValidationError("email", "Esse e-mail não parece válido.");
+  return email;
 }
 
 /** Tira espaços das pontas e junta espaços repetidos. */

@@ -8,12 +8,19 @@ App Android que guarda sempre os últimos 30 segundos de uma partida amadora. Qu
 
 | Pasta | O que é | Comece por |
 |---|---|---|
-| [`docs/`](docs/README.md) | O quê o app faz, como parece e soa, **arquitetura** e **como contribuir** | [`docs/README.md`](docs/README.md) |
 | [`app/`](app/README.md) | App Flutter (Android) | [`app/README.md`](app/README.md) |
 | [`backend/`](backend/README.md) | Firebase: Security Rules, Cloud Functions (TypeScript) e testes | [`backend/README.md`](backend/README.md) |
 | [`AGENTS.md`](AGENTS.md) | Regras do projeto para assistentes de IA (e um bom resumo para humanos) | — |
 
-Leitura obrigatória antes do primeiro PR: [`docs/07-arquitetura.md`](docs/07-arquitetura.md) e [`docs/08-como-contribuir.md`](docs/08-como-contribuir.md).
+## Documentação
+
+| Arquivo | O que tem |
+|---|---|
+| [`docs/produto.md`](docs/produto.md) | O que o app faz e por quê: visão, regras de negócio R1–R16, telas, decisões de produto em aberto, equipe |
+| [`docs/design.md`](docs/design.md) | Como o Clippo parece e soa: voz, glossário, cores, fontes, componentes e como criar um no padrão |
+| [`docs/arquitetura.md`](docs/arquitetura.md) | Como o sistema é construído e como contribuir: decisões, modelo de dados, Git, Functions, Security Rules |
+
+Leitura obrigatória antes do primeiro PR: [`docs/arquitetura.md`](docs/arquitetura.md).
 
 ## Instalação do zero (Windows)
 
@@ -65,10 +72,4 @@ Fluxo para conferir que está tudo certo: **Começar → Criar conta → Complet
 
 ## Equipe
 
-| Área | Líder |
-|---|---|
-| Gerência de projeto | Gabriel Capovilla |
-| Visão computacional | Eduardo Gomes |
-| Mobile | Otávio Rosa |
-| Front-end | Laura Suzuki |
-| Back-end | Henrique Della |
+Áreas, líderes e pacotes: [`docs/produto.md` › Equipe](docs/produto.md#6-equipe).

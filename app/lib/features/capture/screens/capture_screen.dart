@@ -8,6 +8,6 @@ class CaptureScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Gravar', docSection: '03-telas.md · 4. Gravação (estados A a D)');
+    return const PlaceholderScreen(title: 'Gravar', docSection: 'produto.md · 4.5 Gravação (estados A a D)');
   }
 }

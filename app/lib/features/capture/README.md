@@ -2,7 +2,7 @@
 
 Um fluxo de 4 estados que compartilham câmera, buffer de 30 s, detector do gesto e a sessão em andamento:
 Preparar (`preparing`) → Gravando (`recording`) → Highlight salvo (`saved`) → Confirme a sessão (`finishing`).
-Referência: `docs/03-telas.md` · 4. Gravação; regras R1–R8 e R14 em `docs/02-funcionalidades.md`.
+Referência: `docs/produto.md` › 4.5 Gravação; regras R1–R8 e R14 em `docs/produto.md` › 3. Regras de negócio.
 
 - `screens/` telas · `widgets/` peças só desta feature · `state/` a sessão em andamento · `data/` salvar sessão e highlights
 - A lista de amigos do seletor "Gravar com" vem de `lib/core/data/`, nunca de `features/friends/`.

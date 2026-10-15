@@ -22,16 +22,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Perfil'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('03-telas.md · 6. Perfil'), findsOneWidget);
+    expect(find.textContaining('produto.md · 4.7 Perfil'), findsOneWidget);
   });
 
   testWidgets('boas-vindas mostra a frase da marca e leva ao "Como funciona"', (tester) async {
     await tester.pumpWidget(const ClippoApp(home: ScreenCatalog()));
     await tester.tap(find.text('Boas-vindas'));
     await tester.pumpAndSettle();
-    expect(find.text('Levantou os braços, o lance está salvo.'), findsOneWidget);
+    expect(find.text('LEVANTOU OS BRAÇOS,\nO LANCE ESTÁ SALVO.'), findsOneWidget);
     await tester.tap(find.text('Começar'));
     await tester.pumpAndSettle();
-    expect(find.text('Como funciona'), findsOneWidget);
+    expect(find.text('TRÊS PASSOS.\nZERO TOQUES.'), findsOneWidget);
+    expect(find.text('Apoie o celular'), findsOneWidget);
   });
 }

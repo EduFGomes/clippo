@@ -8,6 +8,6 @@ class FriendsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderScreen(title: 'Amigos', docSection: '03-telas.md · 5. Amigos');
+    return const PlaceholderScreen(title: 'Amigos', docSection: 'produto.md · 4.6 Amigos');
   }
 }

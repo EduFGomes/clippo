@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
-import 'package:clippo/features/onboarding/widgets/onboarding_scaffold.dart';
+import 'package:clippo/core/validation/input_validation.dart';
+import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_primary_button.dart';
+import 'package:clippo/core/widgets/clippo_screen_ground.dart';
+import 'package:clippo/core/widgets/clippo_screen_title.dart';
+import 'package:clippo/core/widgets/clippo_text_button.dart';
+import 'package:clippo/core/widgets/clippo_text_field.dart';
 
-/// Entrada · Complete seu perfil (tela nova, fora do protótipo).
+/// Entrada · Complete seu perfil (não desenhada na C; segue o padrão das outras telas).
 /// Vale para quem criou conta por e-mail e, no futuro, pelo Google.
 /// Envia os dados para a Cloud Function completeProfile, que valida e grava no Firestore.
 class CompleteProfileScreen extends StatefulWidget {
@@ -20,15 +26,21 @@ class CompleteProfileScreen extends StatefulWidget {
 class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   final _name = TextEditingController();
   final _username = TextEditingController();
+  final _birthDateText = TextEditingController();
   DateTime? _birthDate;
   bool _loading = false;
+
+  /// Erro de cada campo (validação do app ou resposta da Function).
+  final Map<String, String> _fieldErrors = {};
+
+  /// Erro que não é de um campo (ex.: sem internet).
   String? _error;
-  String? _errorField;
 
   @override
   void dispose() {
     _name.dispose();
     _username.dispose();
+    _birthDateText.dispose();
     super.dispose();
   }
 
@@ -46,22 +58,39 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       firstDate: DateTime(1900),
       lastDate: now,
     );
-    if (picked != null) setState(() => _birthDate = picked);
+    if (picked != null) {
+      setState(() {
+        _birthDate = picked;
+        _birthDateText.text = _display(picked);
+        _fieldErrors.remove('birthDate');
+      });
+    }
+  }
+
+  void _clearError(String field) {
+    if (_fieldErrors.containsKey(field) || _error != null) {
+      setState(() {
+        _fieldErrors.remove(field);
+        _error = null;
+      });
+    }
   }
 
   Future<void> _submit() async {
-    if (_birthDate == null) {
-      setState(() {
-        _error = 'Informe a data de nascimento.';
-        _errorField = 'birthDate';
-      });
-      return;
-    }
+    final errors = <String, String?>{
+      'name': validateName(_name.text),
+      'username': validateUsername(_username.text),
+      'birthDate': validateBirthDate(_birthDate),
+    }..removeWhere((_, error) => error == null);
     setState(() {
-      _loading = true;
+      _fieldErrors
+        ..clear()
+        ..addAll(errors.cast<String, String>());
       _error = null;
-      _errorField = null;
     });
+    if (errors.isNotEmpty) return; // nada vai para a Function sem passar na validação
+
+    setState(() => _loading = true);
     try {
       await authRepository.completeProfile(
         name: _name.text,
@@ -71,65 +100,83 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       widget.onCompleted?.call();
     } on AuthFailure catch (e) {
       setState(() {
-        _error = e.message;
-        _errorField = e.field;
+        if (e.field == null) {
+          _error = e.message;
+        } else {
+          _fieldErrors[e.field!] = e.message;
+        }
       });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String? _fieldError(String field) => _errorField == field ? _error : null;
-
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<ClippoColors>()!;
-    final generalError = _error != null && _errorField == null ? _error : null;
-    return OnboardingScaffold(
-      title: 'Complete seu perfil',
-      subtitle: 'É assim que seus amigos vão te encontrar.',
-      primaryLabel: 'Salvar',
-      loading: _loading,
-      onPrimary: _submit,
-      secondary: TextButton(
-        onPressed: () => authRepository.signOut(),
-        child: const Text('Sair'),
+    final colors = ClippoColors.of(context);
+    final generalError = _error;
+    return ClippoScreenGround(
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClippoPrimaryButton(label: 'Continuar', loading: _loading, onPressed: _submit),
+          const SizedBox(height: ClippoSpace.spaceS),
+          ClippoTextButton(label: 'Sair', onPressed: () => authRepository.signOut()),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
+          if (Navigator.of(context).canPop()) ...[
+            const ClippoBackButton(),
+            const SizedBox(height: ClippoSpace.section),
+          ],
+          const ClippoScreenTitle(
+            line1: 'Quase',
+            line2: 'lá.',
+            subtitle: 'Escolha como seus amigos vão te achar.',
+          ),
+          const SizedBox(height: ClippoSpace.section),
+          ClippoTextField(
+            label: 'Nome',
             controller: _name,
             textCapitalization: TextCapitalization.words,
-            decoration: InputDecoration(labelText: 'Nome', errorText: _fieldError('name')),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.name],
+            errorText: _fieldErrors['name'],
+            onChanged: (_) => _clearError('name'),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
-          TextField(
+          const SizedBox(height: ClippoSpace.spaceM),
+          ClippoTextField(
+            label: 'Nome de usuário',
+            hint: 'letras, números, "_" e "."',
             controller: _username,
+            prefixText: '@',
             autocorrect: false,
-            decoration: InputDecoration(
-              labelText: 'Nome de usuário',
-              prefixText: '@',
-              helperText: 'Letras, números, "_" e "."',
-              errorText: _fieldError('username'),
-            ),
+            textInputAction: TextInputAction.next,
+            errorText: _fieldErrors['username'],
+            onChanged: (_) => _clearError('username'),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
-          OutlinedButton(
-            onPressed: _pickBirthDate,
-            style: OutlinedButton.styleFrom(shape: const StadiumBorder()),
-            child: Text(_birthDate == null ? 'Data de nascimento' : _display(_birthDate!)),
+          const SizedBox(height: ClippoSpace.spaceM),
+          ClippoTextField(
+            label: 'Data de nascimento',
+            hint: 'dd/mm/aaaa',
+            controller: _birthDateText,
+            readOnly: true,
+            onTap: _pickBirthDate,
+            errorText: _fieldErrors['birthDate'],
           ),
-          const SizedBox(height: 4),
-          Text(
-            _fieldError('birthDate') ?? 'Não aparece no seu perfil. Usamos só para estatísticas gerais.',
-            style: ClippoText.caption.copyWith(
-              color: _fieldError('birthDate') != null ? colors.error : colors.textMuted,
+          const SizedBox(height: ClippoSpace.spaceS),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL),
+            child: Text(
+              'Não aparece no seu perfil. Usamos só para estatísticas gerais.',
+              style: ClippoText.label.copyWith(color: colors.textMuted),
             ),
           ),
           if (generalError != null) ...[
-            const SizedBox(height: ClippoSpace.cardGap),
-            Text(generalError, style: ClippoText.caption.copyWith(color: colors.error)),
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(generalError, style: ClippoText.label.copyWith(color: colors.error)),
           ],
         ],
       ),

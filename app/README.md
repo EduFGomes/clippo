@@ -30,14 +30,14 @@ Cada feature tem `screens/`, `widgets/`, `state/` e `data/`, e um `README.md` co
 
 ## Convenções
 
-- **Código em inglês, interface em português**, com os nomes do glossário em `docs/05-conteudo-e-voz.md`.
-- **Nada de valores visuais na mão**: cores, fontes e tamanhos vêm de `lib/core/theme/clippo_tokens.dart`.
+- **Código em inglês, interface em português**, com os nomes do glossário em `docs/design.md`.
+- **Nada de valores visuais na mão**: cores, fontes e tamanhos vêm de `lib/core/theme/clippo_tokens.dart` (explicados em `docs/design.md`).
+- **Componentes prontos** em `lib/core/widgets/`: use os que existem em vez de criar parecidos.
 - **Uma feature não importa nada de dentro de outra.** O que é compartilhado vai para `lib/core/`.
 - **Telas novas** entram no catálogo (`lib/dev/screen_catalog.dart`) para o time conseguir abrir.
-- Antes de abrir um PR: `flutter analyze` sem avisos e `flutter test` passando, e conferir `docs/06-checklist-nova-tela.md`.
+- Antes de abrir um PR: `flutter analyze` sem avisos e `flutter test` passando, e conferir o checklist de tela nova em `docs/design.md`.
 
 ## Ainda em aberto
 
-- Fontes Bricolage Grotesque e Instrument Sans: embutir no app ou baixar em tempo de execução. Até lá, o app usa a fonte padrão.
 - Gerenciamento de estado (área de front-end).
 - Navegação: barra (protótipo v1) ou roda (protótipo v2).
