@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:clippo/dev/component_gallery.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
 import 'package:clippo/features/friends/screens/friends_screen.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
@@ -16,11 +17,12 @@ import 'package:clippo/features/profile/screens/profile_screen.dart';
 /// PROVISÓRIO: abre cada tela isoladamente enquanto a navegação definitiva
 /// não existe. Apague esta pasta (lib/dev/) quando a navegação estiver pronta.
 ///
-/// Criou uma tela nova? Adicione uma linha em [_entries].
+/// Criou uma tela nova? Adicione uma linha em [_entries]. Componente novo vai na [ComponentGallery].
 class ScreenCatalog extends StatelessWidget {
   const ScreenCatalog({super.key});
 
   static final List<_Entry> _entries = [
+    _Entry('Componentes', 'core/widgets', (_) => const ComponentGallery()),
     _Entry('Boas-vindas', 'onboarding', (_) => const WelcomeScreen()),
     _Entry('Como funciona', 'onboarding', (_) => const HowItWorksScreen()),
     _Entry('Entrar', 'onboarding', (_) => const SignInScreen()),
@@ -48,7 +50,7 @@ class ScreenCatalog extends StatelessWidget {
           for (final entry in _entries)
             ListTile(
               title: Text(entry.title),
-              subtitle: Text('features/${entry.feature}'),
+              subtitle: Text(entry.feature.startsWith('core/') ? entry.feature : 'features/${entry.feature}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: entry.builder),

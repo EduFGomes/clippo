@@ -22,6 +22,9 @@ class ClippoBrand {
   /// Accent: \O/ e 2ª linha da boas-vindas; botão primário e destaque no modo escuro.
   static const Color peach = Color(0xFFFFC6A8);
 
+  /// Pressionado de tudo que é pêssego (pêssego a 85 %).
+  static const Color peachPressed = Color(0xD9FFC6A8);
+
   /// Texto sobre vinho.
   static const Color onWine = Color(0xFFFFF1E8);
 
@@ -116,7 +119,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     placeholder: Color(0x52FFF1E8), // 32 %
     accent: ClippoBrand.peach,
     primary: ClippoBrand.peach,
-    primaryPressed: Color(0xD9FFC6A8), // peach a 85 %
+    primaryPressed: ClippoBrand.peachPressed,
     onPrimary: ClippoBrand.onPeach,
     controlSoft: Color(0x1AFFF1E8), // 10 %
     line: Color(0x24FFF1E8), // 14 %
@@ -289,6 +292,8 @@ class ClippoSize {
 
   static const double backIcon = 22; // chevron do voltar
   static const double fieldIcon = 20; // olho dentro do campo
+  static const double checkIcon = 16; // ✓ dentro do círculo check
+  static const double spinner = 20; // indicador de carregando dentro do botão
   static const double iconStroke = 1.8; // traço dos ícones de controle
   static const double checkStroke = 3; // traço do ✓
   static const double border = 1.5; // borda de foco/erro, contorno e linha dos passos

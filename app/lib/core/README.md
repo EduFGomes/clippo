@@ -4,6 +4,6 @@
 |---|---|
 | `theme/` | Tokens de design (`clippo_tokens.dart`) e o `ThemeData` claro/escuro. Telas **nunca** escrevem cores, tamanhos ou fontes na mão: usam `ClippoBrand`, `ClippoColors`, `ClippoText`, `ClippoSpace`, `ClippoRadius`, `ClippoSize`, `ClippoOpacity` e `ClippoMotion` (valores explicados em `docs/design.md`). |
 | `data/` | Acesso a dados usado por mais de uma feature: sessões, highlights, amigos, usuário logado. Vazia até o modelo de dados do Firestore ser definido. |
-| `widgets/` | Componentes do design system usados por mais de uma feature (botões pílula, chips, avatar…). |
+| `widgets/` | Componentes prontos do design system (`ClippoScreenGround`, `ClippoPrimaryButton`, `ClippoTextField`…), um por arquivo. Lista e regras em `docs/design.md` › Componentes; todos aparecem na galeria do catálogo. |
 
 Regra: uma feature pode usar `core/`, mas nunca importa nada de dentro de outra feature. Se duas features precisam da mesma coisa, ela sobe para cá.

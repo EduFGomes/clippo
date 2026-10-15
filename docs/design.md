@@ -179,6 +179,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `peach` | `#FFC6A8` | Accent: `\O/` e 2ª linha da boas-vindas; botão primário e destaque no modo escuro |
 | `onWine` | `#FFF1E8` | Texto sobre vinho |
 | `onPeach` | `#241014` | Texto sobre pêssego |
+| `peachPressed` | `#FFC6A8` a 85 % | Pressionado de tudo que é pêssego |
 
 **Gravação** (ignora o tema; continuam do design anterior até a gravação ser redesenhada na C)
 
@@ -204,7 +205,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `placeholder` | `#FFF1E8` a 32 % | `#241014` a 36 % | Texto de exemplo no campo |
 | `accent` | `#FFC6A8` | `#741A2F` | 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓ |
 | `primary` | `#FFC6A8` | `#741A2F` | Fundo do botão primário |
-| `primaryPressed` | `#FFC6A8` a 85 % | `#5C1425` | Botão primário pressionado |
+| `primaryPressed` | `peachPressed` | `wineDeep` | Botão primário pressionado |
 | `onPrimary` | `#241014` | `#FFF1E8` | Texto sobre `primary` / `accent` preenchido |
 | `controlSoft` | `#FFF1E8` a 10 % | `#241014` a 7 % | Fundo do círculo de voltar |
 | `line` | `#FFF1E8` a 14 % | `#241014` a 12 % | Linha entre passos, traço vazio do medidor |
@@ -265,7 +266,8 @@ Números que mudam (contadores, tempo) usam algarismos de largura fixa (`ClippoT
 | `check` | 26 | Círculo do ✓ |
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
-| `backIcon` · `fieldIcon` | 22 · 20 | Chevron do voltar · olho no campo |
+| `backIcon` · `fieldIcon` · `checkIcon` | 22 · 20 · 16 | Chevron do voltar · olho no campo · ✓ no círculo |
+| `spinner` | 20 | Indicador de carregando dentro do botão |
 | `iconStroke` · `checkStroke` | 1,8 · 3 | Traço dos ícones de controle · traço do ✓ |
 | `border` | 1,5 | Borda de foco/erro do campo, contorno e linha dos passos |
 
@@ -307,18 +309,21 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 
 Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por componente. **Os componentes são feitos pelo Gabriel (com o Claude) e entregues prontos**: o resto do time usa os que existem. Se nenhum servir, peça um novo ao Gabriel em vez de criar um parecido dentro da feature. A seção 5 é o padrão que quem cria componentes segue.
 
-- **`ClippoScreenGround`** — fundo de toda tela depois da boas-vindas: degradê vertical de `backgroundGlow` para `background` nos primeiros `glowHeight`, depois `background` liso. Padding `gutter` nas laterais, `sectionL` no topo (abaixo da área segura) e `screenBottom` + área segura embaixo. Com `enterFromWelcome: true`, uma camada `wine` cobre a tela e some em 700 ms (`standard`), sem bloquear toques.
+- **`ClippoScreenGround`** — fundo de toda tela depois da boas-vindas: degradê vertical de `backgroundGlow` para `background` nos primeiros `glowHeight`, depois `background` liso. Padding `gutter` nas laterais, `sectionL` no topo (abaixo da área segura) e `screenBottom` + área segura embaixo. Com `enterFromWelcome: true`, uma camada `wine` cobre a tela e some em 700 ms (`standard`), sem bloquear toques. Recebe o conteúdo em `child` e a pilha de ações em `footer`, que fica presa no rodapé e rola junto quando não cabe (fonte grande, teclado aberto). Já inclui o `Scaffold` e a cor dos ícones da barra de status.
 - **`ClippoBackButton`** — círculo `control` com fundo `controlSoft` e chevron para a esquerda (traço 1,8, 22 dp, `text`). Área de toque `minTouchTarget`. Semântica "Voltar".
 - **`ClippoScreenTitle(line1, line2, subtitle?)`** — `displayL` em MAIÚSCULAS, linha 1 em `text`, linha 2 em `accent`; subtítulo em `bodyL` / `textMuted` 12 dp abaixo. Fica `section` abaixo do voltar.
-- **`ClippoPrimaryButton(label, onPressed, enabled)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. Variante `onWine` para a boas-vindas: fundo `peach`, texto `onPeach`.
-- **`ClippoTextButton(label)`** — sem fundo, altura `textButtonHeight`, `link` em `text` a 85 % (na boas-vindas, `onWine` a 85 %).
-- **`ClippoLinkLine(prefix, action)`** — centralizado, altura `textButtonHeight`: `prefix` em `bodyL` / `textMuted` + `action` em `accent` peso 700. Ex.: "Já tem conta?" + "Entrar".
-- **`ClippoTextField(label, hint, …)`** — bloco `surface`, `radiusField`, padding 12 · 18 (direita 8 quando há botão), sem borda em repouso, borda 1,5 em `accent` com foco (`focus`), em `error` com erro. Rótulo `label` / `textLabel` em cima; valor `input` / `text` 3 dp abaixo; hint em `placeholder`; cursor `accent`.
-  - **Senha:** botão do olho à direita (`control`, transparente, ícone 20 em `textLabel`) alterna mostrar/ocultar, com a semântica "Mostrar senha" / "Ocultar senha".
-  - **Confirmação:** à direita, círculo `check` em `accent` com ✓ (traço 3) em `onPrimary` quando igual à senha; "Não bate" em `label` / `error` quando o tamanho já alcançou o da senha e é diferente.
+- **`ClippoPrimaryButton(label, onPressed, enabled, loading)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. `loading` mostra um indicador e ignora toques. Variante `ClippoPrimaryButton.onWine` para a boas-vindas: fundo `peach` (pressionado `peachPressed`), texto `onPeach`.
+- **`ClippoTextButton(label)`** — sem fundo, altura `textButtonHeight`, `link` em `text` a 85 % (na boas-vindas, `ClippoTextButton.onWine`: `onWine` a 85 %).
+- **`ClippoLinkLine(prefix, action, onPressed)`** — centralizado, altura `textButtonHeight`: `prefix` em `bodyL` / `textMuted` + `action` em `linkStrong` / `accent`. A linha inteira é tocável. Ex.: "Já tem conta?" + "Entrar".
+- **`ClippoTextField(label, hint, …)`** — bloco `surface`, `radiusField`, padding 12 · 18 (direita 8 quando há botão), sem borda em repouso, borda 1,5 em `accent` com foco (`focus`), em `error` com erro. Rótulo `label` / `textLabel` em cima; valor `input` / `text` 3 dp abaixo; hint em `placeholder`; cursor `accent`. Também aceita `prefixText` (o "@" do usuário), `readOnly` + `onTap` (campo que abre o seletor de data), `hasError` (só a borda) e `errorText` (borda + mensagem em `label` / `error` logo abaixo).
+  - **Senha** (`ClippoTextField.password`): botão do olho à direita (`control`, transparente, ícone 20 em `textLabel`) alterna mostrar/ocultar, com a semântica "Mostrar senha" / "Ocultar senha".
+  - **Confirmação** (`ClippoTextField.confirmation`, recebe o controller da senha): à direita, círculo `check` em `accent` com ✓ (traço 3) em `onPrimary` quando igual à senha; "Não bate" em `label` / `error` quando o tamanho já alcançou o da senha e é diferente.
   - **Mensagem de erro geral:** `label` / `error`, abaixo dos campos.
 - **`ClippoPasswordMeter(length)`** — 6 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles; acesos (`min(length, 6)`) em `accent`, os outros em `line`; legenda à direita em `label`: "6+ caracteres" (`textMuted`) ou "Pronto" (`accent`). Fica 10 dp abaixo do campo de senha, com recuo lateral de 6. Fora da semântica (o requisito já está no hint).
-- **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos.
+- **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
+- **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
+
+Para ver todos os componentes nos dois temas: catálogo do app › **Componentes** (`app/lib/dev/component_gallery.dart`), com botão para trocar o tema.
 
 🟡 **Componentes das telas internas** (navegação, card de sessão, cabeçalho, linha de highlight, chips, switch, estatísticas, avatares, gravação): ainda vão ser desenhados na C pelo Gabriel (com o Claude) e entregues prontos nesta pasta. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
 
@@ -335,7 +340,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 7. **Estados.** Desenhe repouso, pressionado, desabilitado (45 % de opacidade), foco e erro quando fizerem sentido.
 8. **Acessibilidade.** Rótulo de semântica em todo botão só com ícone; erro nunca só pela cor; nada corta com a fonte do sistema a 130 %.
 9. **Um arquivo por componente**, nome `Clippo<Nome>`, em `app/lib/core/widgets/`, com um comentário de uma linha dizendo quando usar.
-10. **Registre.** Adicione o componente à lista "Componentes" deste arquivo e ao catálogo `app/lib/dev/screen_catalog.dart`.
+10. **Registre.** Adicione o componente à lista "Componentes" deste arquivo e à galeria `app/lib/dev/component_gallery.dart` (aberta pelo catálogo `screen_catalog.dart`), e escreva um teste em `app/test/core_widgets_test.dart`.
 
 ### Regras
 
