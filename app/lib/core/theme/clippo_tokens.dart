@@ -228,8 +228,10 @@ class ClippoText {
 
   // Anton: só título de tela e marca.
   static final TextStyle heroMark = _d(184, 0.82, 0.01); // \O/ da boas-vindas
-  static final TextStyle displayL = _d(48, 1.0, 0.01); // título de tela (MAIÚSCULAS, 2 linhas)
-  static final TextStyle displayM = _d(40, 1.02, 0.01); // frase da boas-vindas
+  // Títulos de várias linhas em 1,3: os acentos da Anton sobem até 1,10 da altura e a cedilha desce
+  // 0,31; com menos, "QUASE / LÁ." e "BRAÇOS, / O LANCE" se encostam.
+  static final TextStyle displayL = _d(48, 1.3, 0.01); // título de tela (MAIÚSCULAS, 2 linhas)
+  static final TextStyle displayM = _d(40, 1.3, 0.01); // frase da boas-vindas
   static final TextStyle wordmark = _d(20, 1.0, 0.14); // "CLIPPO" no topo da boas-vindas
 
   // Archivo: todo o resto.
