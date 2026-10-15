@@ -28,10 +28,10 @@ class HowItWorksScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final (index, step) in _steps.indexed) ...[
-            Text('${index + 1}. ${step.$1}', style: ClippoText.itemTitle.copyWith(color: colors.text)),
+            Text('${index + 1}. ${step.$1}', style: ClippoText.titleS.copyWith(color: colors.text)),
             const SizedBox(height: 4),
-            Text(step.$2, style: ClippoText.bodyText.copyWith(color: colors.textMuted)),
-            const SizedBox(height: ClippoSpace.sectionGap),
+            Text(step.$2, style: ClippoText.body.copyWith(color: colors.textMuted)),
+            const SizedBox(height: ClippoSpace.section),
           ],
         ],
       ),

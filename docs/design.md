@@ -168,7 +168,7 @@ Termo na interface (PT-BR) → nome no código (EN). Use sempre o nome em inglê
 
 ## 3. Cor, tipografia, espaço, forma e movimento
 
-Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_tokens.dart). Cores de tema se leem com `Theme.of(context).extension<ClippoColors>()!`.
+Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_tokens.dart). Cores de tema se leem com `ClippoColors.of(context)` (atalho para `Theme.of(context).extension<ClippoColors>()!`).
 
 ### 3.1 Cores de marca (`ClippoBrand`, iguais nos dois temas)
 
@@ -230,6 +230,10 @@ Famílias: **Anton** (display) e **Archivo** (resto), embutidas em `app/assets/f
 | `link` | Archivo 600 | 16 | 1,2 | 0 | Botão de texto e link |
 | `body` | Archivo 400 | 15 | 1,45 | 0 | Descrições |
 | `label` | Archivo 600 | 13 | 1,3 | 0 | Rótulo do campo, legenda, erro |
+| `linkStrong` | Archivo 700 | 16 | 1,2 | 0 | Ação da `ClippoLinkLine` ("Entrar", "Criar conta") |
+| `linkS` | Archivo 600 | 15 | 1,2 | 0 | Link ao lado de um erro ("Esqueci a senha") |
+| `stepNumber` | Archivo 600 | 15 | 1,0 | 0 | Número no círculo de passo |
+| `errorInline` | Archivo 600 | 14 | 1,3 | 0 | Erro na linha do "Esqueci a senha" |
 
 Números que mudam (contadores, tempo) usam algarismos de largura fixa (`ClippoText.tabular`).
 
@@ -245,6 +249,12 @@ Números que mudam (contadores, tempo) usam algarismos de largura fixa (`ClippoT
 | `section` | 32 | Voltar → título; subtítulo → 1º campo |
 | `sectionL` | 48 | Topo → voltar; título → lista de passos |
 | `screenBottom` | 34 | Último botão → base (+ área segura) |
+| `titleToSubtitle` | 12 | Título → subtítulo |
+| `labelToValue` | 3 | Rótulo do campo → valor |
+| `fieldPaddingV` | 12 | Respiro vertical do campo |
+| `fieldPaddingEndWithAction` | 8 | Respiro à direita do campo com botão (olho, ✓) |
+| `stepGap` | 36 | Entre passos da `ClippoStepList` |
+| `welcomeTop` · `welcomeHeroToPhrase` · `welcomePhraseToActions` | 60 · 26 · 56 | Boas-vindas: topo → "CLIPPO"; \O/ → frase; frase → botões |
 | `radiusField` | 18 | Campos |
 | `radiusPill` | 999 | Botões, círculos, traços do medidor |
 | `buttonHeight` | 58 | Botão primário |
@@ -255,6 +265,13 @@ Números que mudam (contadores, tempo) usam algarismos de largura fixa (`ClippoT
 | `check` | 26 | Círculo do ✓ |
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
+| `backIcon` · `fieldIcon` | 22 · 20 | Chevron do voltar · olho no campo |
+| `iconStroke` · `checkStroke` | 1,8 · 3 | Traço dos ícones de controle · traço do ✓ |
+| `border` | 1,5 | Borda de foco/erro do campo, contorno e linha dos passos |
+
+Espaços ficam em `ClippoSpace` (`spaceXs`…`screenBottom` e os demais respiros), raios em `ClippoRadius` (`radiusField`, `radiusPill`) e tamanhos em `ClippoSize`.
+
+**Opacidades** (`ClippoOpacity`): `disabled` 45 % (controle desabilitado) · `textButton` 85 % (botão de texto).
 
 Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background` e do degradê do topo.
 
@@ -266,6 +283,7 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `enterFromWelcome` | 700 ms | Camada vinho some ao entrar vindo da boas-vindas |
 | `focus` | 160 ms | Borda de foco do campo, traço do medidor |
 | `enable` | 200 ms | Botão desabilitado → habilitado |
+| `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
 

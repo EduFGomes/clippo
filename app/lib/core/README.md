@@ -2,7 +2,7 @@
 
 | Pasta | O que vai aqui |
 |---|---|
-| `theme/` | Tokens de design (`clippo_tokens.dart`) e o `ThemeData` claro/escuro. Telas **nunca** escrevem cores, tamanhos ou fontes na mão: usam `ClippoBrand`, `ClippoColors`, `ClippoText`, `ClippoSpace`, `ClippoRadius`, `ClippoSize` e `ClippoMotion`. |
+| `theme/` | Tokens de design (`clippo_tokens.dart`) e o `ThemeData` claro/escuro. Telas **nunca** escrevem cores, tamanhos ou fontes na mão: usam `ClippoBrand`, `ClippoColors`, `ClippoText`, `ClippoSpace`, `ClippoRadius`, `ClippoSize`, `ClippoOpacity` e `ClippoMotion` (valores explicados em `docs/design.md`). |
 | `data/` | Acesso a dados usado por mais de uma feature: sessões, highlights, amigos, usuário logado. Vazia até o modelo de dados do Firestore ser definido. |
 | `widgets/` | Componentes do design system usados por mais de uma feature (botões pílula, chips, avatar…). |
 

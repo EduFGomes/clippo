@@ -35,20 +35,20 @@ class OnboardingScaffold extends StatelessWidget {
       appBar: Navigator.of(context).canPop() ? AppBar() : null,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(ClippoSpace.screenGutter),
+          padding: const EdgeInsets.all(ClippoSpace.gutter),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(title, style: ClippoText.screenTitle.copyWith(color: colors.text)),
+              Text(title, style: ClippoText.displayL.copyWith(color: colors.text)),
               if (subtitle != null) ...[
-                const SizedBox(height: ClippoSpace.rowGap),
-                Text(subtitle!, style: ClippoText.bodyText.copyWith(color: colors.textMuted)),
+                const SizedBox(height: ClippoSpace.spaceM),
+                Text(subtitle!, style: ClippoText.body.copyWith(color: colors.textMuted)),
               ],
-              const SizedBox(height: ClippoSpace.sectionGap),
+              const SizedBox(height: ClippoSpace.section),
               Expanded(child: SingleChildScrollView(child: child)),
-              const SizedBox(height: ClippoSpace.cardGap),
+              const SizedBox(height: ClippoSpace.spaceM),
               SizedBox(
-                height: ClippoSpace.minTouchTarget + 4,
+                height: ClippoSize.buttonHeight,
                 child: FilledButton(
                   onPressed: loading ? null : onPrimary,
                   style: FilledButton.styleFrom(
@@ -61,7 +61,7 @@ class OnboardingScaffold extends StatelessWidget {
                 ),
               ),
               if (secondary != null) ...[
-                const SizedBox(height: ClippoSpace.rowGap),
+                const SizedBox(height: ClippoSpace.spaceM),
                 Center(child: secondary!),
               ],
             ],

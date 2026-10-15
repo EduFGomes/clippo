@@ -103,7 +103,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(labelText: 'Nome', errorText: _fieldError('name')),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
+          const SizedBox(height: ClippoSpace.spaceM),
           TextField(
             controller: _username,
             autocorrect: false,
@@ -114,7 +114,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
               errorText: _fieldError('username'),
             ),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
+          const SizedBox(height: ClippoSpace.spaceM),
           OutlinedButton(
             onPressed: _pickBirthDate,
             style: OutlinedButton.styleFrom(shape: const StadiumBorder()),
@@ -123,13 +123,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           const SizedBox(height: 4),
           Text(
             _fieldError('birthDate') ?? 'Não aparece no seu perfil. Usamos só para estatísticas gerais.',
-            style: ClippoText.caption.copyWith(
+            style: ClippoText.label.copyWith(
               color: _fieldError('birthDate') != null ? colors.error : colors.textMuted,
             ),
           ),
           if (generalError != null) ...[
-            const SizedBox(height: ClippoSpace.cardGap),
-            Text(generalError, style: ClippoText.caption.copyWith(color: colors.error)),
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(generalError, style: ClippoText.label.copyWith(color: colors.error)),
           ],
         ],
       ),

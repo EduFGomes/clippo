@@ -70,14 +70,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
             autofillHints: const [AutofillHints.email],
             decoration: const InputDecoration(labelText: 'E-mail'),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
+          const SizedBox(height: ClippoSpace.spaceM),
           TextField(
             controller: _password,
             obscureText: true,
             autofillHints: const [AutofillHints.newPassword],
             decoration: const InputDecoration(labelText: 'Senha', helperText: 'Pelo menos 6 caracteres'),
           ),
-          const SizedBox(height: ClippoSpace.cardGap),
+          const SizedBox(height: ClippoSpace.spaceM),
           TextField(
             controller: _confirm,
             obscureText: true,
@@ -85,8 +85,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             onSubmitted: (_) => _submit(),
           ),
           if (_error != null) ...[
-            const SizedBox(height: ClippoSpace.cardGap),
-            Text(_error!, style: ClippoText.caption.copyWith(color: colors.error)),
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(_error!, style: ClippoText.label.copyWith(color: colors.error)),
           ],
         ],
       ),

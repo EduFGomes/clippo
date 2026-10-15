@@ -30,7 +30,7 @@ class WelcomeScreen extends StatelessWidget {
         child: Center(
           child: Text(
             r'\ o /',
-            style: ClippoText.impactNumber.copyWith(color: colors.accentForeground),
+            style: ClippoText.heroMark.copyWith(color: colors.accent),
           ),
         ),
       ),

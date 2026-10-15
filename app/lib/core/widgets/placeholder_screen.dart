@@ -23,15 +23,15 @@ class PlaceholderScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(),
       body: Padding(
-        padding: const EdgeInsets.all(ClippoSpace.screenGutter),
+        padding: const EdgeInsets.all(ClippoSpace.gutter),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: ClippoText.screenTitle.copyWith(color: colors.text)),
-            const SizedBox(height: ClippoSpace.sectionGap),
+            Text(title, style: ClippoText.displayL.copyWith(color: colors.text)),
+            const SizedBox(height: ClippoSpace.section),
             Text(
               'Tela provisória. Referência: $docSection',
-              style: ClippoText.bodyText.copyWith(color: colors.textMuted),
+              style: ClippoText.body.copyWith(color: colors.textMuted),
             ),
           ],
         ),
