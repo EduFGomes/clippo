@@ -35,6 +35,35 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Sessão: um jogo gravado. Só quem jogou junto vê (R11); quem não é participante
+    // não vê nada da sessão. A lista de participantes está no próprio documento
+    // (participantIds), o que permite a consulta da Início numa só ida ao banco.
+    //
+    // ATENÇÃO para quem escreve a consulta: as regras são avaliadas documento por
+    // documento, então listar sessions SEM o filtro .where('participantIds',
+    // arrayContains: uid) falha inteira ao encontrar a primeira sessão de outra pessoa.
+    match /sessions/{sessionId} {
+      function isParticipant() {
+        return signedIn() && request.auth.uid in resource.data.participantIds;
+      }
+
+      allow read: if isParticipant();
+
+      // 🟡 Escrita fechada até o grupo decidir quem grava sessões e highlights:
+      // app com validação nas regras, ou fila local no aparelho + Cloud Function.
+      // Ver docs/arquitetura.md › Quem grava sessões e highlights.
+      allow write: if false;
+
+      // Highlights da sessão. A permissão vem da sessão: todo participante vê todos
+      // os highlights dela (R11). Custa uma leitura a mais (o get da sessão), e em
+      // troca a permissão nunca fica desatualizada quando os participantes mudam (R12).
+      match /highlights/{highlightId} {
+        allow read: if signedIn() && request.auth.uid in
+            get(/databases/$(database)/documents/sessions/$(sessionId)).data.participantIds;
+        allow write: if false;
+      }
+    }
+
     // Todo o resto continua bloqueado até ganhar regras próprias.
     match /{document=**} {
       allow read, write: if false;

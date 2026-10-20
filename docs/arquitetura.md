@@ -44,6 +44,8 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 | `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
 | `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
 | `userPrivate/{uid}` — dados privados | `birthDate` string `AAAA-MM-DD` · `createdAt` timestamp | Só o dono | Só Functions (`completeProfile`) |
+| `sessions/{sessionId}` — um jogo gravado 🟡 | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | 🟡 ver [Quem grava sessões e highlights](#quem-grava-sessões-e-highlights-) |
+| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto 🟡 | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | 🟡 idem |
 
 Regras de modelagem:
 - O **e-mail fica só no Firebase Auth**, nunca no Firestore.
@@ -51,7 +53,84 @@ Regras de modelagem:
 - `@usuário` normalizado: minúsculas, 3–20 caracteres, `a–z 0–9 _ .`, sem ponto no começo/fim nem `..`.
 - Unicidade garantida pelo **ID do documento** em `usernames/`, criado dentro de transação (sem condição de corrida).
 
-🟡 **Ainda não modelado:** `Session`, `Participant`, `Highlight`, `Friendship`. É o próximo passo do back-end — a tela Início precisa listar "as sessões de que eu participo".
+- **Participante não é coleção.** A lista fica no próprio documento da sessão (`participantIds`), porque é a única forma de responder "as sessões de que eu participo" em **uma** consulta.
+- **O Firestore não tem JOIN** (D2): o que a lista precisa mostrar sem abrir a sessão fica copiado nela (`participantsPreview`, `highlightCount`, `durationSeconds`).
+- **Contadores são mantidos por gatilho**, nunca pelo app, e de forma idempotente.
+
+🟡 **Ainda não modelado:** `Friendship`. A tela Amigos e a validação de R10 ("participantes são amigos do dono") dependem dele.
+
+### Proposta 🟡 — sessões e highlights
+
+Rascunho do back-end para o grupo aprovar. As **leituras** abaixo já estão implementadas
+nas regras e testadas; as **escritas** continuam fechadas até a decisão da próxima seção.
+
+**A consulta que define o modelo.** A Início precisa de "as sessões de que eu participo,
+mais recente primeiro":
+
+```dart
+FirebaseFirestore.instance
+    .collection('sessions')
+    .where('participantIds', arrayContains: uid)
+    .orderBy('startedAt', descending: true)
+```
+
+Isso exige o índice composto que está em `firestore.indexes.json`
+(`participantIds` CONTAINS + `startedAt` DESC). E o filtro **não é opcional**: as regras
+avaliam cada documento devolvido, então uma consulta sem `arrayContains: uid` falha
+inteira ao encontrar a primeira sessão de outra pessoa. Quem escrever o repositório da
+Início precisa saber disso.
+
+**Por que os highlights são subcoleção** (`sessions/{id}/highlights/{id}`) e não uma
+coleção de primeiro nível: um highlight pertence a exatamente uma sessão, e a permissão
+sai da sessão. Em coleção separada, seria preciso copiar `participantIds` em cada
+highlight e sair atualizando todos quando o dono mudasse os participantes (R12). O preço
+é uma leitura a mais por consulta (a regra lê o documento da sessão para conferir
+`participantIds`); em troca, a permissão nunca fica desatualizada.
+
+**Por que `participantsPreview`:** a Início mostra até 5 avatares por sessão. Sem a
+cópia, 10 sessões × 10 participantes = 100 leituras de `users/` só para desenhar a
+lista. A cópia guarda `uid`, `name` e `photoUrl` dos 5 primeiros. 🟡 Efeito colateral
+aceito: quem troca o nome ou a foto continua aparecendo com o antigo nos avatares até a
+sessão ser atualizada — a tela Sessão lê os perfis de verdade.
+
+#### Quem grava sessões e highlights 🟡
+
+**Esta é a decisão que o grupo precisa tomar**, porque duas regras do projeto se
+contradizem aqui:
+
+- **D7 / regra 5 do `AGENTS.md`:** o app não grava dados validados; só Functions gravam.
+- **R13 + R8:** um highlight salvo nunca pode se perder por falta de internet na quadra,
+  e nada do caminho crítico do gesto pode depender de Cloud Functions.
+
+Chamar uma Function exige internet. Na quadra pode não haver. As opções:
+
+| | Como funciona | A favor | Contra |
+|---|---|---|---|
+| **A — app grava, regras validam** | O app cria a sessão e os highlights direto no Firestore; as regras conferem formato, tipos e participação. A fila offline do Firestore sincroniza sozinha quando a internet volta. | R13 sai de graça; nada no caminho do gesto depende de servidor; o vídeo já vai ser enviado pelo app ao Storage de qualquer jeito | Abre escrita para o app, contra D7; as regras passam a carregar a validação |
+| **B — fila local + Function** | O app guarda a sessão e os highlights no aparelho e chama `createSession` / `publishHighlight` quando houver conexão. | Mantém D7 e a validação em um lugar só | O app precisa implementar fila, repetição e o estado "enviando…" na mão; mais código no lado do Otávio |
+
+**Minha recomendação: A, só para `sessions` e `highlights`.** O argumento decisivo é que
+o vídeo de 30 s **tem** que ser enviado pelo app direto ao Storage (não passa por uma
+chamável), então a escrita do app é inevitável nesse fluxo; fazer o documento ir por um
+caminho diferente do vídeo dobra a complexidade sem fechar nenhuma porta. `users`,
+`usernames` e `userPrivate` continuam como estão, só por Function.
+
+Se o grupo preferir B, o modelo acima não muda — muda só quem grava.
+
+#### Acesso aos vídeos no Storage 🟡
+
+Problema encontrado ao modelar, que vale levar ao grupo: **as regras do Storage não
+conseguem ler o Firestore.** Então não dá para escrever "só participantes desta sessão
+baixam este vídeo" como se faz no Firestore. Os caminhos possíveis:
+
+1. Gravar os uids participantes nos **metadados do objeto** e conferir na regra do Storage
+   (funciona, mas os metadados precisam ser atualizados quando os participantes mudam);
+2. Guardar a **URL de download com token** no documento do highlight (quem tem a regra do
+   Firestore tem a URL; quem tem a URL vê o vídeo, mesmo sem login);
+3. Uma **Function que gera URL assinada** a cada pedido (mais controle, mais latência).
+
+Caminho sugerido: `sessions/{sessionId}/highlights/{highlightId}/video.mp4` e
+`thumb.jpg`. `storage.rules` segue bloqueando tudo até a decisão.
 
 ## Quem faz o quê
 
@@ -82,7 +161,9 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 |---|---|
 | Gerenciamento de estado no app (Provider, Riverpod, Bloc…) | Front-end |
 | Navegação de nível superior: barra (protótipo v1) ou roda (protótipo v2, [link em design.md](design.md#7-referências-no-claude)) | Grupo |
-| Modelo de Sessão, Participante, Highlight e Amizade | Back-end + grupo |
+| Modelo de Amizade (`Friendship`) | Back-end + grupo |
+| Quem grava sessões e highlights: app com regras (A) ou fila local + Function (B) — [proposta acima](#quem-grava-sessões-e-highlights-) | Grupo |
+| Como autorizar o download dos vídeos, já que as regras do Storage não leem o Firestore | Back-end + grupo |
 | Validar "participantes são amigos do dono" (R10): regras ou Function `createSession` | Back-end |
 | Login com Google (precisa do projeto real) | Back-end |
 | Função de bloqueio `validateNewAccount` no projeto real: exige o Firebase Authentication com Identity Platform (no Emulator funciona sem nada a mais). Sem ela, a validação do e-mail no servidor fica só no app | Back-end |
