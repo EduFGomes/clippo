@@ -13,6 +13,7 @@ dependencies:
   firebase_core: ^4.15.0
   flutter:
     sdk: flutter
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -26,6 +27,9 @@ flutter:
   assets:
     - assets/fonts/Anton-OFL.txt
     - assets/fonts/Archivo-OFL.txt
+    # Ícones da marca (grade 24, stroke="currentColor"), desenhados com flutter_svg.
+    # Lista e regras em docs/design.md › 3.6 Ícones.
+    - assets/icons/
 
   # Fontes do design (Google Fonts, licença OFL), embutidas para funcionar sem internet.
   # Nomes das famílias usados em lib/core/theme/clippo_tokens.dart.

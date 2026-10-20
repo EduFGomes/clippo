@@ -32,6 +32,8 @@ Celular de quem grava                      Firebase (us-east1)                  
 | D8 | **Fontes embutidas no app** (Anton e Archivo em `app/assets/fonts/`, sem o pacote `google_fonts`) | Funciona sem internet na quadra; nada é baixado na primeira abertura | ~1 MB a mais no app |
 | D9 | **Valores visuais só em `clippo_tokens.dart`** (sem JSON paralelo) | Uma fonte só evita divergência entre docs e código | Quem não usa Flutter lê os valores pelo [design.md](design.md) |
 | D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/users/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
+| D11 | **Navegação de nível superior em roda** (protótipo v2), e não em barra | Combina com "o lance é o herói": nada de barra fixa ocupando o rodapé em cima do vídeo; o gesto de segurar-e-arrastar chega em qualquer seção com uma mão só | Menos convencional que uma barra; exige explicar na primeira vez. 🟡 Decidido pelo back-end em 20/10/2026 — **falta confirmar com o grupo** |
+| D12 | **`flutter_svg`** para desenhar os ícones da marca | Os 19 SVGs de `app/assets/icons/` já existiam sem um jeito de usar; redesenhá-los em código duplicaria o traço | Uma dependência a mais (~200 KB). Os ícones dos controles continuam desenhados em código no `ClippoIcon` |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
 
@@ -81,7 +83,6 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 | Tema | Quem decide |
 |---|---|
 | Gerenciamento de estado no app (Provider, Riverpod, Bloc…) | Front-end |
-| Navegação de nível superior: barra (protótipo v1) ou roda (protótipo v2, [link em design.md](design.md#7-referências-no-claude)) | Grupo |
 | Modelo de Sessão, Participante, Highlight e Amizade | Back-end + grupo |
 | Validar "participantes são amigos do dono" (R10): regras ou Function `createSession` | Back-end |
 | Login com Google (precisa do projeto real) | Back-end |

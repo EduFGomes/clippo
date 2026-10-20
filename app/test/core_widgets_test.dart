@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
+import 'package:clippo/core/widgets/clippo_session_card.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 import 'package:clippo/dev/component_gallery.dart';
 
@@ -108,5 +110,77 @@ void main() {
     expect(taps, 1);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('fileira de avatares mostra os primeiros e o "+N"', (tester) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(_app(const Center(
+      child: ClippoAvatarRow(
+        people: [
+          ClippoAvatarPerson(name: 'Alice Prado'),
+          ClippoAvatarPerson(name: 'Bruno'),
+        ],
+        hidden: 8,
+      ),
+    )));
+
+    // Sem foto, cada avatar mostra a inicial do nome.
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
+    expect(find.text('+8'), findsOneWidget);
+  });
+
+  testWidgets('sem ninguém de fora, a fileira não mostra "+0"', (tester) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(_app(const Center(
+      child: ClippoAvatarRow(people: [ClippoAvatarPerson(name: 'Alice')]),
+    )));
+
+    expect(find.textContaining('+'), findsNothing);
+  });
+
+  testWidgets('card de sessão fechado esconde local, participantes e ação', (tester) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(_app(ClippoSessionCard(
+      title: 'Pelada de quinta',
+      summary: '11 set 2026 · 7 highlights',
+      location: 'Quadra do Parque',
+      details: '1h 42min · 10 participantes',
+      expanded: false,
+      onToggle: () {},
+      onAction: () {},
+    )));
+
+    expect(find.text('Pelada de quinta'), findsOneWidget);
+    expect(find.text('11 set 2026 · 7 highlights'), findsOneWidget);
+    expect(find.text('Quadra do Parque'), findsNothing);
+    expect(find.text('Ver highlights'), findsNothing);
+  });
+
+  testWidgets('card aberto mostra tudo e o toque avisa a tela', (tester) async {
+    await _setPhoneSize(tester);
+    var toggles = 0;
+    var actions = 0;
+    await tester.pumpWidget(_app(ClippoSessionCard(
+      title: 'Pelada de quinta',
+      summary: '11 set 2026 · 7 highlights',
+      location: 'Quadra do Parque',
+      details: '1h 42min · 10 participantes',
+      expanded: true,
+      onToggle: () => toggles++,
+      onAction: () => actions++,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Quadra do Parque'), findsOneWidget);
+    expect(find.text('1h 42min · 10 participantes'), findsOneWidget);
+
+    await tester.tap(find.text('Ver highlights'));
+    await tester.pumpAndSettle();
+    expect(actions, 1);
+
+    await tester.tap(find.text('Pelada de quinta'));
+    await tester.pumpAndSettle();
+    expect(toggles, 1);
   });
 }

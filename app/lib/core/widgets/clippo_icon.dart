@@ -4,7 +4,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 
 /// Ícones outline dos controles, desenhados na grade de 24 (mesmos traços dos SVGs de assets/icons/).
 /// Use dentro dos componentes; telas não desenham ícones direto.
-enum ClippoIconShape { chevronLeft, eye, eyeOff, check }
+enum ClippoIconShape { chevronLeft, chevronDown, eye, eyeOff, check }
 
 class ClippoIcon extends StatelessWidget {
   const ClippoIcon(
@@ -59,6 +59,14 @@ class _ClippoIconPainter extends CustomPainter {
             ..moveTo(14.5, 5.5)
             ..lineTo(8, 12)
             ..lineTo(14.5, 18.5),
+          paint,
+        );
+      case ClippoIconShape.chevronDown:
+        canvas.drawPath(
+          Path()
+            ..moveTo(5.5, 9.5)
+            ..lineTo(12, 16)
+            ..lineTo(18.5, 9.5),
           paint,
         );
       case ClippoIconShape.check:

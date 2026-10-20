@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
-import 'package:clippo/dev/screen_catalog.dart';
+import 'package:clippo/app_shell.dart';
 import 'package:clippo/features/onboarding/screens/complete_profile_screen.dart';
 import 'package:clippo/features/onboarding/screens/welcome_screen.dart';
 
@@ -30,7 +30,7 @@ class ClippoApp extends StatelessWidget {
 /// Decide a primeira tela a partir de quem está logado:
 ///   ninguém logado        → Boas-vindas
 ///   logado, sem perfil    → Complete seu perfil
-///   logado, com perfil    → app (por enquanto, o catálogo de telas)
+///   logado, com perfil    → app (AppShell: as seções e a roda de navegação)
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -80,7 +80,7 @@ class _ProfileGateState extends State<_ProfileGate> {
             ),
           );
         }
-        if (snapshot.data == true) return const ScreenCatalog();
+        if (snapshot.data == true) return const AppShell();
         return CompleteProfileScreen(onCompleted: _recheck);
       },
     );

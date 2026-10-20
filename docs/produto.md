@@ -202,7 +202,7 @@ Boas-vindas ─► Como funciona ─► Criar conta ─► Complete seu perfil �
                    Player
 ```
 
-- **Nível superior**: Início, Amigos, Perfil. A forma da navegação (barra ou roda) é 🟡 (ver [arquitetura.md](arquitetura.md#decisões-em-aberto-)).
+- **Nível superior**: Início, Amigos, Perfil. A forma é a **roda** do protótipo v2 (botão no centro inferior; toque abre, arrastar e soltar escolhe) — decidida em 20/10/2026, 🟡 a confirmar com o grupo.
 - **Gravar** é um destino da navegação, mas abre um fluxo **em tela cheia, sem navegação**.
 - **Telas de detalhe** (Sessão, Confirme a sessão, Player) **não** mostram a navegação; têm voltar no topo.
 - Ordem dos destinos: **Início · Gravar · Amigos · Perfil**.
