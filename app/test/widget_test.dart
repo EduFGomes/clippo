@@ -22,7 +22,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Perfil'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('produto.md · 4.7 Perfil'), findsOneWidget);
+    expect(find.text('SEU\nPERFIL.'), findsOneWidget);
   });
 
   testWidgets('boas-vindas mostra a frase da marca e leva ao "Como funciona"', (tester) async {
