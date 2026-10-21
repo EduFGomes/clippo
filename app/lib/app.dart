@@ -62,7 +62,10 @@ class _ProfileGate extends StatefulWidget {
 class _ProfileGateState extends State<_ProfileGate> {
   late Future<bool> _hasProfile = authRepository.hasProfile(widget.uid);
 
-  void _recheck() => setState(() => _hasProfile = authRepository.hasProfile(widget.uid));
+  // Corpo com chaves: com "=>" o callback devolveria a Future e o setState a recusa.
+  void _recheck() => setState(() {
+        _hasProfile = authRepository.hasProfile(widget.uid);
+      });
 
   @override
   Widget build(BuildContext context) {
