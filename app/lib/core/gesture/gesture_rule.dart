@@ -46,6 +46,10 @@ class GestureThresholds {
 enum GestureCheck {
   matched,
 
+  /// O modelo não achou ninguém no quadro. A regra nunca devolve este: quem devolve é o
+  /// GesturePipeline, quando o quadro chega sem pose.
+  noPerson,
+
   /// Algum dos 6 pontos tem confiança baixa (fora do quadro, encoberto, longe demais).
   lowConfidence,
 
