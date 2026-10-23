@@ -31,8 +31,8 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
    tem que estar salvo em até 3 s (R2), sem depender de internet (R8).
 4. **O buffer não sai do aparelho** (R6): só o MP4 que o gesto salvar.
 5. **Na gravação a tela não mostra a câmera** (R7): sem `PreviewView`, o fluxo de imagem fica sem
-   destino. 🟡 A confirmar no celular que a análise e o buffer continuam recebendo quadros assim;
-   se não, a gravação religa a câmera só com os outros dois fluxos.
+   destino. Testado num Galaxy S24: sem `PreviewView`, a análise continua recebendo ~28 quadros
+   por segundo. 🟡 Falta confirmar o mesmo com o buffer ligado como terceiro fluxo.
 
 ## Testes
 
