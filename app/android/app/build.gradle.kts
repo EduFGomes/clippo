@@ -47,3 +47,20 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Câmera (CameraX): abre a câmera uma vez e entrega vários fluxos (imagem na tela, quadros
+    // para análise e, depois, o vídeo do buffer). Ver kotlin/.../camera/README.md.
+    val cameraX = "1.6.2"
+    implementation("androidx.camera:camera-camera2:$cameraX")
+    implementation("androidx.camera:camera-lifecycle:$cameraX")
+    implementation("androidx.camera:camera-view:$cameraX")
+
+    // Pontos do corpo (ML Kit Pose, BlazePose com 33 pontos), com o modelo embutido no app para
+    // funcionar sem internet (R8). O Google só publica versões beta desde a 17.0.0, de 2020.
+    // 🟡 Os dois modelos ficam até a medição a 8 m decidir qual usar: o "accurate" é mais
+    // preciso e mais pesado.
+    val mlKitPose = "18.0.0-beta5"
+    implementation("com.google.mlkit:pose-detection:$mlKitPose")
+    implementation("com.google.mlkit:pose-detection-accurate:$mlKitPose")
+}
