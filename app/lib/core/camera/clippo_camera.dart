@@ -14,6 +14,23 @@ class CameraFailure implements Exception {
   String toString() => message;
 }
 
+/// O trecho que o buffer salvou: o MP4 no aparelho, ainda não enviado (R13 cuida do envio).
+/// 🟡 Formato combinado no README da câmera; quem implementa o buffer pode acrescentar campos.
+class SavedClip {
+  const SavedClip({required this.path, required this.duration});
+
+  factory SavedClip.fromMap(Map<Object?, Object?> data) => SavedClip(
+        path: data['path'] as String,
+        duration: Duration(milliseconds: data['durationMs'] as int),
+      );
+
+  /// Caminho do arquivo MP4 no aparelho.
+  final String path;
+
+  /// Quanto o trecho tem de fato: até ~30 s, menos se a sessão começou há pouco (R5).
+  final Duration duration;
+}
+
 /// A câmera do app, do lado Dart: comandos e o fluxo de poses.
 ///
 /// Quem abre a câmera de verdade é o código nativo (android/.../camera/ClippoCameraSession.kt).
@@ -39,6 +56,17 @@ class ClippoCamera {
 
   Future<void> stop() => _call<void>('stop');
 
+  /// Pede ao buffer para salvar os ~30 s que terminam em [until] (R1): a hora do quadro em que o
+  /// gesto disparou ([PoseFrame.timestamp]), no relógio do sensor.
+  ///
+  /// 🔜 O buffer ainda não existe: por enquanto o Kotlin responde com erro, e este método lança
+  /// [CameraFailure]. Contrato em android/.../camera/README.md.
+  Future<SavedClip> saveHighlight({required Duration until}) async {
+    final data = await _call<Map<Object?, Object?>>('saveHighlight', {'untilMicros': until.inMicroseconds});
+    if (data == null) throw const CameraFailure('O buffer não devolveu o trecho salvo.');
+    return SavedClip.fromMap(data);
+  }
+
   /// Um [PoseFrame] por quadro analisado, enquanto a câmera estiver ligada.
   ///
   /// O nativo só começa a mandar quando alguém escuta, e para quando a escuta é cancelada.
@@ -63,6 +91,8 @@ class ClippoCamera {
         'camera-unavailable' => const CameraFailure('Não foi possível abrir a câmera. Feche outros apps que estejam usando e tente de novo.'),
         'permission-pending' => const CameraFailure('Responda o pedido de permissão que está aberto.'),
         'analysis-failed' => const CameraFailure('Não foi possível analisar a imagem da câmera.'),
+        'not-implemented' => const CameraFailure('Ainda não dá para salvar o lance: o buffer de 30 s não está pronto.'),
+        'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),
         _ => CameraFailure('Algo deu errado com a câmera (${e.code}).'),
       };
 }

@@ -42,6 +42,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   GestureObservation? _last;
   PoseMeasurement? _measurement;
   int _triggers = 0;
+  String? _lastSave;
   bool _showTrigger = false;
   Timer? _triggerTimer;
 
@@ -161,6 +162,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1} · '
           '${facingText(observation.frame)}');
       _triggers++;
+      _saveHighlight(observation.frame.timestamp);
       _showTrigger = true;
       _triggerTimer?.cancel();
       _triggerTimer = Timer(ClippoMotion.savedBanner, () {
@@ -173,6 +175,22 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       // As medidas vêm da MESMA regra que decidiu: os números da tela são os que valeram.
       _measurement = pose == null ? null : _pipeline.rule.measure(pose);
     });
+  }
+
+  /// O mesmo pedido que a Gravação vai fazer no disparo. Mede o tempo até a resposta: o
+  /// highlight precisa estar salvo em até 3 s (R2). Sem await no disparo: a análise dos
+  /// próximos quadros não espera o buffer.
+  Future<void> _saveHighlight(Duration until) async {
+    final clock = Stopwatch()..start();
+    String result;
+    try {
+      final clip = await widget.camera.saveHighlight(until: until);
+      result = 'Salvo em ${clock.elapsedMilliseconds} ms: ${clip.duration.inSeconds} s em ${clip.path}';
+    } on CameraFailure catch (e) {
+      result = '${e.message} (${clock.elapsedMilliseconds} ms)';
+    }
+    debugPrint('LAB salvar: $result');
+    if (mounted) setState(() => _lastSave = result);
   }
 
   void _fail(Object error) {
@@ -293,7 +311,8 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                 Text(
                   '$_framesPerSecond quadros/s · ML Kit ${last?.frame.analysisTime.inMilliseconds ?? '–'} ms · '
                   '${last == null ? '–' : '${last.frame.width}×${last.frame.height}'}\n'
-                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'}',
+                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'}'
+                  '${_lastSave == null ? '' : '\nÚltimo salvamento: $_lastSave'}',
                   style: ClippoText.label.copyWith(
                     color: ClippoBrand.captureTextMuted,
                     fontFeatures: ClippoText.tabular,

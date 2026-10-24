@@ -93,6 +93,32 @@ void main() {
       expect(calls[2].arguments, {'accurate': true});
     });
 
+    test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return {'path': '/data/clippo/lance.mp4', 'durationMs': 30000};
+      });
+
+      // Uma hora real de sensor passa de 2³¹ µs: tem que ir inteira, sem cortar.
+      final clip = await camera.saveHighlight(until: const Duration(microseconds: 715396052000));
+
+      expect(sent?.method, 'saveHighlight');
+      expect(sent?.arguments, {'untilMicros': 715396052000});
+      expect(clip.path, '/data/clippo/lance.mp4');
+      expect(clip.duration, const Duration(seconds: 30));
+    });
+
+    test('saveHighlight sem buffer pronto vira uma mensagem da tela', () async {
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        throw PlatformException(code: 'not-implemented', message: 'O buffer de 30 s ainda não foi feito.');
+      });
+      await expectLater(
+        camera.saveHighlight(until: Duration.zero),
+        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', contains('buffer de 30 s'))),
+      );
+    });
+
     test('traduz o erro do Kotlin para uma mensagem da tela', () async {
       messenger.setMockMethodCallHandler(_commands, (call) async {
         throw PlatformException(code: 'no-permission', message: 'Sem permissão de câmera.');

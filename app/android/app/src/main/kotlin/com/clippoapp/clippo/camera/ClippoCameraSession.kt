@@ -40,7 +40,7 @@ import java.util.concurrent.Executors
  * Os pontos vão para o Dart, onde ficam a regra do gesto e o disparo (lib/core/gesture/).
  *
  * Ponte com o Dart:
- * - MethodChannel "clippo/camera": hasPermission, requestPermission, start, stop;
+ * - MethodChannel "clippo/camera": hasPermission, requestPermission, start, stop, saveHighlight;
  * - EventChannel "clippo/camera/poses": um mapa por quadro analisado (formato em sendPose).
  */
 class ClippoCameraSession(private val activity: FlutterActivity) :
@@ -96,6 +96,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
             "start" -> start(accurate = call.argument<Boolean>("accurate") ?: false, result)
+            "saveHighlight" -> {
+                // Number, e não Long: o Flutter manda um int pequeno como Int e um grande como Long.
+                val untilMicros = call.argument<Number>("untilMicros")?.toLong()
+                    ?: return result.error("bad-arguments", "Faltou untilMicros.", null)
+                saveHighlight(untilMicros, result)
+            }
             "stop" -> {
                 stop()
                 result.success(null)
@@ -156,6 +162,22 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 result.error("camera-unavailable", "Não foi possível abrir a câmera: ${e.message}", null)
             }
         }, ContextCompat.getMainExecutor(activity))
+    }
+
+    /**
+     * 🔜 BUFFER (Mobile): salvar os ~30 s que terminam em [untilMicros] num MP4 (R1).
+     *
+     * [untilMicros] é o "t" do quadro em que o gesto disparou, no relógio do sensor (o mesmo de
+     * ImageProxy.imageInfo.timestamp / 1000, e o mesmo que carimba os quadros de vídeo).
+     * Responder com result.success(mapOf("path" to caminhoDoMp4, "durationMs" to duracao)) em
+     * até 3 s (R2), sem internet (R8). Erro: result.error("save-failed", mensagem, null).
+     * Contrato completo em README.md, nesta pasta.
+     *
+     * Enquanto o buffer não existe, responde "not-implemented": o Dart já chama este comando
+     * no disparo, então o caminho inteiro (gesto → comando) já pode ser testado.
+     */
+    private fun saveHighlight(@Suppress("UNUSED_PARAMETER") untilMicros: Long, result: MethodChannel.Result) {
+        result.error("not-implemented", "O buffer de 30 s ainda não foi feito.", null)
     }
 
     fun stop() {
