@@ -10,13 +10,19 @@ library;
 /// Coordenadas da imagem: `x` cresce para a direita e `y` cresce PARA BAIXO (como no ML Kit e no
 /// MediaPipe). A unidade não importa (pixels ou 0–1): a regra só usa ângulos e proporções.
 class BodyPoint {
-  const BodyPoint(this.x, this.y, {this.confidence = 1});
+  const BodyPoint(this.x, this.y, {this.z = 0, this.confidence = 1});
 
   final double x;
   final double y;
 
-  /// De 0 a 1: quanto o modelo acredita que o ponto está mesmo ali e visível
-  /// (`inFrameLikelihood` no ML Kit, `visibility` no MediaPipe).
+  /// Profundidade estimada pelo modelo, na mesma escala de x, com o quadril como zero: menor é
+  /// mais perto da câmera. Aproximada (o modelo adivinha a partir de uma imagem só). A regra do
+  /// gesto ainda não usa; o laboratório mostra para investigar "de frente × de costas".
+  final double z;
+
+  /// De 0 a 1: quanto o modelo acredita no ponto. No ML Kit é o `inFrameLikelihood`: a chance de o
+  /// ponto estar DENTRO da imagem, e não de estar visível (o nariz de quem está de costas pode ter
+  /// confiança alta). No MediaPipe, o mais parecido é o `visibility`.
   final double confidence;
 }
 

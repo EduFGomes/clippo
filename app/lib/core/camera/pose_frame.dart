@@ -48,12 +48,13 @@ class PoseFrame {
   }
 
   static List<BodyPoint> _readLandmarks(List<Object?> flat) {
-    if (flat.length != PoseLandmarkIndex.count * 3) {
-      throw FormatException('Esperava ${PoseLandmarkIndex.count * 3} números (33 pontos × x, y, confiança), veio ${flat.length}.');
+    const n = PoseLandmarkIndex.valuesPerPoint;
+    if (flat.length != PoseLandmarkIndex.count * n) {
+      throw FormatException('Esperava ${PoseLandmarkIndex.count * n} números (33 pontos × x, y, z, confiança), veio ${flat.length}.');
     }
+    double at(int i) => (flat[i] as num).toDouble();
     return [
-      for (var i = 0; i < flat.length; i += 3)
-        BodyPoint((flat[i] as num).toDouble(), (flat[i + 1] as num).toDouble(), confidence: (flat[i + 2] as num).toDouble()),
+      for (var i = 0; i < flat.length; i += n) BodyPoint(at(i), at(i + 1), z: at(i + 2), confidence: at(i + 3)),
     ];
   }
 }
@@ -62,6 +63,15 @@ class PoseFrame {
 /// de `PoseLandmark` no MediaPipe). Só os que o app usa; a lista completa tem 33.
 abstract final class PoseLandmarkIndex {
   static const int count = 33;
+
+  /// Quantos números o Kotlin manda por ponto: x, y, z e confiança (VALUES_PER_LANDMARK lá).
+  static const int valuesPerPoint = 4;
+
+  // Rosto: só o laboratório usa, para investigar se a pessoa está de frente ou de costas.
+  static const int nose = 0;
+  static const int leftEar = 7;
+  static const int rightEar = 8;
+
   static const int leftShoulder = 11;
   static const int rightShoulder = 12;
   static const int leftElbow = 13;

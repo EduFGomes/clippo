@@ -39,6 +39,22 @@ class GestureThresholds {
   /// Ângulo no cotovelo: 180° é o braço esticado. Abaixo disto o braço está dobrado, como na pose
   /// de "mostrar o muque", que também deixa os pulsos acima dos ombros.
   final double minElbowAngle;
+
+  /// Uma cópia com alguns valores trocados (o laboratório ajusta um limite por vez).
+  GestureThresholds copyWith({
+    double? minConfidence,
+    double? minShoulderSpan,
+    double? minArmAngle,
+    double? maxArmAngle,
+    double? minElbowAngle,
+  }) =>
+      GestureThresholds(
+        minConfidence: minConfidence ?? this.minConfidence,
+        minShoulderSpan: minShoulderSpan ?? this.minShoulderSpan,
+        minArmAngle: minArmAngle ?? this.minArmAngle,
+        maxArmAngle: maxArmAngle ?? this.maxArmAngle,
+        minElbowAngle: minElbowAngle ?? this.minElbowAngle,
+      );
 }
 
 /// O que a regra concluiu sobre um quadro. Fora `matched`, diz o PRIMEIRO motivo de recusa,

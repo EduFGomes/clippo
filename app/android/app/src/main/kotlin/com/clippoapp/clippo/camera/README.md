@@ -14,7 +14,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 | Canal | Tipo | O quê |
 |---|---|---|
 | `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool · `start({accurate})` · `stop` |
-| `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `points` (null ou 33 × x, y, confiança) |
+| `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `points` (null ou 33 × x, y, z, confiança; z é a profundidade, menor = mais perto) |
 | `clippo/camera-preview` | Platform view | A imagem da câmera, para um `AndroidView` |
 
 ## Contrato com o buffer de 30 s (Mobile)

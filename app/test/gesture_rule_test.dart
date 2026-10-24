@@ -158,6 +158,13 @@ void main() {
     });
   });
 
+  test('copyWith troca só o que foi pedido', () {
+    final changed = const GestureThresholds().copyWith(minArmAngle: 10);
+    expect(changed.minArmAngle, 10);
+    expect(changed.maxArmAngle, const GestureThresholds().maxArmAngle);
+    expect(changed.minElbowAngle, const GestureThresholds().minElbowAngle);
+  });
+
   test('usa os limites recebidos', () {
     const strict = GestureRule(GestureThresholds(minArmAngle: 40));
     expect(strict.evaluate(_pose()).check, GestureCheck.armNotDiagonal);

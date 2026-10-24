@@ -11,14 +11,15 @@ import 'package:clippo/core/gesture/gesture_rule.dart';
 const _commands = MethodChannel('clippo/camera');
 const _poses = EventChannel('clippo/camera/poses');
 
-/// Um quadro como o Kotlin manda: 33 pontos em (100, 100) e, nos índices dos braços, um \ o /
+/// Um quadro como o Kotlin manda: 33 pontos em (100, 100), z = 0, e, nos índices dos braços, um \ o /
 /// em pixels de uma imagem 720×1280 (a pessoa de frente, ombro esquerdo dela à direita da imagem).
 Map<String, Object?> _frameMap({bool withPerson = true, double wristConfidence = 0.9}) {
-  final points = Float64List(PoseLandmarkIndex.count * 3);
+  const n = PoseLandmarkIndex.valuesPerPoint;
+  final points = Float64List(PoseLandmarkIndex.count * n);
   for (var i = 0; i < PoseLandmarkIndex.count; i++) {
-    points.setAll(i * 3, [100, 100, 0.9]);
+    points.setAll(i * n, [100, 100, 0, 0.9]);
   }
-  void put(int index, double x, double y, [double confidence = 0.9]) => points.setAll(index * 3, [x, y, confidence]);
+  void put(int index, double x, double y, [double confidence = 0.9]) => points.setAll(index * n, [x, y, -20, confidence]);
   put(PoseLandmarkIndex.leftShoulder, 400, 600);
   put(PoseLandmarkIndex.rightShoulder, 320, 600);
   put(PoseLandmarkIndex.leftElbow, 430, 550);
@@ -51,6 +52,7 @@ void main() {
       expect((pose.left.shoulder.x, pose.left.wrist.x), (400, 460));
       expect((pose.right.shoulder.x, pose.right.wrist.x), (320, 260));
       expect(pose.left.wrist.confidence, closeTo(0.9, 1e-9));
+      expect(pose.left.wrist.z, -20);
     });
 
     test('a pose convertida passa pela regra do gesto', () {

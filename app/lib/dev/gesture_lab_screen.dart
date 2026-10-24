@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/camera/clippo_camera.dart';
+import 'package:clippo/core/camera/pose_frame.dart';
 import 'package:clippo/core/gesture/body_pose.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/gesture/gesture_rule.dart';
@@ -27,12 +29,15 @@ class GestureLabScreen extends StatefulWidget {
 enum _CameraState { checking, needsPermission, starting, running, failed }
 
 class _GestureLabScreenState extends State<GestureLabScreen> {
-  final _pipeline = GesturePipeline();
-  StreamSubscription<GestureObservation>? _subscription;
+  // Trocado inteiro quando um limite muda (ver _setThresholds). Por isso a escuta chama
+  // _pipeline.observe a cada quadro, em vez de usar _pipeline.watch, que ficaria presa ao antigo.
+  var _pipeline = GesturePipeline();
+  StreamSubscription<PoseFrame>? _subscription;
 
   _CameraState _state = _CameraState.checking;
   String? _error;
   bool _accurate = false;
+  bool _showLimits = false;
 
   GestureObservation? _last;
   PoseMeasurement? _measurement;
@@ -95,7 +100,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     });
     await _subscription?.cancel();
     _pipeline.reset();
-    _subscription = _pipeline.watch(widget.camera.poses).listen(_onObservation, onError: _fail);
+    _subscription = widget.camera.poses.listen((frame) => _onObservation(_pipeline.observe(frame)), onError: _fail);
     try {
       await widget.camera.start(accurate: _accurate);
       if (mounted) setState(() => _state = _CameraState.running);
@@ -114,6 +119,18 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     }
     _resetStats();
     await _start();
+  }
+
+  /// Uma regra nova com o mesmo disparo: a contagem e a espera continuam de onde estavam.
+  void _setThresholds(GestureThresholds thresholds) {
+    setState(() => _pipeline = GesturePipeline(rule: GestureRule(thresholds), trigger: _pipeline.trigger));
+  }
+
+  /// No log, só quando o dedo solta o controle (e não a cada passo do arrasto).
+  void _logThresholds() {
+    final t = _pipeline.rule.thresholds;
+    debugPrint('LAB limites: braço ${t.minArmAngle}–${t.maxArmAngle}° · cotovelo ≥ ${t.minElbowAngle}° · '
+        'ombros ≥ ${t.minShoulderSpan} · confiança ≥ ${t.minConfidence}');
   }
 
   void _resetStats() {
@@ -137,10 +154,12 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
 
     // No log (flutter run / adb logcat), só quando algo muda: para quem acompanha pelo computador.
     if (observation.verdict.check != _last?.verdict.check) {
-      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: ${_verdictLabel(observation.verdict)}');
+      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: ${_verdictLabel(observation.verdict)} · '
+          '${facingText(observation.frame)}');
     }
     if (observation.triggered) {
-      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1}');
+      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1} · '
+          '${facingText(observation.frame)}');
       _triggers++;
       _showTrigger = true;
       _triggerTimer?.cancel();
@@ -235,9 +254,14 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
             ),
           ),
         ),
+        // No topo e menor: o \O/ gigante no meio cobria o esqueleto justo depois do disparo.
         if (_showTrigger)
-          Center(
-            child: Text('\\O/', style: ClippoText.heroMark.copyWith(color: ClippoBrand.peach)),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: ClippoSpace.section),
+              child: Text('\\O/', style: ClippoText.displayL.copyWith(color: ClippoBrand.peach)),
+            ),
           ),
         Align(
           alignment: Alignment.bottomCenter,
@@ -260,6 +284,11 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   measurementText(_measurement, _pipeline.rule.thresholds),
                   style: ClippoText.body.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
                 ),
+                if (last != null)
+                  Text(
+                    facingText(last.frame),
+                    style: ClippoText.label.copyWith(color: ClippoBrand.peach, fontFeatures: ClippoText.tabular),
+                  ),
                 const SizedBox(height: ClippoSpace.spaceS),
                 Text(
                   '$_framesPerSecond quadros/s · ML Kit ${last?.frame.analysisTime.inMilliseconds ?? '–'} ms · '
@@ -270,9 +299,19 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                     fontFeatures: ClippoText.tabular,
                   ),
                 ),
-                ClippoTextButton(
-                  label: _accurate ? 'Usar modelo base' : 'Usar modelo accurate',
-                  onPressed: _toggleModel,
+                if (_showLimits) _LimitSliders(thresholds: _pipeline.rule.thresholds, onChanged: _setThresholds, onChangeEnd: _logThresholds),
+                Wrap(
+                  spacing: ClippoSpace.gutter,
+                  children: [
+                    ClippoTextButton(
+                      label: _accurate ? 'Usar modelo base' : 'Usar modelo accurate',
+                      onPressed: _toggleModel,
+                    ),
+                    ClippoTextButton(
+                      label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
+                      onPressed: () => setState(() => _showLimits = !_showLimits),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -313,4 +352,82 @@ String measurementText(PoseMeasurement? m, GestureThresholds limits) {
   if (m == null) return 'Sem medidas\n$limitsLine';
   return '${arm('Esq.:', m.left)}\n${arm('Dir.:', m.right)}\n'
       'Ombros: ${decimal(m.shoulderSpan)} braços\n$limitsLine';
+}
+
+/// Um controle deslizante para cada limite da regra. Mexer muda a regra na hora; soltar
+/// escreve os valores no log, para anotar o que funcionou.
+class _LimitSliders extends StatelessWidget {
+  const _LimitSliders({required this.thresholds, required this.onChanged, required this.onChangeEnd});
+
+  final GestureThresholds thresholds;
+  final ValueChanged<GestureThresholds> onChanged;
+  final VoidCallback onChangeEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = thresholds;
+    String deg(double v) => '${v.round()}°';
+    String decimal(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+    return Column(
+      children: [
+        _slider('Braço mínimo', t.minArmAngle, 0, 45, 45, deg, (v) => onChanged(t.copyWith(minArmAngle: v))),
+        _slider('Braço máximo', t.maxArmAngle, 45, 90, 45, deg, (v) => onChanged(t.copyWith(maxArmAngle: v))),
+        _slider('Cotovelo mínimo', t.minElbowAngle, 90, 180, 18, deg, (v) => onChanged(t.copyWith(minElbowAngle: v))),
+        _slider('Ombros mínimo', t.minShoulderSpan, 0, 1.5, 15, decimal, (v) => onChanged(t.copyWith(minShoulderSpan: v))),
+        _slider('Confiança mínima', t.minConfidence, 0, 1, 20, decimal, (v) => onChanged(t.copyWith(minConfidence: v))),
+        ClippoTextButton(label: 'Voltar aos valores padrão', onPressed: () {
+          onChanged(const GestureThresholds());
+          onChangeEnd();
+        }),
+      ],
+    );
+  }
+
+  /// [divisions] faz o controle andar em passos (1° no braço, 5° no cotovelo, 0,1 nos ombros,
+  /// 0,05 na confiança), para os valores anotados serem redondos.
+  Widget _slider(String label, double value, double min, double max, int divisions, String Function(double) format,
+      ValueChanged<double> onChanged) {
+    return Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text('$label: ${format(value)}',
+              style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular)),
+        ),
+        Expanded(
+          flex: 3,
+          child: Slider(
+            value: value.clamp(min, max),
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onChanged,
+            onChangeEnd: (_) => onChangeEnd(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Pistas de "de frente × de costas", para investigar o disparo com a pessoa de costas.
+/// Nada disto entra na regra ainda: é para ver, em vídeo e no log, qual pista separa os dois casos.
+/// - Ordem dos ombros: com a câmera traseira e a pessoa de frente, o ombro ESQUERDO dela aparece
+///   à DIREITA da imagem. De costas, inverte — se o modelo souber qual ombro é qual.
+/// - Profundidade do nariz: z do nariz menos a média do z dos ombros, em "distâncias entre
+///   ombros". Negativo = nariz mais perto da câmera que os ombros (de frente).
+/// - Confiança do nariz e das orelhas.
+@visibleForTesting
+String facingText(PoseFrame frame) {
+  final p = frame.landmarks;
+  if (p == null) return 'Frente × costas: –';
+  final ls = p[PoseLandmarkIndex.leftShoulder], rs = p[PoseLandmarkIndex.rightShoulder];
+  final nose = p[PoseLandmarkIndex.nose];
+  String decimal(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+  final order = ls.x > rs.x ? 'ombro esq. à direita (frente?)' : 'ombro esq. à esquerda (costas?)';
+  final shoulderDistance = math.sqrt(math.pow(ls.x - rs.x, 2) + math.pow(ls.y - rs.y, 2));
+  final noseDepth = shoulderDistance == 0 ? 0.0 : (nose.z - (ls.z + rs.z) / 2) / shoulderDistance;
+  return 'Frente × costas: $order · nariz z ${decimal(noseDepth)} · '
+      'confiança nariz ${decimal(nose.confidence)}, orelhas ${decimal(p[PoseLandmarkIndex.leftEar].confidence)}/'
+      '${decimal(p[PoseLandmarkIndex.rightEar].confidence)}';
 }

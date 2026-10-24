@@ -52,6 +52,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         const val PREVIEW_VIEW_TYPE = "clippo/camera-preview"
         private const val PERMISSION_REQUEST = 4201 // qualquer número, só para reconhecer a resposta
         private const val LANDMARK_COUNT = 33
+        // x, y, z (profundidade) e confiança. Mudou? Mude PoseLandmarkIndex.valuesPerPoint no Dart.
+        private const val VALUES_PER_LANDMARK = 4
     }
 
     // 16:9 nos dois fluxos: assim a imagem na tela e a imagem analisada mostram o mesmo
@@ -202,12 +204,15 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
         detector.process(InputImage.fromMediaImage(mediaImage, rotation))
             .addOnSuccessListener { pose ->
-                val points = DoubleArray(LANDMARK_COUNT * 3)
+                val points = DoubleArray(LANDMARK_COUNT * VALUES_PER_LANDMARK)
                 for (landmark in pose.allPoseLandmarks) {
-                    val i = landmark.landmarkType * 3
+                    val i = landmark.landmarkType * VALUES_PER_LANDMARK
                     points[i] = landmark.position.x.toDouble()
                     points[i + 1] = landmark.position.y.toDouble()
-                    points[i + 2] = landmark.inFrameLikelihood.toDouble()
+                    // z: profundidade estimada, com o quadril como zero; menor = mais perto da câmera.
+                    // Está aqui para descobrir se a pessoa está de frente ou de costas.
+                    points[i + 2] = landmark.position3D.z.toDouble()
+                    points[i + 3] = landmark.inFrameLikelihood.toDouble()
                 }
                 sendPose(
                     timestampNanos, width, height,
@@ -226,7 +231,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
      * - "t": hora do quadro em microssegundos, no relógio do sensor;
      * - "width", "height": tamanho da imagem já em pé, no mesmo referencial dos pontos;
      * - "analysisMs": quanto o ML Kit levou neste quadro;
-     * - "points": null se não achou ninguém; senão 33 × (x, y, confiança), na ordem dos tipos
+     * - "points": null se não achou ninguém; senão 33 × (x, y, z, confiança), na ordem dos tipos
      *   de PoseLandmark (ombros 11 e 12, cotovelos 13 e 14, pulsos 15 e 16).
      */
     private fun sendPose(timestampNanos: Long, width: Int, height: Int, analysisMs: Long, points: DoubleArray?) {
