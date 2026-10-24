@@ -68,4 +68,11 @@ abstract final class PoseLandmarkIndex {
   static const int rightElbow = 14;
   static const int leftWrist = 15;
   static const int rightWrist = 16;
+  // Tronco e pernas: só o laboratório usa, para desenhar o esqueleto.
+  static const int leftHip = 23;
+  static const int rightHip = 24;
+  static const int leftKnee = 25;
+  static const int rightKnee = 26;
+  static const int leftAnkle = 27;
+  static const int rightAnkle = 28;
 }

@@ -9,6 +9,7 @@ import 'package:clippo/core/gesture/gesture_rule.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
+import 'package:clippo/dev/pose_skeleton_painter.dart';
 
 /// FERRAMENTA DO TIME (não é tela do produto): mostra a câmera e o que a detecção do gesto
 /// conclui em cada quadro, para testar e calibrar a regra (docs/produto.md › Critérios de aceite).
@@ -34,6 +35,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   bool _accurate = false;
 
   GestureObservation? _last;
+  PoseMeasurement? _measurement;
   int _triggers = 0;
   bool _showTrigger = false;
   Timer? _triggerTimer;
@@ -116,6 +118,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
 
   void _resetStats() {
     _last = null;
+    _measurement = null;
     _triggers = 0;
     _framesInWindow = 0;
     _windowStart = null;
@@ -145,7 +148,12 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
         if (mounted) setState(() => _showTrigger = false);
       });
     }
-    setState(() => _last = observation);
+    final pose = observation.frame.bodyPose;
+    setState(() {
+      _last = observation;
+      // As medidas vêm da MESMA regra que decidiu: os números da tela são os que valeram.
+      _measurement = pose == null ? null : _pipeline.rule.measure(pose);
+    });
   }
 
   void _fail(Object error) {
@@ -205,11 +213,26 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 9:16 em pé: a mesma proporção da análise (16:9 deitado), sem cortar a imagem.
-        const Center(
+        // 9:16 em pé: a mesma proporção da análise (16:9 deitado), sem cortar a imagem. O
+        // esqueleto fica na mesma caixa, então os pontos da análise caem em cima da imagem.
+        Center(
           child: AspectRatio(
             aspectRatio: 9 / 16,
-            child: AndroidView(viewType: ClippoCamera.previewViewType),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                const AndroidView(viewType: ClippoCamera.previewViewType),
+                if (last != null)
+                  CustomPaint(
+                    painter: PoseSkeletonPainter(
+                      frame: last.frame,
+                      verdict: last.verdict,
+                      minConfidence: _pipeline.rule.thresholds.minConfidence,
+                      colors: ClippoColors.of(context),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         if (_showTrigger)
@@ -231,6 +254,11 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   style: ClippoText.titleS.copyWith(
                     color: last?.verdict.isGesture ?? false ? ClippoBrand.peach : ClippoBrand.onWine,
                   ),
+                ),
+                const SizedBox(height: ClippoSpace.spaceS),
+                Text(
+                  measurementText(_measurement, _pipeline.rule.thresholds),
+                  style: ClippoText.body.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
                 ),
                 const SizedBox(height: ClippoSpace.spaceS),
                 Text(
@@ -270,4 +298,19 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       GestureCheck.armBent => 'Braço dobrado$side',
     };
   }
+}
+
+/// As medidas da regra lado a lado com os limites, para ver quanto faltou.
+/// "Esq." e "Dir." são os lados da PESSOA, como na regra.
+@visibleForTesting
+String measurementText(PoseMeasurement? m, GestureThresholds limits) {
+  String deg(double v) => '${v.round()}°';
+  String decimal(double v) => v.toStringAsFixed(1).replaceAll('.', ',');
+  String arm(String label, ArmMeasurement a) =>
+      '$label braço ${a.crossed ? 'cruzado' : deg(a.armAngle)} · cotovelo ${deg(a.elbowAngle)}';
+  final limitsLine = 'Limites: braço ${deg(limits.minArmAngle)}–${deg(limits.maxArmAngle)} · '
+      'cotovelo ≥ ${deg(limits.minElbowAngle)} · ombros ≥ ${decimal(limits.minShoulderSpan)}';
+  if (m == null) return 'Sem medidas\n$limitsLine';
+  return '${arm('Esq.:', m.left)}\n${arm('Dir.:', m.right)}\n'
+      'Ombros: ${decimal(m.shoulderSpan)} braços\n$limitsLine';
 }
