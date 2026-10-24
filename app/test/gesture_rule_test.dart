@@ -122,6 +122,42 @@ void main() {
     });
   });
 
+  group('mede', () {
+    test('o ângulo de cada braço e o cotovelo esticado', () {
+      final m = rule.measure(_pose(left: 35, right: 50));
+      expect(m.left.armAngle, closeTo(35, 1e-9));
+      expect(m.right.armAngle, closeTo(50, 1e-9));
+      expect(m.left.elbowAngle, closeTo(180, 1e-6));
+      expect(m.left.crossed, isFalse);
+    });
+
+    test('o cotovelo dobrado e o ângulo da linha ombro → pulso', () {
+      // Braço a 60° e antebraço a 15° (mesmo comprimento): a linha ombro → pulso fica no meio.
+      final m = rule.measure(_pose(left: 60, leftBend: -45));
+      expect(m.left.elbowAngle, closeTo(135, 1e-9));
+      expect(m.left.armAngle, closeTo(37.5, 1e-9));
+    });
+
+    test('braço cruzado e braço abaixo do ombro', () {
+      expect(rule.measure(_pose(left: -40)).left.crossed, isTrue);
+      expect(rule.measure(_pose(right: 170)).right.armAngle, closeTo(170, 1e-9));
+    });
+
+    test('a distância entre os ombros em "braços"', () {
+      // Ombros em x = 120 e 80 (40 de distância), braço de 30.
+      expect(rule.measure(_pose()).shoulderSpan, closeTo(40 / 30, 1e-9));
+      const p = BodyPoint(50, 50);
+      const arm = Arm(shoulder: p, elbow: p, wrist: p);
+      expect(rule.measure(const BodyPose(left: arm, right: arm)).shoulderSpan, 0);
+    });
+
+    test('mede mesmo quando a regra recusa por confiança', () {
+      final pose = BodyPose(left: _arm(120, angle: 35, wristConfidence: 0.1), right: _arm(80, angle: 35));
+      expect(rule.evaluate(pose).check, GestureCheck.lowConfidence);
+      expect(rule.measure(pose).left.armAngle, closeTo(35, 1e-9));
+    });
+  });
+
   test('usa os limites recebidos', () {
     const strict = GestureRule(GestureThresholds(minArmAngle: 40));
     expect(strict.evaluate(_pose()).check, GestureCheck.armNotDiagonal);

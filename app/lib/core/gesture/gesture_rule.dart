@@ -77,6 +77,36 @@ class GestureVerdict {
   bool get isGesture => check == GestureCheck.matched;
 }
 
+/// As medidas de um braço que a regra compara com os limites.
+class ArmMeasurement {
+  const ArmMeasurement({required this.armAngle, required this.elbowAngle, required this.crossed});
+
+  /// Inclinação da linha ombro → pulso a partir da vertical, em graus (ver
+  /// [GestureThresholds.minArmAngle]): 0° reto para cima, 90° na horizontal para fora,
+  /// negativo para dentro, acima de 90° abaixo do ombro.
+  final double armAngle;
+
+  /// Ângulo no cotovelo, em graus: 180° é o braço esticado.
+  final double elbowAngle;
+
+  /// O pulso passou para o outro lado do corpo.
+  final bool crossed;
+}
+
+/// Todas as medidas de uma pose, calculadas mesmo quando ela não passa na regra: é o que o
+/// laboratório mostra para entender POR QUE um gesto não passou.
+class PoseMeasurement {
+  const PoseMeasurement({required this.shoulderSpan, required this.left, required this.right});
+
+  /// Distância entre os ombros, em "braços" (ver [GestureThresholds.minShoulderSpan]).
+  final double shoulderSpan;
+
+  final ArmMeasurement left;
+  final ArmMeasurement right;
+
+  ArmMeasurement arm(BodySide side) => side == BodySide.left ? left : right;
+}
+
 class GestureRule {
   const GestureRule([this.thresholds = const GestureThresholds()]);
 
@@ -90,43 +120,59 @@ class GestureRule {
       return const GestureVerdict(GestureCheck.lowConfidence);
     }
 
-    // Comparar com o tamanho do próprio corpo, e não com pixels, faz a regra valer igual
-    // com a pessoa a 2 m ou a 8 m da câmera.
-    final upperArm = (_distance(pose.left.shoulder, pose.left.elbow) + _distance(pose.right.shoulder, pose.right.elbow)) / 2;
-    final shoulderSpan = _distance(pose.left.shoulder, pose.right.shoulder);
-    if (upperArm == 0 || shoulderSpan < thresholds.minShoulderSpan * upperArm) {
+    final measurement = measure(pose);
+    if (measurement.shoulderSpan < thresholds.minShoulderSpan) {
       return const GestureVerdict(GestureCheck.notFacingCamera);
     }
 
-    // "Para fora" é medido a partir do meio dos ombros. Assim não importa se a imagem está
-    // espelhada (câmera frontal) nem de que lado da imagem fica o braço esquerdo da pessoa.
-    final centerX = (pose.left.shoulder.x + pose.right.shoulder.x) / 2;
     for (final side in BodySide.values) {
-      final check = _checkArm(pose.arm(side), centerX);
+      final check = _checkArm(measurement.arm(side));
       if (check != GestureCheck.matched) return GestureVerdict(check, side: side);
     }
     return const GestureVerdict(GestureCheck.matched);
   }
 
-  GestureCheck _checkArm(Arm arm, double centerX) {
+  GestureCheck _checkArm(ArmMeasurement arm) {
+    if (arm.crossed) return GestureCheck.armCrossed;
+    if (arm.armAngle < thresholds.minArmAngle || arm.armAngle > thresholds.maxArmAngle) {
+      return GestureCheck.armNotDiagonal;
+    }
+    if (arm.elbowAngle < thresholds.minElbowAngle) return GestureCheck.armBent;
+    return GestureCheck.matched;
+  }
+
+  /// A geometria da pose, sem comparar com nenhum limite. [evaluate] decide a partir daqui.
+  PoseMeasurement measure(BodyPose pose) {
+    // Comparar com o tamanho do próprio corpo, e não com pixels, faz a regra valer igual
+    // com a pessoa a 2 m ou a 8 m da câmera.
+    final upperArm = (_distance(pose.left.shoulder, pose.left.elbow) + _distance(pose.right.shoulder, pose.right.elbow)) / 2;
+    final shoulderSpan = upperArm == 0 ? 0.0 : _distance(pose.left.shoulder, pose.right.shoulder) / upperArm;
+
+    // "Para fora" é medido a partir do meio dos ombros. Assim não importa se a imagem está
+    // espelhada (câmera frontal) nem de que lado da imagem fica o braço esquerdo da pessoa.
+    final centerX = (pose.left.shoulder.x + pose.right.shoulder.x) / 2;
+    return PoseMeasurement(
+      shoulderSpan: shoulderSpan,
+      left: _measureArm(pose.left, centerX),
+      right: _measureArm(pose.right, centerX),
+    );
+  }
+
+  ArmMeasurement _measureArm(Arm arm, double centerX) {
     // +1 se este ombro está à direita do centro da imagem, -1 se está à esquerda.
     final outwardSign = (arm.shoulder.x - centerX).sign;
-
-    if ((arm.wrist.x - centerX) * outwardSign <= 0) return GestureCheck.armCrossed;
 
     // Quanto o pulso foi para fora e para cima a partir do ombro. O y é invertido porque na
     // imagem ele cresce para baixo.
     final outward = (arm.wrist.x - arm.shoulder.x) * outwardSign;
     final up = arm.shoulder.y - arm.wrist.y;
-    // atan2(para fora, para cima) dá o ângulo a partir da vertical: 0° reto para cima, 90° na
-    // horizontal, negativo se o pulso foi para dentro e acima de 90° se está abaixo do ombro.
-    final armAngle = _degrees(math.atan2(outward, up));
-    if (armAngle < thresholds.minArmAngle || armAngle > thresholds.maxArmAngle) {
-      return GestureCheck.armNotDiagonal;
-    }
-
-    if (_elbowAngle(arm) < thresholds.minElbowAngle) return GestureCheck.armBent;
-    return GestureCheck.matched;
+    return ArmMeasurement(
+      // atan2(para fora, para cima) dá o ângulo a partir da vertical: 0° reto para cima, 90° na
+      // horizontal, negativo se o pulso foi para dentro e acima de 90° se está abaixo do ombro.
+      armAngle: _degrees(math.atan2(outward, up)),
+      elbowAngle: _elbowAngle(arm),
+      crossed: (arm.wrist.x - centerX) * outwardSign <= 0,
+    );
   }
 
   /// Ângulo no cotovelo entre o segmento até o ombro e o segmento até o pulso.
