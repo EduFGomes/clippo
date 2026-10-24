@@ -61,7 +61,7 @@ Escuro, esportivo e vibrante — na linha de Strava e Nike. Referências de expe
 
 O projeto está pronto quando:
 
-- O gesto é reconhecido em **≥ 90 % das tentativas a até 8 m** da câmera.
+- O gesto é reconhecido em **≥ 90 % das tentativas a até 8 m** da câmera (como medir: [`app/lib/core/gesture/README.md`](../app/lib/core/gesture/README.md#roteiro-de-medição-critério-de-aceite--90--a-até-8-m)).
 - O highlight é salvo em **até 3 s** depois do gesto.
 - O highlight fica **visível para todos os participantes** da sessão.
 - A **demo ao vivo** roda do começo ao fim sem falha.

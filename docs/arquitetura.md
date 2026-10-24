@@ -34,6 +34,8 @@ Celular de quem grava                      Firebase (us-east1)                  
 | D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/users/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
 | D11 | **Navegação de nível superior em roda** (protótipo v2), e não em barra | Combina com "o lance é o herói": nada de barra fixa ocupando o rodapé em cima do vídeo; o gesto de segurar-e-arrastar chega em qualquer seção com uma mão só | Menos convencional que uma barra; exige explicar na primeira vez. 🟡 Decidido pelo back-end em 20/10/2026 — **falta confirmar com o grupo** |
 | D12 | **`flutter_svg`** para desenhar os ícones da marca | Os 19 SVGs de `app/assets/icons/` já existiam sem um jeito de usar; redesenhá-los em código duplicaria o traço | Uma dependência a mais (~200 KB). Os ícones dos controles continuam desenhados em código no `ClippoIcon` |
+| D13 | **Câmera e pose em código nativo (Kotlin: CameraX + ML Kit Pose); regra do gesto em Dart** (`app/android/.../camera/` e `app/lib/core/gesture/`) | O Android entrega a câmera a um cliente por vez: o CameraX abre uma vez e alimenta a imagem na tela, a análise de pose e o buffer de 30 s. O ML Kit roda no Kotlin, sem copiar cada quadro para o Dart; o Dart recebe só os 33 pontos do corpo (~25 vezes por segundo). A regra e o disparo em Dart são testáveis sem câmera | Código Kotlin sem teste automático (só no celular); só Android (iOS precisaria do equivalente); o ML Kit Pose só tem versões beta desde 2020 (usamos a 18.0.0-beta5). 🟡 Decidido pela visão computacional em 23/10/2026 — **falta confirmar com o grupo** |
+| D14 | **Gesto só vale de frente para a câmera**, conferido pela profundidade (z) do nariz em relação aos ombros | O produto pede o gesto "olhando para a câmera" para não disparar em comemorações. Em vídeo, o Y de costas disparava; a confiança do ML Kit não serve (diz se o ponto está na imagem, não se está visível) e a ordem dos ombros erra. O nariz separou bem: de frente −0,8 a −2,1, de costas +1,2 a +2,1 | Depende de uma profundidade estimada a partir de uma imagem só; ainda não medido a 8 m. 🟡 Decidido pela visão computacional em 24/10/2026 — **falta confirmar com o grupo** |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
 
@@ -90,6 +92,8 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 | Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
 | Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
+| Modelo do ML Kit: `base` ou `accurate`. Os dois estão no app (~14 MB juntos) até a medição a 8 m; o que perder sai | Visão computacional |
+| Limites da regra do gesto (ângulos, nariz, tempo mínimo, espera da R4): valores atuais e como medir em [`app/lib/core/gesture/README.md`](../app/lib/core/gesture/README.md) | Visão computacional + grupo |
 
 As decisões em aberto de produto estão em [produto.md](produto.md#5-decisões-em-aberto--de-produto).
 
