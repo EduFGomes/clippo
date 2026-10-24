@@ -130,7 +130,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   void _logThresholds() {
     final t = _pipeline.rule.thresholds;
     debugPrint('LAB limites: braço ${t.minArmAngle}–${t.maxArmAngle}° · cotovelo ≥ ${t.minElbowAngle}° · '
-        'ombros ≥ ${t.minShoulderSpan} · confiança ≥ ${t.minConfidence}');
+        'ombros ≥ ${t.minShoulderSpan} · confiança ≥ ${t.minConfidence} · nariz ≤ ${t.maxNoseDepth}');
   }
 
   void _resetStats() {
@@ -332,6 +332,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       GestureCheck.noPerson => 'Ninguém no quadro',
       GestureCheck.lowConfidence => 'Pontos com pouca confiança',
       GestureCheck.notFacingCamera => 'Pessoa de lado',
+      GestureCheck.facingAway => 'De costas para a câmera',
       GestureCheck.armCrossed => 'Braço cruzado$side',
       GestureCheck.armNotDiagonal => 'Braço fora da diagonal$side',
       GestureCheck.armBent => 'Braço dobrado$side',
@@ -348,10 +349,12 @@ String measurementText(PoseMeasurement? m, GestureThresholds limits) {
   String arm(String label, ArmMeasurement a) =>
       '$label braço ${a.crossed ? 'cruzado' : deg(a.armAngle)} · cotovelo ${deg(a.elbowAngle)}';
   final limitsLine = 'Limites: braço ${deg(limits.minArmAngle)}–${deg(limits.maxArmAngle)} · '
-      'cotovelo ≥ ${deg(limits.minElbowAngle)} · ombros ≥ ${decimal(limits.minShoulderSpan)}';
+      'cotovelo ≥ ${deg(limits.minElbowAngle)} · ombros ≥ ${decimal(limits.minShoulderSpan)} · '
+      'nariz ≤ ${decimal(limits.maxNoseDepth)}';
   if (m == null) return 'Sem medidas\n$limitsLine';
   return '${arm('Esq.:', m.left)}\n${arm('Dir.:', m.right)}\n'
-      'Ombros: ${decimal(m.shoulderSpan)} braços\n$limitsLine';
+      'Ombros: ${decimal(m.shoulderSpan)} braços · nariz ${m.noseDepth == null ? '–' : decimal(m.noseDepth!)}\n'
+      '$limitsLine';
 }
 
 /// Um controle deslizante para cada limite da regra. Mexer muda a regra na hora; soltar
@@ -375,6 +378,7 @@ class _LimitSliders extends StatelessWidget {
         _slider('Cotovelo mínimo', t.minElbowAngle, 90, 180, 18, deg, (v) => onChanged(t.copyWith(minElbowAngle: v))),
         _slider('Ombros mínimo', t.minShoulderSpan, 0, 1.5, 15, decimal, (v) => onChanged(t.copyWith(minShoulderSpan: v))),
         _slider('Confiança mínima', t.minConfidence, 0, 1, 20, decimal, (v) => onChanged(t.copyWith(minConfidence: v))),
+        _slider('Nariz máximo', t.maxNoseDepth, -3, 1, 40, decimal, (v) => onChanged(t.copyWith(maxNoseDepth: v))),
         ClippoTextButton(label: 'Voltar aos valores padrão', onPressed: () {
           onChanged(const GestureThresholds());
           onChangeEnd();
@@ -384,7 +388,7 @@ class _LimitSliders extends StatelessWidget {
   }
 
   /// [divisions] faz o controle andar em passos (1° no braço, 5° no cotovelo, 0,1 nos ombros,
-  /// 0,05 na confiança), para os valores anotados serem redondos.
+  /// 0,05 na confiança, 0,1 no nariz), para os valores anotados serem redondos.
   Widget _slider(String label, double value, double min, double max, int divisions, String Function(double) format,
       ValueChanged<double> onChanged) {
     return Row(

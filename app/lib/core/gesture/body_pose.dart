@@ -16,8 +16,8 @@ class BodyPoint {
   final double y;
 
   /// Profundidade estimada pelo modelo, na mesma escala de x, com o quadril como zero: menor é
-  /// mais perto da câmera. Aproximada (o modelo adivinha a partir de uma imagem só). A regra do
-  /// gesto ainda não usa; o laboratório mostra para investigar "de frente × de costas".
+  /// mais perto da câmera. Aproximada (o modelo adivinha a partir de uma imagem só), mas separa
+  /// bem quem está de frente de quem está de costas: a regra usa a do nariz para isso.
   final double z;
 
   /// De 0 a 1: quanto o modelo acredita no ponto. No ML Kit é o `inFrameLikelihood`: a chance de o
@@ -39,12 +39,17 @@ class Arm {
   final BodyPoint wrist;
 }
 
-/// Uma pessoa num quadro da câmera, reduzida aos dois braços.
+/// Uma pessoa num quadro da câmera, reduzida aos dois braços e ao nariz.
 class BodyPose {
-  const BodyPose({required this.left, required this.right});
+  const BodyPose({required this.left, required this.right, this.nose});
 
   final Arm left;
   final Arm right;
+
+  /// Para saber se a pessoa está de frente ou de costas (pela profundidade, [BodyPoint.z]).
+  /// Opcional: sem ele, a regra não confere "de costas" (os testes que só olham os braços
+  /// montam poses sem nariz). A câmera sempre manda.
+  final BodyPoint? nose;
 
   Arm arm(BodySide side) => side == BodySide.left ? left : right;
 }

@@ -16,9 +16,10 @@ class GestureThresholds {
   const GestureThresholds({
     this.minConfidence = 0.5,
     this.minShoulderSpan = 0.5,
-    this.minArmAngle = 15,
+    this.minArmAngle = 10,
     this.maxArmAngle = 75,
     this.minElbowAngle = 130,
+    this.maxNoseDepth = -0.5,
   });
 
   /// Confiança mínima de cada um dos 6 pontos (ombros, cotovelos e pulsos).
@@ -33,12 +34,20 @@ class GestureThresholds {
   /// 0° é o braço reto para cima, 90° é o braço na horizontal, para fora.
   /// Abaixo do mínimo, os braços estão retos para cima e não em diagonal; acima do máximo, quase
   /// na horizontal (ou para baixo).
+  /// O mínimo era 15° e baixou para 10° depois do teste em vídeo de 24/10/2026: braços retos
+  /// para cima mediram de −4° a 5°, e Ys fechados de verdade, de 13° a 20°.
   final double minArmAngle;
   final double maxArmAngle;
 
   /// Ângulo no cotovelo: 180° é o braço esticado. Abaixo disto o braço está dobrado, como na pose
   /// de "mostrar o muque", que também deixa os pulsos acima dos ombros.
   final double minElbowAngle;
+
+  /// Até onde o nariz pode estar em relação aos ombros, em "distâncias entre ombros" (ver
+  /// [PoseMeasurement.noseDepth]). Negativo = nariz mais perto da câmera que os ombros.
+  /// No teste em vídeo de 24/10/2026, de frente deu de −1,5 a −2,1 e de costas de +1,4 a +2,0;
+  /// −0,5 deixa folga dos dois lados. Acima disto, a pessoa está de costas.
+  final double maxNoseDepth;
 
   /// Uma cópia com alguns valores trocados (o laboratório ajusta um limite por vez).
   GestureThresholds copyWith({
@@ -47,6 +56,7 @@ class GestureThresholds {
     double? minArmAngle,
     double? maxArmAngle,
     double? minElbowAngle,
+    double? maxNoseDepth,
   }) =>
       GestureThresholds(
         minConfidence: minConfidence ?? this.minConfidence,
@@ -54,6 +64,7 @@ class GestureThresholds {
         minArmAngle: minArmAngle ?? this.minArmAngle,
         maxArmAngle: maxArmAngle ?? this.maxArmAngle,
         minElbowAngle: minElbowAngle ?? this.minElbowAngle,
+        maxNoseDepth: maxNoseDepth ?? this.maxNoseDepth,
       );
 }
 
@@ -71,6 +82,10 @@ enum GestureCheck {
 
   /// Os ombros estão quase sobrepostos: a pessoa está de lado.
   notFacingCamera,
+
+  /// O nariz está atrás dos ombros: a pessoa está de costas. O gesto é feito "olhando para a
+  /// câmera" (produto.md › O gesto), justamente para não disparar em comemorações quaisquer.
+  facingAway,
 
   /// O pulso passou para o outro lado do corpo: braços em "X" (descartado em produto.md).
   armCrossed,
@@ -112,13 +127,18 @@ class ArmMeasurement {
 /// Todas as medidas de uma pose, calculadas mesmo quando ela não passa na regra: é o que o
 /// laboratório mostra para entender POR QUE um gesto não passou.
 class PoseMeasurement {
-  const PoseMeasurement({required this.shoulderSpan, required this.left, required this.right});
+  const PoseMeasurement({required this.shoulderSpan, required this.left, required this.right, this.noseDepth});
 
   /// Distância entre os ombros, em "braços" (ver [GestureThresholds.minShoulderSpan]).
   final double shoulderSpan;
 
   final ArmMeasurement left;
   final ArmMeasurement right;
+
+  /// Profundidade do nariz menos a média da dos ombros, dividida pela distância entre os ombros
+  /// na imagem (para valer igual de perto ou de longe). Negativo = nariz à frente dos ombros
+  /// (de frente para a câmera); positivo = atrás (de costas). Null se a pose não tem nariz.
+  final double? noseDepth;
 
   ArmMeasurement arm(BodySide side) => side == BodySide.left ? left : right;
 }
@@ -139,6 +159,12 @@ class GestureRule {
     final measurement = measure(pose);
     if (measurement.shoulderSpan < thresholds.minShoulderSpan) {
       return const GestureVerdict(GestureCheck.notFacingCamera);
+    }
+    // Depois de "de lado": de lado, a profundidade do nariz fica instável (os ombros quase se
+    // sobrepõem e a divisão pela distância entre eles estoura).
+    final noseDepth = measurement.noseDepth;
+    if (noseDepth != null && noseDepth > thresholds.maxNoseDepth) {
+      return const GestureVerdict(GestureCheck.facingAway);
     }
 
     for (final side in BodySide.values) {
@@ -162,7 +188,12 @@ class GestureRule {
     // Comparar com o tamanho do próprio corpo, e não com pixels, faz a regra valer igual
     // com a pessoa a 2 m ou a 8 m da câmera.
     final upperArm = (_distance(pose.left.shoulder, pose.left.elbow) + _distance(pose.right.shoulder, pose.right.elbow)) / 2;
-    final shoulderSpan = upperArm == 0 ? 0.0 : _distance(pose.left.shoulder, pose.right.shoulder) / upperArm;
+    final shoulderDistance = _distance(pose.left.shoulder, pose.right.shoulder);
+    final shoulderSpan = upperArm == 0 ? 0.0 : shoulderDistance / upperArm;
+
+    final nose = pose.nose;
+    final shouldersZ = (pose.left.shoulder.z + pose.right.shoulder.z) / 2;
+    final noseDepth = nose == null || shoulderDistance == 0 ? null : (nose.z - shouldersZ) / shoulderDistance;
 
     // "Para fora" é medido a partir do meio dos ombros. Assim não importa se a imagem está
     // espelhada (câmera frontal) nem de que lado da imagem fica o braço esquerdo da pessoa.
@@ -171,6 +202,7 @@ class GestureRule {
       shoulderSpan: shoulderSpan,
       left: _measureArm(pose.left, centerX),
       right: _measureArm(pose.right, centerX),
+      noseDepth: noseDepth,
     );
   }
 

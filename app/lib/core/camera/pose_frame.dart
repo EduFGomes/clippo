@@ -44,6 +44,7 @@ class PoseFrame {
     return BodyPose(
       left: arm(PoseLandmarkIndex.leftShoulder, PoseLandmarkIndex.leftElbow, PoseLandmarkIndex.leftWrist),
       right: arm(PoseLandmarkIndex.rightShoulder, PoseLandmarkIndex.rightElbow, PoseLandmarkIndex.rightWrist),
+      nose: p[PoseLandmarkIndex.nose],
     );
   }
 
@@ -67,8 +68,9 @@ abstract final class PoseLandmarkIndex {
   /// Quantos números o Kotlin manda por ponto: x, y, z e confiança (VALUES_PER_LANDMARK lá).
   static const int valuesPerPoint = 4;
 
-  // Rosto: só o laboratório usa, para investigar se a pessoa está de frente ou de costas.
+  /// A regra usa a profundidade do nariz para recusar quem está de costas.
   static const int nose = 0;
+  // Orelhas: só o laboratório usa, nas pistas de frente × costas.
   static const int leftEar = 7;
   static const int rightEar = 8;
 

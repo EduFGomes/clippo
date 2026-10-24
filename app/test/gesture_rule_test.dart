@@ -55,7 +55,7 @@ void main() {
     test('braços esticados em diagonal', () => expect(rule.evaluate(_pose()).isGesture, isTrue));
 
     test('perto do limite de cada lado da faixa de ângulo', () {
-      expect(rule.evaluate(_pose(left: 17, right: 73)).isGesture, isTrue);
+      expect(rule.evaluate(_pose(left: 12, right: 73)).isGesture, isTrue);
     });
 
     test('cotovelo levemente dobrado', () {
@@ -89,7 +89,7 @@ void main() {
     test('braços na horizontal', () => expectRejected(_pose(left: 90, right: 90), GestureCheck.armNotDiagonal));
 
     test('logo fora da faixa de ângulo', () {
-      expectRejected(_pose(left: 13), GestureCheck.armNotDiagonal, BodySide.left);
+      expectRejected(_pose(left: 8), GestureCheck.armNotDiagonal, BodySide.left);
       expectRejected(_pose(right: 77), GestureCheck.armNotDiagonal, BodySide.right);
     });
 
@@ -119,6 +119,44 @@ void main() {
       const p = BodyPoint(50, 50);
       const arm = Arm(shoulder: p, elbow: p, wrist: p);
       expectRejected(const BodyPose(left: arm, right: arm), GestureCheck.notFacingCamera);
+    });
+  });
+
+  group('de frente × de costas', () {
+    // Os ombros de _pose estão em z = 0 e a 40 de distância: nariz em z = −40 fica 1 distância
+    // entre ombros À FRENTE deles (de frente); em z = +40, 1 distância ATRÁS (de costas).
+    BodyPose withNose(BodyPose pose, double z) => BodyPose(left: pose.left, right: pose.right, nose: BodyPoint(100, 60, z: z));
+
+    test('de frente, com o nariz à frente dos ombros, passa', () {
+      expect(rule.evaluate(withNose(_pose(), -40)).isGesture, isTrue);
+    });
+
+    test('de costas, com o nariz atrás dos ombros, é recusado', () {
+      expect(rule.evaluate(withNose(_pose(), 40)).check, GestureCheck.facingAway);
+    });
+
+    test('nariz à frente, mas menos que o limite (−0,5), também é recusado', () {
+      expect(rule.evaluate(withNose(_pose(), -10)).check, GestureCheck.facingAway); // −0,25
+    });
+
+    test('de lado vem antes de de costas', () {
+      final side = BodyPose(left: _arm(101, angle: 35), right: _arm(99, angle: 35), nose: const BodyPoint(100, 60, z: 40));
+      expect(rule.evaluate(side).check, GestureCheck.notFacingCamera);
+    });
+
+    test('sem nariz na pose, não confere', () {
+      expect(rule.evaluate(_pose()).isGesture, isTrue);
+      expect(rule.measure(_pose()).noseDepth, isNull);
+    });
+
+    test('mede a profundidade em distâncias entre ombros', () {
+      expect(rule.measure(withNose(_pose(), -40)).noseDepth, closeTo(-1, 1e-9));
+      expect(rule.measure(withNose(_scaled(_pose(), 10), -400)).noseDepth, closeTo(-1, 1e-9));
+    });
+
+    test('usa o limite recebido', () {
+      const lenient = GestureRule(GestureThresholds(maxNoseDepth: 0));
+      expect(lenient.evaluate(withNose(_pose(), -10)).isGesture, isTrue);
     });
   });
 
@@ -159,8 +197,8 @@ void main() {
   });
 
   test('copyWith troca só o que foi pedido', () {
-    final changed = const GestureThresholds().copyWith(minArmAngle: 10);
-    expect(changed.minArmAngle, 10);
+    final changed = const GestureThresholds().copyWith(minArmAngle: 20);
+    expect(changed.minArmAngle, 20);
     expect(changed.maxArmAngle, const GestureThresholds().maxArmAngle);
     expect(changed.minElbowAngle, const GestureThresholds().minElbowAngle);
   });

@@ -26,6 +26,8 @@ Map<String, Object?> _frameMap({bool withPerson = true, double wristConfidence =
   put(PoseLandmarkIndex.rightElbow, 290, 550);
   put(PoseLandmarkIndex.leftWrist, 460, 500, wristConfidence);
   put(PoseLandmarkIndex.rightWrist, 260, 500);
+  // Nariz à frente dos ombros (z menor que os −20 deles): a pessoa está de frente.
+  points.setAll(PoseLandmarkIndex.nose * n, [360, 500, -100, 0.9]);
   return {'t': 1234567, 'width': 720, 'height': 1280, 'analysisMs': 42, 'points': withPerson ? points : null};
 }
 
