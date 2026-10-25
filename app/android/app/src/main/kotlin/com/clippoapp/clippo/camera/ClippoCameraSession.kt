@@ -2,6 +2,10 @@ package com.clippoapp.clippo.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.media.MediaMuxer
 import android.os.SystemClock
 import android.util.Size
 import androidx.annotation.OptIn
@@ -28,15 +32,20 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformViewRegistry
+import java.io.File
+import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * O ÚNICO lugar do app que abre a câmera (contrato com o buffer em README.md, nesta pasta).
  *
- * Abre a câmera traseira com o CameraX e liga dois fluxos:
+ * Abre a câmera traseira com o CameraX e liga os fluxos:
  * - Preview: a imagem na tela, desenhada por um PreviewView (ver CameraPreviewFactory);
- * - ImageAnalysis: quadros para o ML Kit, que devolve os 33 pontos do corpo.
+ * - ImageAnalysis: quadros para o ML Kit, que devolve os 33 pontos do corpo;
+ * - Buffer (MediaCodec): terceiro fluxo para gravação em segundo plano dos últimos 30s.
  * Os pontos vão para o Dart, onde ficam a regra do gesto e o disparo (lib/core/gesture/).
  *
  * Ponte com o Dart:
@@ -68,6 +77,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     private val preview = Preview.Builder().setResolutionSelector(resolution).build()
 
+    // 🔜 Terceiro fluxo do CameraX para alimentare o buffer de vídeo via MediaCodec surface
+    private val bufferPreview = Preview.Builder().setResolutionSelector(resolution).build()
+
     private val analysis = ImageAnalysis.Builder()
         .setResolutionSelector(resolution)
         // Só o quadro mais recente: se o ML Kit atrasar, os quadros velhos são jogados fora em
@@ -82,6 +94,19 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private var detector: PoseDetector? = null
     private var poseSink: EventChannel.EventSink? = null
     private var pendingPermission: MethodChannel.Result? = null
+
+    // 🔜 Estruturas de controle do Buffer (MediaCodec + Fila Circular)
+    private var mediaCodec: MediaCodec? = null
+    private var inputSurface: android.view.Surface? = null
+    private var encoderThread: Thread? = null
+    private val isEncoding = AtomicBoolean(false)
+    private val sampleQueue = ConcurrentLinkedDeque<EncodedSample>()
+    private var outputFormat: MediaFormat? = null
+
+    data class EncodedSample(
+        val buffer: ByteBuffer,
+        val info: MediaCodec.BufferInfo
+    )
 
     fun attach(messenger: BinaryMessenger, platformViews: PlatformViewRegistry) {
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler(this)
@@ -146,6 +171,13 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         )
         analysis.setAnalyzer(analysisExecutor, ::analyze)
 
+        // 🔜 Inicializa o MediaCodec Encoder para o buffer circular de vídeo
+        try {
+            setupEncoder()
+        } catch (e: Exception) {
+            return result.error("encoder-init-failed", "Falha ao iniciar o encoder do buffer: ${e.message}", null)
+        }
+
         // Pegar o CameraX é assíncrono: a resposta para o Dart só sai quando a câmera abriu.
         val providerFuture = ProcessCameraProvider.getInstance(activity)
         providerFuture.addListener({
@@ -156,28 +188,173 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 // Presa ao ciclo de vida da tela: o CameraX desliga a câmera sozinho quando o
                 // app vai para segundo plano e liga de novo quando ele volta.
                 // 🔜 O buffer do Otávio entra aqui como terceiro fluxo (ver README.md).
-                provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
                 result.success(null)
             } catch (e: Exception) {
+                stopEncoder()
                 result.error("camera-unavailable", "Não foi possível abrir a câmera: ${e.message}", null)
             }
         }, ContextCompat.getMainExecutor(activity))
     }
 
+    private fun setupEncoder() {
+        sampleQueue.clear()
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, 3_000_000) // 3 Mbps
+            setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // Keyframe a cada 1 segundo para corte rápido
+        }
+
+        mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).apply {
+            configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            inputSurface = createInputSurface()
+            start()
+        }
+
+        bufferPreview.setSurfaceProvider { request ->
+            val surface = inputSurface
+            if (surface != null) {
+                request.provideSurface(surface, analysisExecutor) { _ ->
+                    // Superfície liberada
+                }
+            }
+        }
+
+        isEncoding.set(true)
+        encoderThread = Thread {
+            val bufferInfo = MediaCodec.BufferInfo()
+            while (isEncoding.get()) {
+                try {
+                    val index = mediaCodec?.dequeueOutputBuffer(bufferInfo, 10000) ?: -1
+                    when {
+                        index >= 0 -> {
+                            val encodedBuffer = mediaCodec?.getOutputBuffer(index)
+                            if (encodedBuffer != null && bufferInfo.size > 0) {
+                                val copiedData = ByteBuffer.allocateDirect(bufferInfo.size)
+                                encodedBuffer.position(bufferInfo.offset)
+                                encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                                copiedData.put(encodedBuffer)
+                                copiedData.flip()
+
+                                val infoCopy = MediaCodec.BufferInfo().apply {
+                                    set(bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
+                                }
+
+                                sampleQueue.add(EncodedSample(copiedData, infoCopy))
+
+                                // Mantém aprox. 35 segundos de histórico na fila circular (1050 quadros a 30fps)
+                                while (sampleQueue.size > 1200) {
+                                    sampleQueue.poll()
+                                }
+                            }
+                            mediaCodec?.releaseOutputBuffer(index, false)
+                        }
+                        index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            outputFormat = mediaCodec?.outputFormat
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Loop de drain seguro contra exceções de ciclo de vida
+                }
+            }
+        }.apply { start() }
+    }
+
+    private fun stopEncoder() {
+        isEncoding.set(false)
+        encoderThread?.join(500)
+        encoderThread = null
+
+        try {
+            mediaCodec?.stop()
+            mediaCodec?.release()
+        } catch (_: Exception) {}
+        mediaCodec = null
+
+        inputSurface?.release()
+        inputSurface = null
+        sampleQueue.clear()
+    }
+
     /**
      * 🔜 BUFFER (Mobile): salvar os ~30 s que terminam em [untilMicros] num MP4 (R1).
-     *
-     * [untilMicros] é o "t" do quadro em que o gesto disparou, no relógio do sensor (o mesmo de
-     * ImageProxy.imageInfo.timestamp / 1000, e o mesmo que carimba os quadros de vídeo).
-     * Responder com result.success(mapOf("path" to caminhoDoMp4, "durationMs" to duracao)) em
-     * até 3 s (R2), sem internet (R8). Erro: result.error("save-failed", mensagem, null).
-     * Contrato completo em README.md, nesta pasta.
-     *
-     * Enquanto o buffer não existe, responde "not-implemented": o Dart já chama este comando
-     * no disparo, então o caminho inteiro (gesto → comando) já pode ser testado.
      */
-    private fun saveHighlight(@Suppress("UNUSED_PARAMETER") untilMicros: Long, result: MethodChannel.Result) {
-        result.error("not-implemented", "O buffer de 30 s ainda não foi feito.", null)
+    private fun saveHighlight(untilMicros: Long, result: MethodChannel.Result) {
+        try {
+            val samples = sampleQueue.toList()
+            val format = outputFormat
+            if (samples.isEmpty() || format == null) {
+                return result.error("save-failed", "Buffer de vídeo ainda não possui quadros suficientes.", null)
+            }
+
+            // Filtra quadros até o exato momento do disparo (untilMicros)
+            val relevantSamples = samples.filter { it.info.presentationTimeUs <= untilMicros }
+            if (relevantSamples.isEmpty()) {
+                return result.error("save-failed", "Nenhum quadro disponível até o momento especificado.", null)
+            }
+
+            // Janela desejada: 30 segundos antes de untilMicros (30.000.000 microssegundos)
+            val targetStartUs = untilMicros - 30_000_000L
+
+            // Encontra o índice inicial garantindo que o corte comece a partir de um Key Frame (I-frame)
+            var startIndex = 0
+            for (i in relevantSamples.indices) {
+                if (relevantSamples[i].info.presentationTimeUs >= targetStartUs) {
+                    var k = i
+                    while (k >= 0) {
+                        if ((relevantSamples[k].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                            startIndex = k
+                            break
+                        }
+                        k--
+                    }
+                    if (k < 0) {
+                        for (j in 0..i) {
+                            if ((relevantSamples[j].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                                startIndex = j
+                                break
+                            }
+                        }
+                    }
+                    break
+                }
+            }
+
+            val slice = relevantSamples.subList(startIndex, relevantSamples.size)
+            if (slice.isEmpty()) {
+                return result.error("save-failed", "Fatia de vídeo vazia.", null)
+            }
+
+            val firstTimestamp = slice.first().info.presentationTimeUs
+            val lastTimestamp = slice.last().info.presentationTimeUs
+            val durationMs = ((lastTimestamp - firstTimestamp) / 1000).coerceAtLeast(0)
+
+            val outputFile = File(activity.cacheDir, "highlight_${System.currentTimeMillis()}.mp4")
+            val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_FORMAT_MPEG_4)
+            val trackIndex = muxer.addTrack(format)
+            muxer.start()
+
+            for (sample in slice) {
+                val relTime = sample.info.presentationTimeUs - firstTimestamp
+                val adjustedInfo = MediaCodec.BufferInfo().apply {
+                    set(0, sample.info.size, relTime.coerceAtLeast(0L), sample.info.flags)
+                }
+                muxer.writeSampleData(sample.buffer, adjustedInfo)
+            }
+
+            muxer.stop()
+            muxer.release()
+
+            result.success(
+                mapOf(
+                    "path" to outputFile.absolutePath,
+                    "durationMs" to durationMs
+                )
+            )
+        } catch (e: Exception) {
+            result.error("save-failed", "Erro ao processar o highlight: ${e.message}", null)
+        }
     }
 
     fun stop() {
@@ -185,6 +362,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         analysis.clearAnalyzer()
         detector?.close()
         detector = null
+        stopEncoder()
     }
 
     // ---- Imagem na tela ----
