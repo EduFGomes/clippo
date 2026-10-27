@@ -39,9 +39,9 @@ class Arm {
   final BodyPoint wrist;
 }
 
-/// Uma pessoa num quadro da câmera, reduzida aos dois braços e ao nariz.
+/// Uma pessoa num quadro da câmera, reduzida aos dois braços, ao nariz e ao quadril.
 class BodyPose {
-  const BodyPose({required this.left, required this.right, this.nose});
+  const BodyPose({required this.left, required this.right, this.nose, this.leftHip, this.rightHip});
 
   final Arm left;
   final Arm right;
@@ -50,6 +50,12 @@ class BodyPose {
   /// Opcional: sem ele, a regra não confere "de costas" (os testes que só olham os braços
   /// montam poses sem nariz). A câmera sempre manda.
   final BodyPoint? nose;
+
+  /// Para saber onde é "para cima" no corpo (do quadril para os ombros), e não na imagem: assim
+  /// a regra vale com o celular deitado ou torto. Opcionais: sem eles, a regra usa a vertical da
+  /// imagem. A câmera sempre manda.
+  final BodyPoint? leftHip;
+  final BodyPoint? rightHip;
 
   Arm arm(BodySide side) => side == BodySide.left ? left : right;
 }

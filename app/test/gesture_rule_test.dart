@@ -48,6 +48,36 @@ BodyPose _mirrored(BodyPose pose) {
   return BodyPose(left: a(pose.left), right: a(pose.right));
 }
 
+/// A pose com o quadril 60 abaixo dos ombros: dá à regra o "para cima" do corpo.
+BodyPose _withHips(BodyPose pose, {double confidence = 1}) => BodyPose(
+      left: pose.left,
+      right: pose.right,
+      nose: pose.nose,
+      leftHip: BodyPoint(115, _shoulderY + 60, confidence: confidence),
+      rightHip: BodyPoint(85, _shoulderY + 60, confidence: confidence),
+    );
+
+/// A mesma pose com o celular girado: todos os pontos giram [degrees] em volta de (100, 100).
+/// Com o y para baixo, positivo gira no sentido horário na tela; 90 é o celular deitado.
+BodyPose _rotated(BodyPose pose, double degrees) {
+  final radians = degrees * math.pi / 180;
+  final cos = math.cos(radians), sin = math.sin(radians);
+  BodyPoint r(BodyPoint p) {
+    final x = p.x - 100, y = p.y - 100;
+    return BodyPoint(100 + x * cos - y * sin, 100 + x * sin + y * cos, z: p.z, confidence: p.confidence);
+  }
+
+  BodyPoint? rn(BodyPoint? p) => p == null ? null : r(p);
+  Arm a(Arm arm) => Arm(shoulder: r(arm.shoulder), elbow: r(arm.elbow), wrist: r(arm.wrist));
+  return BodyPose(
+    left: a(pose.left),
+    right: a(pose.right),
+    nose: rn(pose.nose),
+    leftHip: rn(pose.leftHip),
+    rightHip: rn(pose.rightHip),
+  );
+}
+
 void main() {
   const rule = GestureRule();
 
@@ -193,6 +223,45 @@ void main() {
       final pose = BodyPose(left: _arm(120, angle: 35, wristConfidence: 0.1), right: _arm(80, angle: 35));
       expect(rule.evaluate(pose).check, GestureCheck.lowConfidence);
       expect(rule.measure(pose).left.armAngle, closeTo(35, 1e-9));
+    });
+  });
+
+  // Teste no corredor (27/10/2026): com o celular deitado, o \ o / saía como "braço cruzado".
+  group('celular deitado ou torto (eixo do corpo)', () {
+    test('em pé, com quadril, mede igual à vertical da imagem', () {
+      final m = rule.measure(_withHips(_pose(left: 35, right: 50)));
+      expect(m.left.armAngle, closeTo(35, 1e-9));
+      expect(m.right.armAngle, closeTo(50, 1e-9));
+      expect(m.bodyTilt, closeTo(0, 1e-9));
+    });
+
+    for (final degrees in [90.0, -90.0, 180.0, 30.0, -20.0]) {
+      test('girado $degrees°: o \\ o / passa e os ângulos não mudam', () {
+        final pose = _rotated(_withHips(_pose(left: 35, right: 50)), degrees);
+        expect(rule.evaluate(pose).isGesture, isTrue);
+        final m = rule.measure(pose);
+        expect(m.left.armAngle, closeTo(35, 1e-9));
+        expect(m.right.armAngle, closeTo(50, 1e-9));
+        // De cabeça para baixo, 180° e −180° são o mesmo.
+        expect(degrees == 180 ? m.bodyTilt!.abs() : m.bodyTilt, closeTo(degrees, 1e-9));
+      });
+    }
+
+    test('deitado, as recusas continuam valendo', () {
+      expect(rule.evaluate(_rotated(_withHips(_pose(left: -40, right: -40)), 90)).check, GestureCheck.armCrossed);
+      expect(rule.evaluate(_rotated(_withHips(_pose(left: 0, right: 0)), 90)).check, GestureCheck.armNotDiagonal);
+      expect(rule.evaluate(_rotated(_withHips(_pose(right: 170)), -90)).side, BodySide.right);
+    });
+
+    test('sem quadril, usa a vertical da imagem (e deitado não passa)', () {
+      expect(rule.measure(_pose()).bodyTilt, isNull);
+      expect(rule.evaluate(_rotated(_pose(), 90)).isGesture, isFalse);
+    });
+
+    test('quadril com pouca confiança (pessoa cortada na cintura) também cai na vertical', () {
+      final pose = _rotated(_withHips(_pose(), confidence: 0.2), 90);
+      expect(rule.measure(pose).bodyTilt, isNull);
+      expect(rule.evaluate(pose).isGesture, isFalse);
     });
   });
 

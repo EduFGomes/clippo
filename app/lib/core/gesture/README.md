@@ -5,7 +5,7 @@ Tudo roda no celular, sem internet (R8). Por que é assim: `docs/arquitetura.md`
 
 | Arquivo | O que faz |
 |---|---|
-| `body_pose.dart` | Os pontos que a regra usa (ombros, cotovelos, pulsos e nariz), sem depender do modelo de pose. |
+| `body_pose.dart` | Os pontos que a regra usa (ombros, cotovelos, pulsos, nariz e quadril), sem depender do modelo de pose. |
 | `gesture_rule.dart` | A regra sobre **um** quadro: `measure()` calcula a geometria, `evaluate()` compara com os limites (`GestureThresholds`) e diz o motivo da recusa (`GestureCheck`). |
 | `gesture_trigger.dart` | O **tempo**: o gesto precisa durar, um quadro perdido não zera a contagem, e entre disparos há uma espera (R4). Tempos em `GestureTriggerTimings`. |
 | `gesture_pipeline.dart` | Liga os quadros da câmera (`core/camera/`) à regra e ao disparo. Uma `GestureObservation` por quadro; a que tem `triggered` é a hora de salvar. |
@@ -27,6 +27,11 @@ Na ordem; a primeira verificação que falha é o motivo mostrado no laboratóri
 
 Tudo é medido em ângulos ou proporções do próprio corpo, nunca em pixels: o mesmo limite vale com
 a pessoa a 2 m ou a 8 m.
+
+"Para cima" também é o do corpo: a linha do meio do quadril ao meio dos ombros. Assim o gesto vale
+com o celular deitado ou torto (no teste no corredor de 27/10/2026, com o celular deitado, o
+\ o / saía como "braço cruzado"). Se o quadril não está na imagem com confiança, a regra usa a
+vertical da imagem. O laboratório mostra qual eixo valeu ("corpo 90°" ou "sem quadril").
 
 ## Limites atuais 🟡
 

@@ -30,8 +30,9 @@ class GestureThresholds {
   /// não está de frente e não dá para saber qual braço está para fora.
   final double minShoulderSpan;
 
-  /// Faixa de inclinação do braço (linha ombro → pulso), medida a partir da vertical para cima:
-  /// 0° é o braço reto para cima, 90° é o braço na horizontal, para fora.
+  /// Faixa de inclinação do braço (linha ombro → pulso), medida a partir do "para cima" do corpo
+  /// (quadril → ombros; ver [PoseMeasurement.bodyTilt]): 0° é o braço reto para cima, 90° é o
+  /// braço na horizontal, para fora.
   /// Abaixo do mínimo, os braços estão retos para cima e não em diagonal; acima do máximo, quase
   /// na horizontal (ou para baixo).
   /// O mínimo era 15° e baixou para 10° depois do teste em vídeo de 24/10/2026: braços retos
@@ -112,7 +113,7 @@ class GestureVerdict {
 class ArmMeasurement {
   const ArmMeasurement({required this.armAngle, required this.elbowAngle, required this.crossed});
 
-  /// Inclinação da linha ombro → pulso a partir da vertical, em graus (ver
+  /// Inclinação da linha ombro → pulso a partir do "para cima" do corpo, em graus (ver
   /// [GestureThresholds.minArmAngle]): 0° reto para cima, 90° na horizontal para fora,
   /// negativo para dentro, acima de 90° abaixo do ombro.
   final double armAngle;
@@ -127,7 +128,13 @@ class ArmMeasurement {
 /// Todas as medidas de uma pose, calculadas mesmo quando ela não passa na regra: é o que o
 /// laboratório mostra para entender POR QUE um gesto não passou.
 class PoseMeasurement {
-  const PoseMeasurement({required this.shoulderSpan, required this.left, required this.right, this.noseDepth});
+  const PoseMeasurement({
+    required this.shoulderSpan,
+    required this.left,
+    required this.right,
+    this.noseDepth,
+    this.bodyTilt,
+  });
 
   /// Distância entre os ombros, em "braços" (ver [GestureThresholds.minShoulderSpan]).
   final double shoulderSpan;
@@ -139,6 +146,11 @@ class PoseMeasurement {
   /// na imagem (para valer igual de perto ou de longe). Negativo = nariz à frente dos ombros
   /// (de frente para a câmera); positivo = atrás (de costas). Null se a pose não tem nariz.
   final double? noseDepth;
+
+  /// Quanto o corpo (quadril → ombros) está inclinado na imagem, em graus: 0° em pé, ±90° com o
+  /// celular deitado. Os ângulos dos braços são medidos a partir deste eixo. Null se o quadril
+  /// não é confiável: aí os braços são medidos a partir da vertical da imagem.
+  final double? bodyTilt;
 
   ArmMeasurement arm(BodySide side) => side == BodySide.left ? left : right;
 }
@@ -195,33 +207,66 @@ class GestureRule {
     final shouldersZ = (pose.left.shoulder.z + pose.right.shoulder.z) / 2;
     final noseDepth = nose == null || shoulderDistance == 0 ? null : (nose.z - shouldersZ) / shoulderDistance;
 
+    // "Para cima" é o do corpo, não o da imagem: com o celular deitado a pessoa aparece deitada,
+    // e o \ o / continua sendo diagonal em relação ao tronco (teste no corredor de 27/10/2026).
+    final shoulderMid = _midpoint(pose.left.shoulder, pose.right.shoulder);
+    final hipMid = _trustedHipMidpoint(pose);
+    var up = (x: 0.0, y: -1.0); // sem quadril: a vertical da imagem (o y cresce para baixo)
+    double? bodyTilt;
+    if (hipMid != null) {
+      final dx = shoulderMid.x - hipMid.x, dy = shoulderMid.y - hipMid.y;
+      final length = math.sqrt(dx * dx + dy * dy);
+      if (length > 0) {
+        up = (x: dx / length, y: dy / length);
+        bodyTilt = _degrees(math.atan2(up.x, -up.y));
+      }
+    }
+    // "Para o lado": perpendicular ao "para cima". Com a pessoa em pé, é o x da imagem.
+    final across = (x: -up.y, y: up.x);
+
     // "Para fora" é medido a partir do meio dos ombros. Assim não importa se a imagem está
     // espelhada (câmera frontal) nem de que lado da imagem fica o braço esquerdo da pessoa.
-    final centerX = (pose.left.shoulder.x + pose.right.shoulder.x) / 2;
+    final center = _dot(shoulderMid, across);
     return PoseMeasurement(
       shoulderSpan: shoulderSpan,
-      left: _measureArm(pose.left, centerX),
-      right: _measureArm(pose.right, centerX),
+      left: _measureArm(pose.left, up, across, center),
+      right: _measureArm(pose.right, up, across, center),
       noseDepth: noseDepth,
+      bodyTilt: bodyTilt,
     );
   }
 
-  ArmMeasurement _measureArm(Arm arm, double centerX) {
-    // +1 se este ombro está à direita do centro da imagem, -1 se está à esquerda.
-    final outwardSign = (arm.shoulder.x - centerX).sign;
+  /// O meio do quadril, se os dois pontos estão dentro da imagem com confiança. Com a pessoa
+  /// cortada na cintura, o modelo chuta o quadril: melhor usar a vertical da imagem.
+  ({double x, double y})? _trustedHipMidpoint(BodyPose pose) {
+    final left = pose.leftHip, right = pose.rightHip;
+    if (left == null || right == null) return null;
+    if (left.confidence < thresholds.minConfidence || right.confidence < thresholds.minConfidence) return null;
+    return _midpoint(left, right);
+  }
 
-    // Quanto o pulso foi para fora e para cima a partir do ombro. O y é invertido porque na
-    // imagem ele cresce para baixo.
-    final outward = (arm.wrist.x - arm.shoulder.x) * outwardSign;
-    final up = arm.shoulder.y - arm.wrist.y;
+  ArmMeasurement _measureArm(Arm arm, ({double x, double y}) up, ({double x, double y}) across, double center) {
+    // +1 se este ombro fica do lado positivo do eixo "para o lado", -1 do outro.
+    final outwardSign = (_dot(_xy(arm.shoulder), across) - center).sign;
+
+    // Quanto o pulso foi para fora e para cima a partir do ombro, nos eixos do corpo.
+    final reach = (x: arm.wrist.x - arm.shoulder.x, y: arm.wrist.y - arm.shoulder.y);
+    final outward = _dot(reach, across) * outwardSign;
+    final upward = _dot(reach, up);
     return ArmMeasurement(
-      // atan2(para fora, para cima) dá o ângulo a partir da vertical: 0° reto para cima, 90° na
+      // atan2(para fora, para cima) dá o ângulo a partir do "para cima": 0° reto para cima, 90° na
       // horizontal, negativo se o pulso foi para dentro e acima de 90° se está abaixo do ombro.
-      armAngle: _degrees(math.atan2(outward, up)),
+      armAngle: _degrees(math.atan2(outward, upward)),
       elbowAngle: _elbowAngle(arm),
-      crossed: (arm.wrist.x - centerX) * outwardSign <= 0,
+      crossed: (_dot(_xy(arm.wrist), across) - center) * outwardSign <= 0,
     );
   }
+
+  static ({double x, double y}) _midpoint(BodyPoint a, BodyPoint b) => (x: (a.x + b.x) / 2, y: (a.y + b.y) / 2);
+
+  static ({double x, double y}) _xy(BodyPoint p) => (x: p.x, y: p.y);
+
+  static double _dot(({double x, double y}) a, ({double x, double y}) b) => a.x * b.x + a.y * b.y;
 
   /// Ângulo no cotovelo entre o segmento até o ombro e o segmento até o pulso.
   double _elbowAngle(Arm arm) {

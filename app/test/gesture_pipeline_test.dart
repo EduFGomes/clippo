@@ -21,6 +21,9 @@ PoseFrame _frame(int ms, {bool gesture = true, bool person = true}) {
   points[PoseLandmarkIndex.rightWrist] = BodyPoint(260, wristY);
   // Nariz à frente dos ombros (que estão em z = 0): a pessoa está de frente.
   points[PoseLandmarkIndex.nose] = const BodyPoint(360, 500, z: -100);
+  // Quadril embaixo dos ombros: a pessoa em pé.
+  points[PoseLandmarkIndex.leftHip] = const BodyPoint(390, 800);
+  points[PoseLandmarkIndex.rightHip] = const BodyPoint(330, 800);
   return PoseFrame(
     timestamp: Duration(milliseconds: ms),
     width: 720,

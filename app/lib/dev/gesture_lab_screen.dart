@@ -385,7 +385,8 @@ String measurementText(PoseMeasurement? m, GestureThresholds limits) {
       'nariz ≤ ${decimal(limits.maxNoseDepth)}';
   if (m == null) return 'Sem medidas\n$limitsLine';
   return '${arm('Esq.:', m.left)}\n${arm('Dir.:', m.right)}\n'
-      'Ombros: ${decimal(m.shoulderSpan)} braços · nariz ${m.noseDepth == null ? '–' : decimal(m.noseDepth!)}\n'
+      'Ombros: ${decimal(m.shoulderSpan)} braços · nariz ${m.noseDepth == null ? '–' : decimal(m.noseDepth!)} · '
+      'corpo ${m.bodyTilt == null ? 'sem quadril (vertical da imagem)' : '${m.bodyTilt!.round()}°'}\n'
       '$limitsLine';
 }
 

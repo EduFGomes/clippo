@@ -87,12 +87,13 @@ void main() {
         left: ArmMeasurement(armAngle: 34.4, elbowAngle: 167.6, crossed: false),
         right: ArmMeasurement(armAngle: 12.2, elbowAngle: 175, crossed: false),
         noseDepth: -1.83,
+        bodyTilt: 89.6,
       );
       expect(
         measurementText(m, limits),
         'Esq.: braço 34° · cotovelo 168°\n'
         'Dir.: braço 12° · cotovelo 175°\n'
-        'Ombros: 1,3 braços · nariz -1,8\n'
+        'Ombros: 1,3 braços · nariz -1,8 · corpo 90°\n'
         'Limites: braço 10°–75° · cotovelo ≥ 130° · ombros ≥ 0,5 · nariz ≤ -0,5',
       );
     });
