@@ -12,6 +12,7 @@ import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
+import android.view.OrientationEventListener
 import android.util.Size
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
@@ -116,6 +117,19 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     @Volatile private var analysisClockLeadUs: Long? = null
     @Volatile private var encoderClockLeadUs: Long? = null
 
+    // O encoder grava na posição do sensor (deitado), qualquer que seja a do celular: o MP4 leva a
+    // rotação para o player desvirar. A tela do app fica sempre em pé, então a posição do celular
+    // vem do acelerômetro, não da tela.
+    @Volatile private var sensorRotation = 90 // trocado pelo valor real quando a câmera abre
+    @Volatile private var deviceRotation = 0 // 0, 90, 180 ou 270, no sentido horário
+    private val orientationListener = object : OrientationEventListener(activity) {
+        override fun onOrientationChanged(orientation: Int) {
+            // Celular deitado de costas no chão: sem posição. Fica a última conhecida.
+            if (orientation == ORIENTATION_UNKNOWN) return
+            deviceRotation = ((orientation + 45) / 90 * 90) % 360
+        }
+    }
+
     data class EncodedSample(
         val buffer: ByteBuffer,
         val info: MediaCodec.BufferInfo
@@ -206,7 +220,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 // Presa ao ciclo de vida da tela: o CameraX desliga a câmera sozinho quando o
                 // app vai para segundo plano e liga de novo quando ele volta.
                 // 🔜 O buffer do Otávio entra aqui como terceiro fluxo (ver README.md).
-                provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
+                val camera = provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
+                sensorRotation = camera.cameraInfo.sensorRotationDegrees
+                if (orientationListener.canDetectOrientation()) orientationListener.enable()
                 result.success(null)
             } catch (e: Exception) {
                 stopEncoder()
@@ -363,6 +379,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             val outputFile = File(activity.cacheDir, "highlight_${System.currentTimeMillis()}.mp4")
             val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val trackIndex = muxer.addTrack(format)
+            // Câmera traseira: a fórmula do Android para a orientação de foto/vídeo. Vale a posição
+            // do celular na hora do disparo (ele fica apoiado durante a partida).
+            val rotation = (sensorRotation + deviceRotation) % 360
+            muxer.setOrientationHint(rotation)
+            Log.d("ClippoBuffer", "rotação do vídeo=$rotation (sensor=$sensorRotation celular=$deviceRotation)")
             muxer.start()
 
             for (sample in slice) {
@@ -420,6 +441,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     }
 
     fun stop() {
+        orientationListener.disable()
         cameraProvider?.unbindAll()
         analysis.clearAnalyzer()
         detector?.close()
