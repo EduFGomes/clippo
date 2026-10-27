@@ -89,4 +89,41 @@ void main() {
     // já fora da espera de 2 s (que acabou em 3000).
     expect(_run(trigger, gestureAt: gesture, toMs: 5000), [1000, 3500]);
   });
+
+  group('várias pessoas', () {
+    /// Um quadro a cada 100 ms; [a] e [b] dizem se cada pessoa faz o gesto. Devolve os disparos
+    /// como (ms, pessoa).
+    List<(int, String)> runTwo({required bool Function(int) a, required bool Function(int) b, required int toMs}) {
+      final trigger = GestureTrigger();
+      final fired = <(int, String)>[];
+      for (var ms = 0; ms <= toMs; ms += 100) {
+        final t = Duration(milliseconds: ms);
+        if (trigger.add(t, a(ms) ? _yes : _no, person: 'a')) fired.add((ms, 'a'));
+        if (trigger.add(t, b(ms) ? _yes : _no, person: 'b')) fired.add((ms, 'b'));
+      }
+      return fired;
+    }
+
+    test('o tempo do gesto é contado por pessoa', () {
+      // Cada uma faz 300 ms de gesto, uma logo depois da outra: juntas dariam 600 ms, mas
+      // ninguém fez os 400 ms.
+      expect(runTwo(a: (ms) => ms >= 1000 && ms < 1300, b: (ms) => ms >= 1300 && ms < 1600, toMs: 3000), isEmpty);
+    });
+
+    test('a pessoa de trás do quadro também dispara', () {
+      expect(runTwo(a: (_) => false, b: (ms) => ms >= 1000 && ms < 2000, toMs: 3000), [(1400, 'b')]);
+    });
+
+    test('a espera de 5 s vale para a quadra inteira (R4)', () {
+      // A dispara em 1400; B faz o gesto logo depois, dentro da espera; e de novo depois dela.
+      expect(
+        runTwo(
+          a: (ms) => ms >= 1000 && ms < 2000,
+          b: (ms) => (ms >= 2000 && ms < 3000) || (ms >= 7000 && ms < 8000),
+          toMs: 10000,
+        ),
+        [(1400, 'a'), (7400, 'b')],
+      );
+    });
+  });
 }

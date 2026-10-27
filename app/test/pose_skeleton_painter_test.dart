@@ -18,13 +18,13 @@ PoseFrame _frame({double elbowConfidence = 0.9}) {
     width: 720,
     height: 1280,
     analysisTime: Duration.zero,
-    landmarks: points,
+    people: [DetectedPerson(landmarks: points)],
   );
 }
 
 PoseSkeletonPainter _painter(PoseFrame frame, GestureVerdict verdict) => PoseSkeletonPainter(
       frame: frame,
-      verdict: verdict,
+      verdicts: [verdict],
       minConfidence: 0.5,
       colors: ClippoColors.dark,
     );
@@ -71,6 +71,23 @@ void main() {
       );
     });
 
+    testWidgets('no modo várias pessoas, desenha a caixa do detector', (tester) async {
+      final frame = PoseFrame(
+        timestamp: Duration.zero,
+        width: 720,
+        height: 1280,
+        analysisTime: Duration.zero,
+        people: const [DetectedPerson(box: Rect.fromLTRB(80, 400, 400, 1200))],
+      );
+      await _pump(tester, _painter(frame, const GestureVerdict(GestureCheck.lowConfidence)));
+      // A um quarto do tamanho, e sem pontos: só a caixa.
+      expect(
+        find.byType(CustomPaint),
+        paints..rect(rect: const Rect.fromLTRB(20, 100, 100, 300), color: ClippoBrand.captureChipBorder),
+      );
+      expect(find.byType(CustomPaint), isNot(paints..line()));
+    });
+
     testWidgets('sem pessoa, não desenha nada', (tester) async {
       final empty = PoseFrame(timestamp: Duration.zero, width: 720, height: 1280, analysisTime: Duration.zero);
       await _pump(tester, _painter(empty, const GestureVerdict(GestureCheck.noPerson)));
@@ -115,12 +132,12 @@ void main() {
   group('frente × costas', () {
     /// Ombros a 80 de distância; [leftOnRight] põe o ombro esquerdo à direita da imagem (de
     /// frente para a câmera traseira); [noseZ] é a profundidade do nariz (ombros em z = 0).
-    PoseFrame facing({required bool leftOnRight, required double noseZ}) {
+    List<BodyPoint> facing({required bool leftOnRight, required double noseZ}) {
       final points = List.filled(PoseLandmarkIndex.count, const BodyPoint(0, 0, confidence: 0.9));
       points[PoseLandmarkIndex.leftShoulder] = BodyPoint(leftOnRight ? 400 : 320, 600);
       points[PoseLandmarkIndex.rightShoulder] = BodyPoint(leftOnRight ? 320 : 400, 600);
       points[PoseLandmarkIndex.nose] = BodyPoint(360, 500, z: noseZ, confidence: 0.99);
-      return PoseFrame(timestamp: Duration.zero, width: 720, height: 1280, analysisTime: Duration.zero, landmarks: points);
+      return points;
     }
 
     test('de frente: ombro esquerdo à direita e nariz à frente dos ombros', () {
@@ -137,8 +154,7 @@ void main() {
     });
 
     test('sem pessoa', () {
-      final empty = PoseFrame(timestamp: Duration.zero, width: 720, height: 1280, analysisTime: Duration.zero);
-      expect(facingText(empty), 'Frente × costas: –');
+      expect(facingText(null), 'Frente × costas: –');
     });
   });
 }

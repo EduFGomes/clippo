@@ -29,6 +29,12 @@ android {
         versionName = flutter.versionName
     }
 
+    // O detector de pessoas (assets/efficientdet_lite0.tflite) é lido direto do APK: não pode
+    // ir comprimido.
+    androidResources {
+        noCompress += "tflite"
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -63,4 +69,10 @@ dependencies {
     val mlKitPose = "18.0.0-beta5"
     implementation("com.google.mlkit:pose-detection:$mlKitPose")
     implementation("com.google.mlkit:pose-detection-accurate:$mlKitPose")
+
+    // Detector de pessoas (MediaPipe Tasks, Apache 2.0) para o modo várias pessoas: acha cada
+    // pessoa no quadro e um ML Kit para cada uma lê a pose do recorte dela. 🟡 Em teste; ver
+    // kotlin/.../camera/MultiPersonAnalyzer.kt. O modelo (EfficientDet-Lite0, 4,6 MB) está em
+    // src/main/assets/, baixado de storage.googleapis.com/mediapipe-models.
+    implementation("com.google.mediapipe:tasks-vision:0.10.35")
 }

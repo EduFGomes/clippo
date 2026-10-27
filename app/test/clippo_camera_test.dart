@@ -31,7 +31,15 @@ Map<String, Object?> _frameMap({bool withPerson = true, double wristConfidence =
   // Quadril embaixo dos ombros: a pessoa em pé.
   points.setAll(PoseLandmarkIndex.leftHip * n, [390, 800, 0, 0.9]);
   points.setAll(PoseLandmarkIndex.rightHip * n, [330, 800, 0, 0.9]);
-  return {'t': 1234567, 'width': 720, 'height': 1280, 'analysisMs': 42, 'points': withPerson ? points : null};
+  return {
+    't': 1234567,
+    'width': 720,
+    'height': 1280,
+    'analysisMs': 42,
+    'people': [
+      if (withPerson) {'points': points},
+    ],
+  };
 }
 
 void main() {
@@ -49,11 +57,11 @@ void main() {
       expect(frame.timestamp, const Duration(microseconds: 1234567));
       expect((frame.width, frame.height), (720, 1280));
       expect(frame.analysisTime, const Duration(milliseconds: 42));
-      expect(frame.landmarks, hasLength(33));
+      expect(frame.people.single.landmarks, hasLength(33));
     });
 
     test('pega os braços nos índices certos do BlazePose', () {
-      final pose = PoseFrame.fromMap(_frameMap()).bodyPose!;
+      final pose = PoseFrame.fromMap(_frameMap()).people.single.bodyPose!;
       expect((pose.left.shoulder.x, pose.left.wrist.x), (400, 460));
       expect((pose.right.shoulder.x, pose.right.wrist.x), (320, 260));
       expect(pose.left.wrist.confidence, closeTo(0.9, 1e-9));
@@ -61,19 +69,56 @@ void main() {
     });
 
     test('a pose convertida passa pela regra do gesto', () {
-      expect(const GestureRule().evaluate(PoseFrame.fromMap(_frameMap()).bodyPose!).isGesture, isTrue);
-      final lowConfidence = PoseFrame.fromMap(_frameMap(wristConfidence: 0.2)).bodyPose!;
+      expect(const GestureRule().evaluate(PoseFrame.fromMap(_frameMap()).people.single.bodyPose!).isGesture, isTrue);
+      final lowConfidence = PoseFrame.fromMap(_frameMap(wristConfidence: 0.2)).people.single.bodyPose!;
       expect(const GestureRule().evaluate(lowConfidence).check, GestureCheck.lowConfidence);
     });
 
     test('sem pessoa no quadro', () {
       final frame = PoseFrame.fromMap(_frameMap(withPerson: false));
-      expect(frame.landmarks, isNull);
-      expect(frame.bodyPose, isNull);
+      expect(frame.people, isEmpty);
     });
 
     test('recusa uma lista com o número errado de pontos', () {
-      expect(() => PoseFrame.fromMap({..._frameMap(), 'points': Float64List(10)}), throwsFormatException);
+      expect(
+        () => PoseFrame.fromMap({
+          ..._frameMap(),
+          'people': [
+            {'points': Float64List(10)},
+          ],
+        }),
+        throwsFormatException,
+      );
+    });
+
+    test('modo várias pessoas: caixas, tempos e pessoa sem pontos', () {
+      final points = _frameMap()['people'] as List<Object?>;
+      final frame = PoseFrame.fromMap({
+        ..._frameMap(),
+        'prepMs': 8,
+        'detectMs': 12,
+        'poseMs': 60,
+        'detectorGpu': true,
+        'people': [
+          {...points.single as Map<Object?, Object?>, 'box': [250.0, 450.0, 480.0, 900.0]},
+          {'box': [10.0, 20.0, 30.0, 80.0], 'points': null},
+        ],
+      });
+      expect(frame.prepTime, const Duration(milliseconds: 8));
+      expect(frame.detectTime, const Duration(milliseconds: 12));
+      expect(frame.detectorOnGpu, isTrue);
+      expect(frame.poseTime, const Duration(milliseconds: 60));
+      expect(frame.people, hasLength(2));
+      expect(frame.people.first.box, const Rect.fromLTRB(250, 450, 480, 900));
+      expect(frame.people.first.bodyPose, isNotNull);
+      expect(frame.people.last.landmarks, isNull);
+      expect(frame.people.last.bounds, const Rect.fromLTRB(10, 20, 30, 80));
+    });
+
+    test('sem caixa, a posição da pessoa vem dos pontos', () {
+      final bounds = PoseFrame.fromMap(_frameMap()).people.single.bounds!;
+      // Os pontos vão de (100, 100) aos quadris em y = 800 e aos pulsos em x = 260…460.
+      expect(bounds, const Rect.fromLTRB(100, 100, 460, 800));
     });
   });
 
@@ -93,7 +138,7 @@ void main() {
       await camera.stop();
 
       expect(calls.map((c) => c.method), ['hasPermission', 'requestPermission', 'start', 'stop']);
-      expect(calls[2].arguments, {'accurate': true});
+      expect(calls[2].arguments, {'accurate': true, 'multiPerson': false});
     });
 
     test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {
@@ -170,7 +215,7 @@ void main() {
       camera.poses.listen(frames.add, onError: errors.add, onDone: done.complete);
       await done.future;
 
-      expect(frames.map((f) => f.bodyPose != null), [true, false]);
+      expect(frames.map((f) => f.people.isNotEmpty), [true, false]);
       expect(errors.single, isA<CameraFailure>());
     });
   });

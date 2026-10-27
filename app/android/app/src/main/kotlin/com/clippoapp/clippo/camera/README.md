@@ -6,6 +6,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 | Arquivo | O que faz |
 |---|---|
 | `ClippoCameraSession.kt` | Abre a câmera traseira, liga os fluxos de imagem e de análise, roda o ML Kit e manda os pontos para o Dart. |
+| `MultiPersonAnalyzer.kt` | 🟡 Em teste. Modo várias pessoas: o detector do MediaPipe (EfficientDet-Lite0, em `src/main/assets/`) acha cada pessoa (numa thread só dele, com a imagem pela metade; na GPU, ou no processador se ela falhar, como no S24), e cada pessoa tem um ML Kit só dela, em modo stream, lendo o recorte em volta dela. Sem ele, o ML Kit (modo stream) segue só a primeira pessoa que achou e pula para quem passar na frente dela. |
 | `CameraPreviewFactory.kt` | Mostra a imagem da câmera dentro de uma tela Flutter (um `PreviewView` do CameraX). |
 | `../MainActivity.kt` | Cria a sessão quando o Flutter sobe e repassa a resposta do pedido de permissão. |
 
@@ -13,8 +14,8 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 
 | Canal | Tipo | O quê |
 |---|---|---|
-| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool · `start({accurate})` · `stop` · `saveHighlight({untilMicros})` → `{path, durationMs}` |
-| `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `points` (null ou 33 × x, y, z, confiança; z é a profundidade, menor = mais perto) |
+| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool · `start({accurate, multiPerson})` · `stop` · `saveHighlight({untilMicros})` → `{path, durationMs}` |
+| `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `people` (uma entrada por pessoa: `points` = null ou 33 × x, y, z, confiança, com z a profundidade, menor = mais perto; no modo várias pessoas, também `box`), e só no modo várias pessoas `prepMs`, `detectMs`, `poseMs` e `detectorGpu` |
 | `clippo/camera-preview` | Platform view | A imagem da câmera, para um `AndroidView` |
 
 ## Contrato com o buffer de 30 s (Mobile)

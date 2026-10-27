@@ -66,9 +66,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         const val POSES_CHANNEL = "clippo/camera/poses"
         const val PREVIEW_VIEW_TYPE = "clippo/camera-preview"
         private const val PERMISSION_REQUEST = 4201 // qualquer número, só para reconhecer a resposta
-        private const val LANDMARK_COUNT = 33
+        const val LANDMARK_COUNT = 33
         // x, y, z (profundidade) e confiança. Mudou? Mude PoseLandmarkIndex.valuesPerPoint no Dart.
-        private const val VALUES_PER_LANDMARK = 4
+        const val VALUES_PER_LANDMARK = 4
     }
 
     // 16:9 nos dois fluxos: assim a imagem na tela e a imagem analisada mostram o mesmo
@@ -100,6 +100,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var detector: PoseDetector? = null
+    // Só no modo várias pessoas (🟡 em teste): acha as pessoas antes do ML Kit. Criado, usado e
+    // fechado na thread da análise.
+    @Volatile private var multiPerson: MultiPersonAnalyzer? = null
+    // Muda a cada start: um detector que terminar de abrir depois de um stop (ou de outro start)
+    // é de uma câmera que já não existe, e é fechado em vez de usado.
+    @Volatile private var generation = 0
     private var poseSink: EventChannel.EventSink? = null
     private var pendingPermission: MethodChannel.Result? = null
 
@@ -147,7 +153,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         when (call.method) {
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
-            "start" -> start(accurate = call.argument<Boolean>("accurate") ?: false, result)
+            "start" -> start(
+                accurate = call.argument<Boolean>("accurate") ?: false,
+                manyPeople = call.argument<Boolean>("multiPerson") ?: false,
+                result,
+            )
             "saveHighlight" -> {
                 // Number, e não Long: o Flutter manda um int pequeno como Int e um grande como Long.
                 val untilMicros = call.argument<Number>("untilMicros")?.toLong()
@@ -188,11 +198,18 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         return true
     }
 
-    private fun start(accurate: Boolean, result: MethodChannel.Result) {
+    private fun start(accurate: Boolean, manyPeople: Boolean, result: MethodChannel.Result) {
         if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
 
-        // O modo STREAM aproveita o quadro anterior para achar a pessoa mais rápido: é o modo
-        // para vídeo. (O modo SINGLE_IMAGE procura do zero em cada foto.)
+        // Ligar de novo sem desligar (ex.: dois toques seguidos em um botão do laboratório): desliga
+        // antes, senão ficam dois encoders e duas threads disputando o mesmo buffer.
+        stop()
+        val myGeneration = ++generation
+
+        // O modo STREAM aproveita o quadro anterior para achar a pessoa mais rápido: é o modo para
+        // vídeo. Por isso fica preso na primeira pessoa que achou; o modo várias pessoas dá um
+        // ML Kit a cada pessoa (ver MultiPersonAnalyzer), e este aqui só analisa até o detector
+        // de várias pessoas terminar de abrir.
         detector?.close()
         detector = PoseDetection.getClient(
             if (accurate) {
@@ -201,6 +218,27 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
             }
         )
+        if (manyPeople) {
+            // Abrir o detector (na GPU, compilar os shaders) leva segundos: fora da thread da tela,
+            // senão o app congela. Na thread da análise, que é a que vai usá-lo: os quadros que
+            // chegarem antes dele são analisados no modo de uma pessoa.
+            analysisExecutor.execute {
+                val startedAt = SystemClock.elapsedRealtime()
+                try {
+                    val created = MultiPersonAnalyzer(activity, accurate)
+                    Log.d("ClippoMulti", "detector aberto em ${SystemClock.elapsedRealtime() - startedAt} ms, GPU=${created.onGpu}")
+                    if (generation == myGeneration) {
+                        multiPerson = created
+                    } else {
+                        Log.d("ClippoMulti", "detector descartado: a câmera foi desligada ou religada enquanto ele abria")
+                        created.close()
+                    }
+                } catch (e: Exception) {
+                    Log.e("ClippoMulti", "detector não abriu", e)
+                    activity.runOnUiThread { poseSink?.error("detector-failed", e.message, null) }
+                }
+            }
+        }
         analysis.setAnalyzer(analysisExecutor, ::analyze)
 
         // 🔜 Inicializa o MediaCodec Encoder para o buffer circular de vídeo
@@ -256,9 +294,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }
 
         isEncoding.set(true)
+        // A thread fica com o SEU encoder: se um encoder novo for criado antes de ela sair, ela
+        // para em vez de disputar o novo (o MediaCodec só aceita um dequeue por vez).
+        val codec = mediaCodec
         encoderThread = Thread {
             val bufferInfo = MediaCodec.BufferInfo()
-            while (isEncoding.get()) {
+            while (isEncoding.get() && mediaCodec === codec) {
                 try {
                     val index = mediaCodec?.dequeueOutputBuffer(bufferInfo, 10000) ?: -1
                     when {
@@ -446,6 +487,10 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         analysis.clearAnalyzer()
         detector?.close()
         detector = null
+        // Fecha na thread da análise: se um quadro estiver no meio, ele termina antes.
+        generation++
+        multiPerson?.let { analyzer -> analysisExecutor.execute { analyzer.close() } }
+        multiPerson = null
         stopEncoder()
     }
 
@@ -488,22 +533,18 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         val startedAt = SystemClock.elapsedRealtime()
         analysisClockLeadUs = (timestampNanos - SystemClock.elapsedRealtimeNanos()) / 1000
 
+        val many = multiPerson
+        if (many != null) {
+            analyzeMany(proxy, many, rotation, Frame(timestampNanos, width, height, startedAt))
+            return
+        }
+
         detector.process(InputImage.fromMediaImage(mediaImage, rotation))
             .addOnSuccessListener { pose ->
-                val points = DoubleArray(LANDMARK_COUNT * VALUES_PER_LANDMARK)
-                for (landmark in pose.allPoseLandmarks) {
-                    val i = landmark.landmarkType * VALUES_PER_LANDMARK
-                    points[i] = landmark.position.x.toDouble()
-                    points[i + 1] = landmark.position.y.toDouble()
-                    // z: profundidade estimada, com o quadril como zero; menor = mais perto da câmera.
-                    // Está aqui para descobrir se a pessoa está de frente ou de costas.
-                    points[i + 2] = landmark.position3D.z.toDouble()
-                    points[i + 3] = landmark.inFrameLikelihood.toDouble()
-                }
-                sendPose(
-                    timestampNanos, width, height,
-                    analysisMs = SystemClock.elapsedRealtime() - startedAt,
-                    points = if (pose.allPoseLandmarks.isEmpty()) null else points,
+                val points = pose.toPoints()
+                sendFrame(
+                    Frame(timestampNanos, width, height, startedAt),
+                    people = if (points == null) emptyList() else listOf(mapOf("points" to points)),
                 )
             }
             .addOnFailureListener { e -> poseSink?.error("analysis-failed", e.message, null) }
@@ -512,24 +553,74 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             .addOnCompleteListener { proxy.close() }
     }
 
+    private class Frame(val timestampNanos: Long, val width: Int, val height: Int, val startedAt: Long)
+
+    /** Várias pessoas: a pose nesta thread; o detector, na dele (ver MultiPersonAnalyzer). */
+    private fun analyzeMany(proxy: ImageProxy, many: MultiPersonAnalyzer, rotation: Int, frame: Frame) {
+        try {
+            // Em pixels, ainda deitada: o analisador gira só o que precisa (a cópia pequena do
+            // detector e cada recorte), não a imagem inteira.
+            val raw = proxy.toBitmap()
+            val prepMs = SystemClock.elapsedRealtime() - frame.startedAt
+            val result = many.analyze(raw, rotation)
+            val analysisMs = SystemClock.elapsedRealtime() - frame.startedAt
+            val people = result.people.map { person ->
+                mapOf(
+                    "box" to doubleArrayOf(
+                        person.box.left.toDouble(), person.box.top.toDouble(),
+                        person.box.right.toDouble(), person.box.bottom.toDouble(),
+                    ),
+                    "points" to person.points,
+                )
+            }
+            activity.runOnUiThread {
+                sendFrame(
+                    frame, people,
+                    analysisMs = analysisMs,
+                    stages = mapOf(
+                        "prepMs" to prepMs,
+                        "detectMs" to result.detectMs,
+                        "poseMs" to result.poseMs,
+                        "detectorGpu" to many.onGpu,
+                    ),
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("ClippoMulti", "análise falhou", e)
+            activity.runOnUiThread { poseSink?.error("analysis-failed", e.message, null) }
+        } finally {
+            proxy.close()
+        }
+    }
+
     /**
-     * Um quadro analisado, como chega no Dart:
+     * Um quadro analisado, como chega no Dart (lido em lib/core/camera/pose_frame.dart):
      * - "t": hora do quadro em microssegundos, no relógio do sensor;
      * - "width", "height": tamanho da imagem já em pé, no mesmo referencial dos pontos;
-     * - "analysisMs": quanto o ML Kit levou neste quadro;
-     * - "points": null se não achou ninguém; senão 33 × (x, y, z, confiança), na ordem dos tipos
-     *   de PoseLandmark (ombros 11 e 12, cotovelos 13 e 14, pulsos 15 e 16).
+     * - "analysisMs": quanto a análise inteira levou neste quadro;
+     * - só no modo várias pessoas, cada etapa: "prepMs" (converter a imagem), "detectMs" (o
+     *   detector de pessoas cujas caixas entraram neste quadro; 0 se nenhuma), "poseMs" (todas as
+     *   leituras de pose somadas) e "detectorGpu" (se o detector rodou na placa de vídeo);
+     * - "people": uma entrada por pessoa (vazia se não achou ninguém), com
+     *   - "points": 33 × (x, y, z, confiança), na ordem dos tipos de PoseLandmark (ombros 11 e
+     *     12, cotovelos 13 e 14, pulsos 15 e 16); null se o detector achou a pessoa e o ML Kit não;
+     *   - "box" (left, top, right, bottom): só no modo várias pessoas.
      */
-    private fun sendPose(timestampNanos: Long, width: Int, height: Int, analysisMs: Long, points: DoubleArray?) {
-        // Os ouvintes do ML Kit rodam na thread principal, que é onde o EventSink pode ser usado.
+    private fun sendFrame(
+        frame: Frame,
+        people: List<Map<String, Any?>>,
+        analysisMs: Long = SystemClock.elapsedRealtime() - frame.startedAt,
+        stages: Map<String, Any?> = emptyMap(),
+    ) {
+        // O EventSink só pode ser usado na thread principal.
         poseSink?.success(
             mapOf(
-                "t" to timestampNanos / 1000,
-                "width" to width,
-                "height" to height,
+                "t" to frame.timestampNanos / 1000,
+                "width" to frame.width,
+                "height" to frame.height,
                 "analysisMs" to analysisMs,
-                "points" to points,
-            )
+                "people" to people,
+            ) + stages
         )
     }
 

@@ -51,8 +51,10 @@ class ClippoCamera {
   Future<bool> requestPermission() => _call<bool>('requestPermission').then((granted) => granted ?? false);
 
   /// Liga a câmera traseira e a análise. [accurate] escolhe o modelo mais preciso do ML Kit
-  /// (🟡 os dois existem até a medição a 8 m decidir).
-  Future<void> start({bool accurate = false}) => _call<void>('start', {'accurate': accurate});
+  /// (🟡 os dois existem até a medição a 8 m decidir). [multiPerson] acha cada pessoa do quadro
+  /// com um detector antes do ML Kit (🟡 em teste); sem ele, o ML Kit segue uma pessoa só.
+  Future<void> start({bool accurate = false, bool multiPerson = false}) =>
+      _call<void>('start', {'accurate': accurate, 'multiPerson': multiPerson});
 
   Future<void> stop() => _call<void>('stop');
 
@@ -94,6 +96,7 @@ class ClippoCamera {
         'no-permission' => const CameraFailure('O Clippo precisa da câmera para reconhecer o gesto.'),
         'camera-unavailable' => const CameraFailure('Não foi possível abrir a câmera. Feche outros apps que estejam usando e tente de novo.'),
         'permission-pending' => const CameraFailure('Responda o pedido de permissão que está aberto.'),
+        'detector-failed' => const CameraFailure('Não foi possível abrir o detector de pessoas.'),
         'analysis-failed' => const CameraFailure('Não foi possível analisar a imagem da câmera.'),
         'not-implemented' => const CameraFailure('Ainda não dá para salvar o lance: o buffer de 30 s não está pronto.'),
         'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),

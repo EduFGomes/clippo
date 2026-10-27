@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,7 +10,16 @@ import 'package:clippo/core/gesture/gesture_rule.dart';
 
 /// Um quadro como a câmera entrega, em [ms]. Com [gesture], os braços fazem \ o /; sem, estão
 /// abaixados. Com [person] = false, o ML Kit não achou ninguém.
-PoseFrame _frame(int ms, {bool gesture = true, bool person = true}) {
+PoseFrame _frame(int ms, {bool gesture = true, bool person = true}) => PoseFrame(
+      timestamp: Duration(milliseconds: ms),
+      width: 720,
+      height: 1280,
+      analysisTime: const Duration(milliseconds: 25),
+      people: [if (person) DetectedPerson(landmarks: _points(gesture: gesture))],
+    );
+
+/// Os 33 pontos de uma pessoa em pé, de frente, com o corpo deslocado [dx] para a direita.
+List<BodyPoint> _points({required bool gesture, double dx = 0}) {
   final points = List.filled(PoseLandmarkIndex.count, const BodyPoint(0, 0));
   // Ombro esquerdo da pessoa à direita da imagem (x = 400); y cresce para baixo.
   final wristY = gesture ? 500.0 : 700.0;
@@ -24,14 +34,27 @@ PoseFrame _frame(int ms, {bool gesture = true, bool person = true}) {
   // Quadril embaixo dos ombros: a pessoa em pé.
   points[PoseLandmarkIndex.leftHip] = const BodyPoint(390, 800);
   points[PoseLandmarkIndex.rightHip] = const BodyPoint(330, 800);
-  return PoseFrame(
-    timestamp: Duration(milliseconds: ms),
-    width: 720,
-    height: 1280,
-    analysisTime: const Duration(milliseconds: 25),
-    landmarks: person ? points : null,
-  );
+  return [for (final p in points) BodyPoint(p.x + dx, p.y, z: p.z, confidence: p.confidence)];
 }
+
+/// Duas pessoas, como no modo várias pessoas: a da esquerda (perto, caixa grande) e a da direita
+/// (longe, caixa pequena). [nearGesture] e [farGesture] dizem quem faz \ o /.
+PoseFrame _two(int ms, {bool nearGesture = false, bool farGesture = false}) => PoseFrame(
+      timestamp: Duration(milliseconds: ms),
+      width: 720,
+      height: 1280,
+      analysisTime: const Duration(milliseconds: 60),
+      people: [
+        DetectedPerson(
+          landmarks: _points(gesture: nearGesture, dx: -200),
+          box: const Rect.fromLTRB(0, 400, 330, 1200),
+        ),
+        DetectedPerson(
+          landmarks: _points(gesture: farGesture, dx: 300),
+          box: const Rect.fromLTRB(550, 450, 700, 850),
+        ),
+      ],
+    );
 
 void main() {
   test('quadro sem pessoa vira noPerson', () {
@@ -93,5 +116,40 @@ void main() {
         if (pipeline.observe(_frame(ms)).triggered) ms,
     ];
     expect(triggered, [1400]);
+  });
+
+  group('várias pessoas', () {
+    test('o gesto de quem está longe dispara, e o foco vai para ela', () {
+      final pipeline = GesturePipeline();
+      final observations = [
+        for (var ms = 0; ms <= 1000; ms += 100) pipeline.observe(_two(ms, farGesture: ms >= 300)),
+      ];
+      final fired = observations.where((o) => o.triggered).toList();
+      expect(fired.map((o) => o.frame.timestamp), [const Duration(milliseconds: 700)]);
+      expect(fired.single.focus!.id, observations.first.people[1].id);
+      expect(fired.single.people.map((p) => p.verdict.isGesture), [false, true]);
+    });
+
+    test('sem gesto, o foco é a maior pessoa (a mais perto)', () {
+      final observation = GesturePipeline().observe(_two(0));
+      expect(observation.focus, same(observation.people.first));
+      expect(observation.verdict.check, GestureCheck.armNotDiagonal);
+    });
+
+    test('pessoa achada pelo detector, mas sem pontos, não dispara', () {
+      final pipeline = GesturePipeline();
+      final observations = [
+        for (var ms = 0; ms <= 1000; ms += 100)
+          pipeline.observe(PoseFrame(
+            timestamp: Duration(milliseconds: ms),
+            width: 720,
+            height: 1280,
+            analysisTime: Duration.zero,
+            people: const [DetectedPerson(box: Rect.fromLTRB(10, 10, 60, 160))],
+          )),
+      ];
+      expect(observations.any((o) => o.triggered), isFalse);
+      expect(observations.last.verdict.check, GestureCheck.lowConfidence);
+    });
   });
 }

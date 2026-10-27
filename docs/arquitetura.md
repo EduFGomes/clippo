@@ -92,6 +92,7 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 | Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
 | Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
+| Várias pessoas no quadro: hoje em teste o **detector de pessoas (MediaPipe, EfficientDet-Lite0, numa thread à parte) + um ML Kit em modo stream para cada pessoa**, ligado pelo botão "Ver várias pessoas" do laboratório. Escolhido por licença (Apache 2.0 e ML Kit podem ir para a Play Store; o YOLO-pose é AGPL) e por manter a regra e o z do nariz. A medir: tempo com 3–6 pessoas e acerto de longe. Alternativa a comparar: MediaPipe Pose Landmarker no lugar do ML Kit (mesmos 33 pontos, sem beta, pode usar a GPU) | Visão computacional |
 | Modelo do ML Kit: `base` ou `accurate`. Os dois estão no app (~14 MB juntos) até a medição a 8 m; o que perder sai | Visão computacional |
 | Limites da regra do gesto (ângulos, nariz, tempo mínimo, espera da R4): valores atuais e como medir em [`app/lib/core/gesture/README.md`](../app/lib/core/gesture/README.md) | Visão computacional + grupo |
 

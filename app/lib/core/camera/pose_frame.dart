@@ -1,42 +1,97 @@
+import 'dart:ui' show Rect;
+
 import 'package:clippo/core/gesture/body_pose.dart';
 
-/// Um quadro analisado pelo ML Kit, como chega do código nativo
-/// (formato em android/.../camera/ClippoCameraSession.kt › sendPose).
+/// Um quadro analisado, como chega do código nativo
+/// (formato em android/.../camera/ClippoCameraSession.kt › sendFrame).
 class PoseFrame {
   const PoseFrame({
     required this.timestamp,
     required this.width,
     required this.height,
     required this.analysisTime,
-    this.landmarks,
+    this.prepTime,
+    this.detectTime,
+    this.poseTime,
+    this.detectorOnGpu,
+    this.people = const [],
   });
 
   /// Lê o mapa do EventChannel. Os nomes das chaves precisam bater com os do Kotlin.
   factory PoseFrame.fromMap(Map<Object?, Object?> data) {
-    final points = data['points'] as List<Object?>?;
+    Duration? ms(Object? value) => value == null ? null : Duration(milliseconds: value as int);
     return PoseFrame(
       timestamp: Duration(microseconds: data['t'] as int),
       width: data['width'] as int,
       height: data['height'] as int,
       analysisTime: Duration(milliseconds: data['analysisMs'] as int),
-      landmarks: points == null ? null : _readLandmarks(points),
+      prepTime: ms(data['prepMs']),
+      detectTime: ms(data['detectMs']),
+      poseTime: ms(data['poseMs']),
+      detectorOnGpu: data['detectorGpu'] as bool?,
+      people: [
+        for (final person in data['people'] as List<Object?>) DetectedPerson._fromMap(person as Map<Object?, Object?>),
+      ],
     );
   }
 
   /// Hora em que o quadro foi filmado, no relógio do sensor (o mesmo do vídeo do buffer).
   final Duration timestamp;
 
-  /// Tamanho da imagem já em pé, em pixels: o referencial de [landmarks].
+  /// Tamanho da imagem já em pé, em pixels: o referencial dos pontos e das caixas.
   final int width;
   final int height;
 
-  /// Quanto o ML Kit levou neste quadro.
+  /// Quanto a análise inteira levou neste quadro.
   final Duration analysisTime;
 
-  /// Os 33 pontos do BlazePose, na ordem de [PoseLandmarkIndex]; null se não achou ninguém.
+  /// Só no modo várias pessoas, cada etapa: converter a imagem, o detector de pessoas e todas as
+  /// leituras de pose somadas.
+  final Duration? prepTime;
+  final Duration? detectTime;
+  final Duration? poseTime;
+
+  /// Só no modo várias pessoas: se o detector rodou na placa de vídeo (senão, no processador).
+  final bool? detectorOnGpu;
+
+  /// Quem foi encontrado no quadro; vazia se ninguém.
+  final List<DetectedPerson> people;
+}
+
+/// Uma pessoa encontrada no quadro.
+class DetectedPerson {
+  const DetectedPerson({this.landmarks, this.box});
+
+  factory DetectedPerson._fromMap(Map<Object?, Object?> data) {
+    final points = data['points'] as List<Object?>?;
+    final box = data['box'] as List<Object?>?;
+    double at(List<Object?> list, int i) => (list[i] as num).toDouble();
+    return DetectedPerson(
+      landmarks: points == null ? null : _readLandmarks(points),
+      box: box == null ? null : Rect.fromLTRB(at(box, 0), at(box, 1), at(box, 2), at(box, 3)),
+    );
+  }
+
+  /// Os 33 pontos do BlazePose, na ordem de [PoseLandmarkIndex]. null quando o detector achou a
+  /// pessoa e o ML Kit não conseguiu ler a pose dela (comum com gente pequena, longe).
   final List<BodyPoint>? landmarks;
 
-  /// Os pontos que a regra do gesto usa; null se não há pessoa no quadro.
+  /// A caixa do detector de pessoas, em pixels da imagem. Só no modo várias pessoas.
+  final Rect? box;
+
+  /// Onde a pessoa está: a caixa do detector ou, sem ela, o retângulo em volta dos pontos.
+  Rect? get bounds {
+    if (box != null) return box;
+    final points = landmarks?.where((p) => p.confidence > 0);
+    if (points == null || points.isEmpty) return null;
+    var bounds = Rect.fromLTRB(points.first.x, points.first.y, points.first.x, points.first.y);
+    for (final p in points) {
+      bounds = bounds.expandToInclude(Rect.fromLTRB(p.x, p.y, p.x, p.y));
+    }
+    return bounds;
+  }
+
+  /// Os pontos que a regra do gesto usa; null se não há pontos.
   BodyPose? get bodyPose {
     final p = landmarks;
     if (p == null) return null;

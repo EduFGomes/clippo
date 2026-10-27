@@ -41,6 +41,9 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   _CameraState _state = _CameraState.checking;
   String? _error;
   bool _accurate = false;
+  // 🟡 Em teste: detector de pessoas + ML Kit em cada uma. Desligado, o ML Kit segue uma só.
+  bool _multiPerson = false;
+  bool _restarting = false;
   bool _showLimits = false;
 
   GestureObservation? _last;
@@ -107,7 +110,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     _pipeline.reset();
     _subscription = widget.camera.poses.listen((frame) => _onObservation(_pipeline.observe(frame)), onError: _fail);
     try {
-      await widget.camera.start(accurate: _accurate);
+      await widget.camera.start(accurate: _accurate, multiPerson: _multiPerson);
       if (mounted) setState(() => _state = _CameraState.running);
     } catch (e) {
       _fail(e);
@@ -115,15 +118,28 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   }
 
   /// Trocar de modelo exige recriar o detector no Kotlin: desliga e liga de novo.
-  Future<void> _toggleModel() async {
-    setState(() => _accurate = !_accurate);
+  Future<void> _toggleModel() => _restart(() => _accurate = !_accurate);
+
+  /// Uma pessoa × várias: também recria os detectores no Kotlin.
+  Future<void> _toggleMultiPerson() => _restart(() => _multiPerson = !_multiPerson);
+
+  /// Enquanto a câmera religa, novos toques são ignorados: dois religamentos ao mesmo tempo
+  /// deixavam dois encoders de vídeo brigando no Kotlin.
+  Future<void> _restart(VoidCallback change) async {
+    if (_restarting) return;
+    _restarting = true;
+    setState(change);
     try {
       await widget.camera.stop();
     } catch (_) {
       // Se não conseguiu desligar, o start abaixo mostra o erro.
     }
     _resetStats();
-    await _start();
+    try {
+      await _start();
+    } finally {
+      _restarting = false;
+    }
   }
 
   /// Uma regra nova com o mesmo disparo: a contagem e a espera continuam de onde estavam.
@@ -152,19 +168,23 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     final windowStart = _windowStart ??= t;
     _framesInWindow++;
     if (t - windowStart >= const Duration(seconds: 1)) {
+      // Uma linha por segundo com os tempos, para medir pelo log sem filmar a tela.
+      debugPrint('LAB tempos: $_framesInWindow quadros/s · análise ${observation.frame.analysisTime.inMilliseconds} ms · '
+          '${_peopleText(observation)}');
       _framesPerSecond = _framesInWindow;
       _framesInWindow = 0;
       _windowStart = t;
     }
 
     // No log (flutter run / adb logcat), só quando algo muda: para quem acompanha pelo computador.
-    if (observation.verdict.check != _last?.verdict.check) {
+    final focusPoints = observation.focus?.person.landmarks;
+    if (observation.verdict.check != _last?.verdict.check || observation.people.length != _last?.people.length) {
       debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: ${_verdictLabel(observation.verdict)} · '
-          '${facingText(observation.frame)}');
+          '${_peopleText(observation)} · ${facingText(focusPoints)}');
     }
     if (observation.triggered) {
-      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1} · '
-          '${facingText(observation.frame)}');
+      debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1} '
+          '(pessoa ${observation.focus?.id}) · ${_peopleText(observation)} · ${facingText(focusPoints)}');
       _triggers++;
       _saveHighlight(observation.frame.timestamp);
       _showTrigger = true;
@@ -173,7 +193,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
         if (mounted) setState(() => _showTrigger = false);
       });
     }
-    final pose = observation.frame.bodyPose;
+    final pose = observation.focus?.person.bodyPose;
     setState(() {
       _last = observation;
       // As medidas vêm da MESMA regra que decidiu: os números da tela são os que valeram.
@@ -276,7 +296,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   CustomPaint(
                     painter: PoseSkeletonPainter(
                       frame: last.frame,
-                      verdict: last.verdict,
+                      verdicts: [for (final person in last.people) person.verdict],
                       minConfidence: _pipeline.rule.thresholds.minConfidence,
                       colors: ClippoColors.of(context),
                     ),
@@ -317,14 +337,18 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                 ),
                 if (last != null)
                   Text(
-                    facingText(last.frame),
+                    facingText(last.focus?.person.landmarks),
                     style: ClippoText.label.copyWith(color: ClippoBrand.peach, fontFeatures: ClippoText.tabular),
                   ),
                 const SizedBox(height: ClippoSpace.spaceS),
                 Text(
-                  '$_framesPerSecond quadros/s · ML Kit ${last?.frame.analysisTime.inMilliseconds ?? '–'} ms · '
+                  '$_framesPerSecond quadros/s · análise ${last?.frame.analysisTime.inMilliseconds ?? '–'} ms · '
                   '${last == null ? '–' : '${last.frame.width}×${last.frame.height}'}\n'
-                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'}'
+                  // O detector leva uns segundos para abrir; até lá, os quadros vêm do modo de uma pessoa.
+                  '${_multiPerson && last?.frame.detectTime == null ? 'Abrindo o detector de pessoas (alguns segundos)…\n' : ''}'
+                  '${last == null ? '' : '${_peopleText(last)}\n'}'
+                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'} · '
+                  '${_multiPerson ? 'várias pessoas' : 'uma pessoa'}'
                   '${_lastSave == null ? '' : '\nÚltimo salvamento: $_lastSave'}',
                   style: ClippoText.label.copyWith(
                     color: ClippoBrand.captureTextMuted,
@@ -340,6 +364,10 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                       onPressed: _toggleModel,
                     ),
                     ClippoTextButton(
+                      label: _multiPerson ? 'Seguir uma pessoa' : 'Ver várias pessoas',
+                      onPressed: _toggleMultiPerson,
+                    ),
+                    ClippoTextButton(
                       label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
                       onPressed: () => setState(() => _showLimits = !_showLimits),
                     ),
@@ -351,6 +379,22 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
         ),
       ],
     );
+  }
+
+  /// Quantas pessoas e, no modo várias pessoas, quanto custou cada etapa. O custo com N pessoas
+  /// é mais ou menos detector + N × pose por pessoa.
+  static String _peopleText(GestureObservation observation) {
+    final frame = observation.frame;
+    final count = frame.people.length;
+    final withPose = frame.people.where((p) => p.landmarks != null).length;
+    final prep = frame.prepTime, detect = frame.detectTime, pose = frame.poseTime;
+    if (prep == null || detect == null || pose == null) return 'Pessoas: $count';
+    final perPerson = count == 0 ? '–' : '${(pose.inMilliseconds / count).round()}';
+    final where = frame.detectorOnGpu ?? false ? 'GPU' : 'CPU';
+    return 'Pessoas: $count ($withPose com pose) · imagem ${prep.inMilliseconds} ms · '
+        // 0 ms: nenhuma caixa nova neste quadro (o detector roda ao lado; ver MultiPersonAnalyzer.kt).
+        '${detect == Duration.zero ? 'detector ao lado' : 'detector ($where) ${detect.inMilliseconds} ms'} · '
+        'pose ${pose.inMilliseconds} ms ($perPerson ms/pessoa)';
   }
 
   static String _verdictLabel(GestureVerdict verdict) {
@@ -455,8 +499,7 @@ class _LimitSliders extends StatelessWidget {
 ///   ombros". Negativo = nariz mais perto da câmera que os ombros (de frente).
 /// - Confiança do nariz e das orelhas.
 @visibleForTesting
-String facingText(PoseFrame frame) {
-  final p = frame.landmarks;
+String facingText(List<BodyPoint>? p) {
   if (p == null) return 'Frente × costas: –';
   final ls = p[PoseLandmarkIndex.leftShoulder], rs = p[PoseLandmarkIndex.rightShoulder];
   final nose = p[PoseLandmarkIndex.nose];

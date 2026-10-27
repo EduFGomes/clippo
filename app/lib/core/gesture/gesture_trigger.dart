@@ -35,16 +35,12 @@ class GestureTrigger {
 
   final GestureTriggerTimings timings;
 
-  /// Quando começou a sequência atual de quadros com o gesto.
-  Duration? _streakStart;
+  /// A sequência de gesto de cada pessoa (pelo número do PersonTracker): o tempo mínimo é
+  /// contado por pessoa, para dois braços de pessoas diferentes não somarem um gesto.
+  final Map<Object, _Streak> _streaks = {};
 
-  /// O último quadro em que o gesto apareceu.
-  Duration? _lastMatch;
-
-  /// Se a sequência atual já disparou: o mesmo braço levantado não dispara duas vezes.
-  bool _streakFired = false;
-
-  /// Quando foi o último disparo, para contar a espera.
+  /// Quando foi o último disparo, para contar a espera. É uma só para a quadra inteira: o
+  /// highlight salvo já tem os 30 s de todo mundo (R4).
   Duration? _lastTrigger;
 
   /// Recebe o resultado da regra para um quadro e devolve `true` se este é o momento de salvar.
@@ -52,35 +48,47 @@ class GestureTrigger {
   /// [timestamp] é a hora do quadro na câmera, sempre crescente. Ela vem de fora (em vez de
   /// `DateTime.now()`) para os testes poderem simular segundos de jogo sem esperar, e porque a
   /// hora em que o quadro foi FILMADO é a que importa para o buffer, não a hora em que a
-  /// análise terminou.
-  bool add(Duration timestamp, GestureVerdict verdict) {
+  /// análise terminou. [person] diz de quem é o resultado (com uma pessoa só, deixe o padrão).
+  bool add(Duration timestamp, GestureVerdict verdict, {Object person = 0}) {
+    // Quem não faz o gesto há mais que maxGap já recomeçaria do zero: pode ser esquecido.
+    _streaks.removeWhere((_, streak) => timestamp - streak.lastMatch > timings.maxGap);
+
     // Quadros sem o gesto não mudam nada aqui: o "buraco" que eles formam é medido no
-    // próximo quadro com o gesto, comparando com _lastMatch.
+    // próximo quadro com o gesto, comparando com lastMatch.
     if (!verdict.isGesture) return false;
 
-    final lastMatch = _lastMatch;
-    if (lastMatch == null || timestamp - lastMatch > timings.maxGap) {
-      _streakStart = timestamp;
-      _streakFired = false;
-    }
-    _lastMatch = timestamp;
+    final streak = _streaks[person] ??= _Streak(timestamp);
+    streak.lastMatch = timestamp;
 
-    if (_streakFired) return false;
-    if (timestamp - _streakStart! < timings.hold) return false;
+    // O mesmo braço levantado não dispara duas vezes.
+    if (streak.fired) return false;
+    if (timestamp - streak.start < timings.hold) return false;
 
     final lastTrigger = _lastTrigger;
     if (lastTrigger != null && timestamp - lastTrigger < timings.cooldown) return false;
 
-    _streakFired = true;
+    streak.fired = true;
     _lastTrigger = timestamp;
     return true;
   }
 
   /// Esquece tudo, para uma sessão de gravação nova.
   void reset() {
-    _streakStart = null;
-    _lastMatch = null;
-    _streakFired = false;
+    _streaks.clear();
     _lastTrigger = null;
   }
+}
+
+/// Uma sequência de quadros com o gesto, de uma pessoa.
+class _Streak {
+  _Streak(this.start) : lastMatch = start;
+
+  /// Quando começou.
+  final Duration start;
+
+  /// O último quadro em que o gesto apareceu.
+  Duration lastMatch;
+
+  /// Se esta sequência já disparou.
+  bool fired = false;
 }
