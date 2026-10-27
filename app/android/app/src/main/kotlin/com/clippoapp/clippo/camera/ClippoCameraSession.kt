@@ -1,12 +1,17 @@
 package com.clippoapp.clippo.camera
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
+import android.util.Log
 import android.util.Size
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
@@ -89,6 +94,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     // A análise roda fora da thread principal, para não travar a interface.
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    // Cópia para a galeria (fase de testes) em outra thread: não atrasa a análise dos quadros.
+    private val galleryExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var detector: PoseDetector? = null
@@ -102,6 +109,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private val isEncoding = AtomicBoolean(false)
     private val sampleQueue = ConcurrentLinkedDeque<EncodedSample>()
     private var outputFormat: MediaFormat? = null
+
+    // O quadro analisado e o quadro do encoder NÃO usam o mesmo relógio (em alguns celulares um
+    // conta o tempo dormindo e o outro não). Cada fluxo guarda "seu relógio − elapsedRealtime"
+    // do último quadro; a diferença converte o disparo para o relógio do encoder.
+    @Volatile private var analysisClockLeadUs: Long? = null
+    @Volatile private var encoderClockLeadUs: Long? = null
 
     data class EncodedSample(
         val buffer: ByteBuffer,
@@ -126,6 +139,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 val untilMicros = call.argument<Number>("untilMicros")?.toLong()
                     ?: return result.error("bad-arguments", "Faltou untilMicros.", null)
                 saveHighlight(untilMicros, result)
+            }
+            "copyToGallery" -> {
+                val path = call.argument<String>("path")
+                    ?: return result.error("bad-arguments", "Faltou path.", null)
+                copyToGallery(path, result)
             }
             "stop" -> {
                 stop()
@@ -242,6 +260,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                                 }
 
                                 sampleQueue.add(EncodedSample(copiedData, infoCopy))
+                                encoderClockLeadUs =
+                                    bufferInfo.presentationTimeUs - SystemClock.elapsedRealtimeNanos() / 1000
 
                                 // Mantém aprox. 35 segundos de histórico na fila circular (1050 quadros a 30fps)
                                 while (sampleQueue.size > 1200) {
@@ -275,18 +295,28 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         inputSurface?.release()
         inputSurface = null
         sampleQueue.clear()
+        encoderClockLeadUs = null
     }
 
     /**
      * 🔜 BUFFER (Mobile): salvar os ~30 s que terminam em [untilMicros] num MP4 (R1).
      */
-    private fun saveHighlight(untilMicros: Long, result: MethodChannel.Result) {
+    private fun saveHighlight(triggerMicros: Long, result: MethodChannel.Result) {
         try {
             val samples = sampleQueue.toList()
             val format = outputFormat
-            if (samples.isEmpty() || format == null) {
+            val analysisLead = analysisClockLeadUs
+            val encoderLead = encoderClockLeadUs
+            if (samples.isEmpty() || format == null || analysisLead == null || encoderLead == null) {
                 return result.error("save-failed", "Buffer de vídeo ainda não possui quadros suficientes.", null)
             }
+            // O disparo vem no relógio da análise; daqui para baixo tudo é no relógio do encoder.
+            val untilMicros = triggerMicros - analysisLead + encoderLead
+            Log.d(
+                "ClippoBuffer",
+                "disparo=$triggerMicros até(encoder)=$untilMicros diferença=${encoderLead - analysisLead} " +
+                    "buffer=${samples.first().info.presentationTimeUs}..${samples.last().info.presentationTimeUs}"
+            )
 
             // Filtra quadros até o exato momento do disparo (untilMicros)
             val relevantSamples = samples.filter { it.info.presentationTimeUs <= untilMicros }
@@ -331,7 +361,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             val durationMs = ((lastTimestamp - firstTimestamp) / 1000).coerceAtLeast(0)
 
             val outputFile = File(activity.cacheDir, "highlight_${System.currentTimeMillis()}.mp4")
-            val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_FORMAT_MPEG_4)
+            val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val trackIndex = muxer.addTrack(format)
             muxer.start()
 
@@ -340,7 +370,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 val adjustedInfo = MediaCodec.BufferInfo().apply {
                     set(0, sample.info.size, relTime.coerceAtLeast(0L), sample.info.flags)
                 }
-                muxer.writeSampleData(sample.buffer, adjustedInfo)
+                muxer.writeSampleData(trackIndex, sample.buffer, adjustedInfo)
             }
 
             muxer.stop()
@@ -354,6 +384,38 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             )
         } catch (e: Exception) {
             result.error("save-failed", "Erro ao processar o highlight: ${e.message}", null)
+        }
+    }
+
+    /**
+     * SÓ PARA A FASE DE TESTES: copia um highlight salvo para a galeria (álbum DCIM/Clippo), para
+     * o time assistir no celular. O produto guarda o highlight só na pasta do app.
+     * Usa o MediaStore, que no Android 10+ não pede permissão; antes disso, responde com erro.
+     */
+    private fun copyToGallery(path: String, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return result.error("gallery-unavailable", "Galeria só no Android 10 ou mais novo.", null)
+        }
+        galleryExecutor.execute {
+            try {
+                val source = File(path)
+                val resolver = activity.contentResolver
+                val details = ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, source.name)
+                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/Clippo")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, details)
+                    ?: throw IllegalStateException("MediaStore não criou o arquivo.")
+                resolver.openOutputStream(uri).use { output ->
+                    source.inputStream().use { input -> input.copyTo(output!!) }
+                }
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+                activity.runOnUiThread { result.success(uri.toString()) }
+            } catch (e: Exception) {
+                activity.runOnUiThread { result.error("gallery-failed", "Erro ao copiar para a galeria: ${e.message}", null) }
+            }
         }
     }
 
@@ -398,9 +460,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         val rotation = proxy.imageInfo.rotationDegrees
         val width = if (rotation % 180 == 0) proxy.width else proxy.height
         val height = if (rotation % 180 == 0) proxy.height else proxy.width
-        // Hora em que o quadro foi FILMADO, no relógio do sensor (o mesmo do vídeo do buffer).
+        // Hora em que o quadro foi FILMADO, no relógio do sensor (não é o mesmo do vídeo do buffer:
+        // ver analysisClockLeadUs).
         val timestampNanos = proxy.imageInfo.timestamp
         val startedAt = SystemClock.elapsedRealtime()
+        analysisClockLeadUs = (timestampNanos - SystemClock.elapsedRealtimeNanos()) / 1000
 
         detector.process(InputImage.fromMediaImage(mediaImage, rotation))
             .addOnSuccessListener { pose ->
@@ -450,5 +514,6 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     fun dispose() {
         stop()
         analysisExecutor.shutdown()
+        galleryExecutor.shutdown()
     }
 }

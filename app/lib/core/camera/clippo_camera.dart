@@ -67,6 +67,10 @@ class ClippoCamera {
     return SavedClip.fromMap(data);
   }
 
+  /// SÓ PARA A FASE DE TESTES: copia o MP4 de um [SavedClip] para a galeria (álbum Clippo), para
+  /// o time assistir no celular. O produto guarda o highlight só na pasta do app.
+  Future<void> copyToGallery(SavedClip clip) => _call<String>('copyToGallery', {'path': clip.path});
+
   /// Um [PoseFrame] por quadro analisado, enquanto a câmera estiver ligada.
   ///
   /// O nativo só começa a mandar quando alguém escuta, e para quando a escuta é cancelada.
@@ -93,6 +97,8 @@ class ClippoCamera {
         'analysis-failed' => const CameraFailure('Não foi possível analisar a imagem da câmera.'),
         'not-implemented' => const CameraFailure('Ainda não dá para salvar o lance: o buffer de 30 s não está pronto.'),
         'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),
+        'gallery-unavailable' => const CameraFailure('A galeria só funciona no Android 10 ou mais novo.'),
+        'gallery-failed' => const CameraFailure('Não foi possível copiar o lance para a galeria.'),
         _ => CameraFailure('Algo deu errado com a câmera (${e.code}).'),
       };
 }

@@ -13,6 +13,10 @@ import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/dev/pose_skeleton_painter.dart';
 
+/// Fase de testes: cada highlight salvo também vai para a galeria do celular, para o time assistir.
+/// Para desligar: --dart-define=COPY_TO_GALLERY=false (ou troque o padrão para false).
+const bool copyHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', defaultValue: true);
+
 /// FERRAMENTA DO TIME (não é tela do produto): mostra a câmera e o que a detecção do gesto
 /// conclui em cada quadro, para testar e calibrar a regra (docs/produto.md › Critérios de aceite).
 ///
@@ -186,6 +190,15 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     try {
       final clip = await widget.camera.saveHighlight(until: until);
       result = 'Salvo em ${clock.elapsedMilliseconds} ms: ${clip.duration.inSeconds} s em ${clip.path}';
+      // Depois de medir: a cópia para a galeria não entra no tempo do R2.
+      if (copyHighlightsToGallery) {
+        try {
+          await widget.camera.copyToGallery(clip);
+          result += ' · na galeria (álbum Clippo)';
+        } on CameraFailure catch (e) {
+          result += ' · ${e.message}';
+        }
+      }
     } on CameraFailure catch (e) {
       result = '${e.message} (${clock.elapsedMilliseconds} ms)';
     }

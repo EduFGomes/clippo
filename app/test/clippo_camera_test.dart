@@ -119,6 +119,26 @@ void main() {
       );
     });
 
+    test('copyToGallery manda o caminho do trecho e traduz o erro', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return 'content://media/external/video/media/1';
+      });
+      const clip = SavedClip(path: '/data/clippo/lance.mp4', duration: Duration(seconds: 30));
+      await camera.copyToGallery(clip);
+      expect(sent?.method, 'copyToGallery');
+      expect(sent?.arguments, {'path': '/data/clippo/lance.mp4'});
+
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        throw PlatformException(code: 'gallery-failed', message: 'falhou');
+      });
+      await expectLater(
+        camera.copyToGallery(clip),
+        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', contains('galeria'))),
+      );
+    });
+
     test('traduz o erro do Kotlin para uma mensagem da tela', () async {
       messenger.setMockMethodCallHandler(_commands, (call) async {
         throw PlatformException(code: 'no-permission', message: 'Sem permissão de câmera.');
