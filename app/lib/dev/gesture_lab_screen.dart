@@ -20,7 +20,7 @@ const bool copyHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', def
 /// FERRAMENTA DO TIME (não é tela do produto): mostra a câmera e o que a detecção do gesto
 /// conclui em cada quadro, para testar e calibrar a regra (docs/produto.md › Critérios de aceite).
 ///
-/// Abra pelo catálogo ou direto no celular: flutter run -t lib/dev/gesture_lab_main.dart
+/// Abra pelo catálogo ou direto no celular: flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
 class GestureLabScreen extends StatefulWidget {
   const GestureLabScreen({super.key, this.camera = const ClippoCamera()});
 

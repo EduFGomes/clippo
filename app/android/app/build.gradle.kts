@@ -29,6 +29,25 @@ android {
         versionName = flutter.versionName
     }
 
+    // Dois apps no mesmo celular: o Clippo normal e o laboratório do gesto, cada um com seu
+    // ícone. O "app" é o padrão (default-flavor no pubspec.yaml), então `flutter run` continua
+    // igual. O lab: flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
+    buildFeatures {
+        resValues = true // o nome de cada app (app_name) vem do sabor
+    }
+    flavorDimensions += "variant"
+    productFlavors {
+        create("app") {
+            dimension = "variant"
+            resValue("string", "app_name", "clippo")
+        }
+        create("lab") {
+            dimension = "variant"
+            applicationIdSuffix = ".lab"
+            resValue("string", "app_name", "Clippo Lab")
+        }
+    }
+
     // O detector de pessoas (assets/efficientdet_lite0.tflite) é lido direto do APK: não pode
     // ir comprimido.
     androidResources {

@@ -55,7 +55,7 @@ limites e os disparos, sem login e sem Firebase:
 
 ```
 cd app
-flutter run -t lib/dev/gesture_lab_main.dart
+flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
 ```
 
 Com o cabo conectado, o `flutter run` mostra no log uma linha `LAB` a cada mudança de motivo e a

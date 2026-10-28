@@ -23,6 +23,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # Sabor do Android usado quando o `flutter run` não diz qual. O "lab" instala o laboratório
+  # do gesto como um segundo app (ver android/app/build.gradle.kts).
+  default-flavor: app
+
   # Licenças das fontes (OFL), mostradas na tela de licenças do app.
   assets:
     - assets/fonts/Anton-OFL.txt
