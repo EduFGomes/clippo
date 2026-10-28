@@ -128,33 +128,4 @@ void main() {
       expect(measurementText(null, limits), startsWith('Sem medidas\nLimites:'));
     });
   });
-
-  group('frente × costas', () {
-    /// Ombros a 80 de distância; [leftOnRight] põe o ombro esquerdo à direita da imagem (de
-    /// frente para a câmera traseira); [noseZ] é a profundidade do nariz (ombros em z = 0).
-    List<BodyPoint> facing({required bool leftOnRight, required double noseZ}) {
-      final points = List.filled(PoseLandmarkIndex.count, const BodyPoint(0, 0, confidence: 0.9));
-      points[PoseLandmarkIndex.leftShoulder] = BodyPoint(leftOnRight ? 400 : 320, 600);
-      points[PoseLandmarkIndex.rightShoulder] = BodyPoint(leftOnRight ? 320 : 400, 600);
-      points[PoseLandmarkIndex.nose] = BodyPoint(360, 500, z: noseZ, confidence: 0.99);
-      return points;
-    }
-
-    test('de frente: ombro esquerdo à direita e nariz à frente dos ombros', () {
-      expect(
-        facingText(facing(leftOnRight: true, noseZ: -40)),
-        'Frente × costas: ombro esq. à direita (frente?) · nariz z -0,50 · confiança nariz 0,99, orelhas 0,90/0,90',
-      );
-    });
-
-    test('de costas: ombro esquerdo à esquerda e nariz atrás dos ombros', () {
-      final text = facingText(facing(leftOnRight: false, noseZ: 40));
-      expect(text, contains('ombro esq. à esquerda (costas?)'));
-      expect(text, contains('nariz z 0,50'));
-    });
-
-    test('sem pessoa', () {
-      expect(facingText(null), 'Frente × costas: –');
-    });
-  });
 }

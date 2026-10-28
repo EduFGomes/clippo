@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 /**
- * Várias pessoas no quadro (🟡 caminho em teste; ver docs/arquitetura.md › Decisões em aberto):
+ * Várias pessoas no quadro (o modo escolhido; 🟡 falta medir com 3–6 pessoas, ver docs/arquitetura.md › Decisões em aberto):
  * 1. o detector de objetos do MediaPipe (EfficientDet-Lite0, em assets/) acha as caixas de "person"
  *    numa thread só dele, sem segurar a pose: quando termina, as caixas entram no próximo quadro e
  *    ele começa de novo com o quadro mais recente;

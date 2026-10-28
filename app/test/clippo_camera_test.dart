@@ -157,13 +157,13 @@ void main() {
       expect(clip.duration, const Duration(seconds: 30));
     });
 
-    test('saveHighlight sem buffer pronto vira uma mensagem da tela', () async {
+    test('saveHighlight com erro do buffer vira uma mensagem da tela', () async {
       messenger.setMockMethodCallHandler(_commands, (call) async {
-        throw PlatformException(code: 'not-implemented', message: 'O buffer de 30 s ainda não foi feito.');
+        throw PlatformException(code: 'save-failed', message: 'Fatia de vídeo vazia.');
       });
       await expectLater(
         camera.saveHighlight(until: Duration.zero),
-        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', contains('buffer de 30 s'))),
+        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', 'Não foi possível salvar o lance.')),
       );
     });
 

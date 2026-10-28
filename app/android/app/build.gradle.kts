@@ -90,8 +90,8 @@ dependencies {
     implementation("com.google.mlkit:pose-detection-accurate:$mlKitPose")
 
     // Detector de pessoas (MediaPipe Tasks, Apache 2.0) para o modo várias pessoas: acha cada
-    // pessoa no quadro e um ML Kit para cada uma lê a pose do recorte dela. 🟡 Em teste; ver
-    // kotlin/.../camera/MultiPersonAnalyzer.kt. O modelo (EfficientDet-Lite0, 4,6 MB) está em
+    // pessoa no quadro e um ML Kit para cada uma lê a pose do recorte dela. Modo escolhido
+    // (🟡 falta medir com 3–6 pessoas); ver kotlin/.../camera/MultiPersonAnalyzer.kt. O modelo (EfficientDet-Lite0, 4,6 MB) está em
     // src/main/assets/, baixado de storage.googleapis.com/mediapipe-models.
     implementation("com.google.mediapipe:tasks-vision:0.10.35")
 }

@@ -46,7 +46,7 @@ Valores ainda não medidos em quadra. Ajustáveis ao vivo no laboratório ("Ajus
 | Cotovelo | ≥ 130° | Pose de "muque" fica abaixo de 110° |
 | Tempo mínimo do gesto | 400 ms | Chute inicial; funcionou nos testes em casa |
 | Buraco tolerado | 250 ms | Um ou dois quadros perdidos a ~25 quadros/s |
-| Espera entre disparos (R4) | 5 s | Sugestão da R4, não confirmada pelo grupo |
+| Espera entre disparos (R4) | 5 s | Decidido pelo grupo em 28/10/2026 |
 
 ## Como testar
 

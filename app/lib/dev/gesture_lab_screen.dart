@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -41,8 +40,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   _CameraState _state = _CameraState.checking;
   String? _error;
   bool _accurate = false;
-  // 🟡 Em teste: detector de pessoas + ML Kit em cada uma. Desligado, o ML Kit segue uma só.
-  bool _multiPerson = false;
   bool _restarting = false;
   bool _showLimits = false;
 
@@ -110,7 +107,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     _pipeline.reset();
     _subscription = widget.camera.poses.listen((frame) => _onObservation(_pipeline.observe(frame)), onError: _fail);
     try {
-      await widget.camera.start(accurate: _accurate, multiPerson: _multiPerson);
+      await widget.camera.start(accurate: _accurate, multiPerson: true);
       if (mounted) setState(() => _state = _CameraState.running);
     } catch (e) {
       _fail(e);
@@ -120,8 +117,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   /// Trocar de modelo exige recriar o detector no Kotlin: desliga e liga de novo.
   Future<void> _toggleModel() => _restart(() => _accurate = !_accurate);
 
-  /// Uma pessoa × várias: também recria os detectores no Kotlin.
-  Future<void> _toggleMultiPerson() => _restart(() => _multiPerson = !_multiPerson);
 
   /// Enquanto a câmera religa, novos toques são ignorados: dois religamentos ao mesmo tempo
   /// deixavam dois encoders de vídeo brigando no Kotlin.
@@ -177,14 +172,13 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     }
 
     // No log (flutter run / adb logcat), só quando algo muda: para quem acompanha pelo computador.
-    final focusPoints = observation.focus?.person.landmarks;
     if (observation.verdict.check != _last?.verdict.check || observation.people.length != _last?.people.length) {
       debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: ${_verdictLabel(observation.verdict)} · '
-          '${_peopleText(observation)} · ${facingText(focusPoints)}');
+          '${_peopleText(observation)}');
     }
     if (observation.triggered) {
       debugPrint('LAB ${observation.frame.timestamp.inMilliseconds} ms: DISPARO #${_triggers + 1} '
-          '(pessoa ${observation.focus?.id}) · ${_peopleText(observation)} · ${facingText(focusPoints)}');
+          '(pessoa ${observation.focus?.id}) · ${_peopleText(observation)}');
       _triggers++;
       _saveHighlight(observation.frame.timestamp);
       _showTrigger = true;
@@ -335,20 +329,14 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   measurementText(_measurement, _pipeline.rule.thresholds),
                   style: ClippoText.body.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
                 ),
-                if (last != null)
-                  Text(
-                    facingText(last.focus?.person.landmarks),
-                    style: ClippoText.label.copyWith(color: ClippoBrand.peach, fontFeatures: ClippoText.tabular),
-                  ),
                 const SizedBox(height: ClippoSpace.spaceS),
                 Text(
                   '$_framesPerSecond quadros/s · análise ${last?.frame.analysisTime.inMilliseconds ?? '–'} ms · '
                   '${last == null ? '–' : '${last.frame.width}×${last.frame.height}'}\n'
                   // O detector leva uns segundos para abrir; até lá, os quadros vêm do modo de uma pessoa.
-                  '${_multiPerson && last?.frame.detectTime == null ? 'Abrindo o detector de pessoas (alguns segundos)…\n' : ''}'
+                  '${last?.frame.detectTime == null ? 'Abrindo o detector de pessoas (alguns segundos)…\n' : ''}'
                   '${last == null ? '' : '${_peopleText(last)}\n'}'
-                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'} · '
-                  '${_multiPerson ? 'várias pessoas' : 'uma pessoa'}'
+                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'}'
                   '${_lastSave == null ? '' : '\nÚltimo salvamento: $_lastSave'}',
                   style: ClippoText.label.copyWith(
                     color: ClippoBrand.captureTextMuted,
@@ -362,10 +350,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                     ClippoTextButton(
                       label: _accurate ? 'Usar modelo base' : 'Usar modelo accurate',
                       onPressed: _toggleModel,
-                    ),
-                    ClippoTextButton(
-                      label: _multiPerson ? 'Seguir uma pessoa' : 'Ver várias pessoas',
-                      onPressed: _toggleMultiPerson,
                     ),
                     ClippoTextButton(
                       label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
@@ -489,25 +473,4 @@ class _LimitSliders extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Pistas de "de frente × de costas", para investigar o disparo com a pessoa de costas.
-/// Nada disto entra na regra ainda: é para ver, em vídeo e no log, qual pista separa os dois casos.
-/// - Ordem dos ombros: com a câmera traseira e a pessoa de frente, o ombro ESQUERDO dela aparece
-///   à DIREITA da imagem. De costas, inverte — se o modelo souber qual ombro é qual.
-/// - Profundidade do nariz: z do nariz menos a média do z dos ombros, em "distâncias entre
-///   ombros". Negativo = nariz mais perto da câmera que os ombros (de frente).
-/// - Confiança do nariz e das orelhas.
-@visibleForTesting
-String facingText(List<BodyPoint>? p) {
-  if (p == null) return 'Frente × costas: –';
-  final ls = p[PoseLandmarkIndex.leftShoulder], rs = p[PoseLandmarkIndex.rightShoulder];
-  final nose = p[PoseLandmarkIndex.nose];
-  String decimal(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
-  final order = ls.x > rs.x ? 'ombro esq. à direita (frente?)' : 'ombro esq. à esquerda (costas?)';
-  final shoulderDistance = math.sqrt(math.pow(ls.x - rs.x, 2) + math.pow(ls.y - rs.y, 2));
-  final noseDepth = shoulderDistance == 0 ? 0.0 : (nose.z - (ls.z + rs.z) / 2) / shoulderDistance;
-  return 'Frente × costas: $order · nariz z ${decimal(noseDepth)} · '
-      'confiança nariz ${decimal(nose.confidence)}, orelhas ${decimal(p[PoseLandmarkIndex.leftEar].confidence)}/'
-      '${decimal(p[PoseLandmarkIndex.rightEar].confidence)}';
 }

@@ -52,7 +52,7 @@ class ClippoCamera {
 
   /// Liga a câmera traseira e a análise. [accurate] escolhe o modelo mais preciso do ML Kit
   /// (🟡 os dois existem até a medição a 8 m decidir). [multiPerson] acha cada pessoa do quadro
-  /// com um detector antes do ML Kit (🟡 em teste); sem ele, o ML Kit segue uma pessoa só.
+  /// com um detector antes do ML Kit (o modo escolhido); sem ele, o ML Kit segue uma pessoa só.
   Future<void> start({bool accurate = false, bool multiPerson = false}) =>
       _call<void>('start', {'accurate': accurate, 'multiPerson': multiPerson});
 
@@ -60,9 +60,7 @@ class ClippoCamera {
 
   /// Pede ao buffer para salvar os ~30 s que terminam em [until] (R1): a hora do quadro em que o
   /// gesto disparou ([PoseFrame.timestamp]), no relógio do sensor.
-  ///
-  /// 🔜 O buffer ainda não existe: por enquanto o Kotlin responde com erro, e este método lança
-  /// [CameraFailure]. Contrato em android/.../camera/README.md.
+  /// O MP4 fica na pasta interna do app. Contrato em android/.../camera/README.md.
   Future<SavedClip> saveHighlight({required Duration until}) async {
     final data = await _call<Map<Object?, Object?>>('saveHighlight', {'untilMicros': until.inMicroseconds});
     if (data == null) throw const CameraFailure('O buffer não devolveu o trecho salvo.');
@@ -98,7 +96,8 @@ class ClippoCamera {
         'permission-pending' => const CameraFailure('Responda o pedido de permissão que está aberto.'),
         'detector-failed' => const CameraFailure('Não foi possível abrir o detector de pessoas.'),
         'analysis-failed' => const CameraFailure('Não foi possível analisar a imagem da câmera.'),
-        'not-implemented' => const CameraFailure('Ainda não dá para salvar o lance: o buffer de 30 s não está pronto.'),
+        'encoder-init-failed' => const CameraFailure('Não foi possível ligar a gravação dos últimos 30 s.'),
+        'buffer-failed' => const CameraFailure('A gravação dos últimos 30 s parou. Feche e abra a câmera de novo.'),
         'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),
         'gallery-unavailable' => const CameraFailure('A galeria só funciona no Android 10 ou mais novo.'),
         'gallery-failed' => const CameraFailure('Não foi possível copiar o lance para a galeria.'),

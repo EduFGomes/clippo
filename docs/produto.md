@@ -90,7 +90,7 @@ O modelo é **por sessão**: cada jogo é uma sessão, e quem participou dela v�
 | **Amigo** | Outro usuário com quem existe uma amizade. É de quem se escolhe os participantes de uma sessão. | `Friend` / `Friendship` |
 | **Sessão** | Um jogo gravado. Tem nome, data/hora de início, duração, local, quem gravou e a lista de participantes. Funciona como a "pasta compartilhada". | `Session` |
 | **Participante** | Usuário incluído numa sessão. Todo participante vê todos os highlights da sessão. | `Participant` |
-| **Highlight** | Trecho de ~30 s salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto. | `Highlight` |
+| **Highlight** | Trecho de ~30 s salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto, que nasce com um nome padrão (ex.: "Lance 3") e pode ser editado. | `Highlight` |
 | **Gesto** | O movimento **\ o /** que dispara o salvamento. | `Gesture` / `Trigger` |
 | **Buffer** | Os últimos 30 s de vídeo mantidos em memória enquanto a sessão grava. Não é salvo sozinho. | `Buffer` |
 
@@ -140,11 +140,11 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 ### Gravação e gesto
 | # | Regra |
 |---|---|
-| R1 | O highlight contém os **~30 s anteriores** ao momento do gesto. |
+| R1 | O highlight contém os **~30 s anteriores** ao momento do gesto, mesmo que esse trecho se sobreponha a um highlight anterior: cada um leva os seus 30 s. |
 | R2 | O highlight deve estar salvo em **até 3 s** após o gesto (critério de aceite). |
 | R3 | O gesto é válido só com **os dois braços** levantados em diagonal para fora, acima dos ombros, sem cruzar. Um braço só não dispara. |
-| R4 | 🟡 Depois de um disparo, novos gestos são ignorados por alguns segundos (sugestão: ~5 s) para não salvar o mesmo lance duas vezes. |
-| R5 | 🟡 Se a sessão tem menos de 30 s de gravação quando o gesto acontece, salva o que houver. |
+| R4 | Depois de um disparo, novos gestos são ignorados por **5 s** para não salvar o mesmo lance duas vezes. |
+| R5 | Se a sessão tem menos de 30 s de gravação quando o gesto acontece, salva o que houver. |
 | R6 | O buffer em si **nunca** é enviado ou guardado — só o que o gesto salvar. |
 | R7 | Durante a gravação, a tela não mostra a imagem da câmera (só o ponto pulsante), e o aparelho não deve apagar a tela nem bloquear sozinho. |
 | R8 | A detecção acontece no aparelho; não depende de internet. |
@@ -155,14 +155,14 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
 | R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
-| R12 | 🟡 Só o dono edita nome/local da sessão e adiciona ou remove participantes depois da gravação. |
-| R13 | 🟡 Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado no aparelho e é enviado quando houver conexão. A interface mostra que está "enviando". |
-| R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) ou **"Descartar"** (na confirmação). 🟡 Decidir se os highlights já salvos também somem nesses casos, e se sessão sem nenhum highlight pode ser salva. |
+| R12 | Só o dono edita nome/local da sessão e adiciona ou remove participantes depois da gravação. |
+| R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
+| R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) guarda os highlights já salvos numa sessão padrão; **"Descartar"** (na confirmação) joga fora todos os highlights da sessão. 🟡 Falta definir a sessão padrão (nome, quem participa) e se sessão sem nenhum highlight pode ser salva. |
 
 ### Amigos
 | # | Regra |
 |---|---|
-| R15 | 🟡 Amizade é mútua: um convida, o outro aceita. |
+| R15 | Amizade é mútua: um convida, o outro aceita. |
 | R16 | O contador "X sessões juntos" na lista de amigos conta as sessões em que os dois são participantes. |
 
 ### Fluxo principal (caminho feliz da demo)
@@ -283,24 +283,24 @@ A gravação ignora o tema claro/escuro.
 **Estado A — Preparar**
 - Imagem da câmera em **tela cheia**. A barra de status fica escura.
 - Topo: voltar e a dica **"Apoie o celular e enquadre o campo"**.
-- Embaixo, rótulo **"Gravar com"** e uma fileira rolável de chips: **"Gravar sozinho"** (padrão) e **"Com Rafa"**, **"Com Bruno"**… (amigos). 🟡 Um chip por vez ou vários (a regra R10 prevê vários amigos por sessão).
+- Embaixo, rótulo **"Gravar com"** e uma fileira rolável de chips: **"Gravar sozinho"** (padrão) e **"Com Rafa"**, **"Com Bruno"**… (amigos). 🟡 **Proposta, revisar em grupo:** os chips deixam marcar **vários amigos** (R10); "Gravar sozinho" vem marcado e desmarca quando alguém é escolhido. Na "Confirme a sessão" dá para acrescentar quem faltou, e depois de salva só o dono muda os participantes (R12). Os participantes não precisam aceitar: a sessão aparece na Início deles, porque já são amigos (R15).
 - **Botão de gravar** grande e a legenda "Iniciar detecção de gesto \ o /".
 - Sem permissão de câmera 🟡: explicar por que é necessária + botão para permitir.
 
 **Estado B — Gravando (standby)**
 - Tela **preta pura** (nunca cinza escuro: em telas OLED o pixel desliga e economiza bateria), **nenhum** elemento além de um **pequeno ponto pulsando** no centro (ciclo lento de 2,6 s). A barra de status também fica preta.
-- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A 🟡 *confirmar o que acontece com highlights já salvos*).
+- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A; os highlights já salvos ficam numa sessão padrão, R14).
 
 **Estado C — Highlight salvo**
 - Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
 - Some sozinho após **~2,6 s** e volta ao Estado B. Não exige toque.
-- 🟡 Vibração curta ao salvar.
+- Vibração leve ao salvar.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
 - Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local · sugerido por GPS**, **Participantes** (inclui "Você") + "+ adicionar".
 - Botão primário **"Salvar sessão"** → volta à **Início**, com a nova sessão no topo.
-- Link **"Descartar"** → descarta a sessão e volta à câmera 🟡 *(confirmar o que acontece com os highlights já salvos)*.
+- Link **"Descartar"** → descarta a sessão e todos os highlights dela e volta à câmera (R14).
 
 ### 4.6 Amigos
 
@@ -312,7 +312,7 @@ A gravação ignora o tema claro/escuro.
 - Lista: avatar, nome e linha secundária ("12 sessões juntos", "nenhuma sessão ainda"), com menu **⋮** 🟡 *(ações a definir: remover, ver sessões juntos…)*.
 - Navegação com **Amigos** ativo.
 
-**Estados** 🟡: vazio ("Adicione quem joga com você" + Convidar); busca sem resultado; convites pendentes (se amizade exigir aceite).
+**Estados** 🟡: vazio ("Adicione quem joga com você" + Convidar); busca sem resultado; convites pendentes (a amizade exige aceite, R15).
 
 ### 4.7 Perfil
 
@@ -336,13 +336,9 @@ Início → Sessão → Gravação (A–D) são o núcleo da proposta e precisam
 | Tema | Pergunta |
 |---|---|
 | Plataforma | iOS entra depois do MVP? |
-| Cooldown | Quantos segundos ignorar gestos após um disparo? |
-| Offline | Confirmar que highlights ficam no aparelho até haver internet. |
-| Cancelar / Descartar | Highlights já salvos somem junto? Sessão sem highlights pode ser salva? |
-| Participantes na gravação | Escolher um amigo por vez no chip, ou vários (como prevê R10)? |
-| Permissões de sessão | Participantes podem sair de uma sessão? Dono pode remover alguém? |
-| Amizade | Convite com aceite, ou adicionar direto? |
-| Título do highlight | Quem escreve: o usuário depois, ou nasce automático ("Lance 3") e é editável? |
+| Cancelar / Descartar | Como é a sessão padrão que guarda os highlights de "Cancelar gravação"? Sessão sem highlights pode ser salva? |
+| Participantes na gravação | Revisar em grupo a proposta da Gravação › Estado A (vários amigos nos chips, sem aceite). |
+| Permissões de sessão | Participantes podem sair de uma sessão? (Só o dono edita, R12.) |
 | Menu de amigo | Quais ações ficam no ⋮ da lista de amigos? |
 | Recuperação de senha | "Esqueci a senha" aparece no Entrar, mas o fluxo ainda não existe. |
 | Tela de permissões | Quando e como pedir câmera e localização. |

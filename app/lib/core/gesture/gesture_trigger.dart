@@ -11,7 +11,7 @@ import 'gesture_rule.dart';
 
 /// Os tempos do disparo, juntos para serem calibrados.
 ///
-/// 🟡 Valores iniciais. A espera de 5 s é a sugestão da R4, ainda não confirmada pelo grupo.
+/// 🟡 Valores iniciais, menos a espera de 5 s (R4, decidida pelo grupo em 28/10/2026).
 class GestureTriggerTimings {
   const GestureTriggerTimings({
     this.hold = const Duration(milliseconds: 400),

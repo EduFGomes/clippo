@@ -83,7 +83,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     private val preview = Preview.Builder().setResolutionSelector(resolution).build()
 
-    // 🔜 Terceiro fluxo do CameraX para alimentare o buffer de vídeo via MediaCodec surface
+    // Terceiro fluxo: o CameraX desenha cada quadro na superfície de entrada do encoder do buffer
+    // (ver setupEncoder). Mesma resolução dos outros dois, para os três caberem juntos na câmera.
     private val bufferPreview = Preview.Builder().setResolutionSelector(resolution).build()
 
     private val analysis = ImageAnalysis.Builder()
@@ -95,12 +96,14 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     // A análise roda fora da thread principal, para não travar a interface.
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    // Montar o MP4 (~11 MB) em outra thread: na principal, a tela engasgava a cada highlight.
+    private val saveExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     // Cópia para a galeria (fase de testes) em outra thread: não atrasa a análise dos quadros.
     private val galleryExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var detector: PoseDetector? = null
-    // Só no modo várias pessoas (🟡 em teste): acha as pessoas antes do ML Kit. Criado, usado e
+    // Só no modo várias pessoas (o escolhido): acha as pessoas antes do ML Kit. Criado, usado e
     // fechado na thread da análise.
     @Volatile private var multiPerson: MultiPersonAnalyzer? = null
     // Muda a cada start: um detector que terminar de abrir depois de um stop (ou de outro start)
@@ -109,7 +112,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private var poseSink: EventChannel.EventSink? = null
     private var pendingPermission: MethodChannel.Result? = null
 
-    // 🔜 Estruturas de controle do Buffer (MediaCodec + Fila Circular)
+    // Buffer de 30 s: o encoder H.264 comprime os quadros e a fila guarda os últimos ~40 s já
+    // comprimidos, em memória (R6: nunca vai para o disco nem sai do aparelho). Salvar um
+    // highlight é só copiar um pedaço da fila para um MP4, sem comprimir de novo (R2).
     private var mediaCodec: MediaCodec? = null
     private var inputSurface: android.view.Surface? = null
     private var encoderThread: Thread? = null
@@ -241,7 +246,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }
         analysis.setAnalyzer(analysisExecutor, ::analyze)
 
-        // 🔜 Inicializa o MediaCodec Encoder para o buffer circular de vídeo
+        // O encoder liga antes da câmera: o terceiro fluxo precisa da superfície dele.
         try {
             setupEncoder()
         } catch (e: Exception) {
@@ -257,7 +262,6 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 provider.unbindAll()
                 // Presa ao ciclo de vida da tela: o CameraX desliga a câmera sozinho quando o
                 // app vai para segundo plano e liga de novo quando ele volta.
-                // 🔜 O buffer do Otávio entra aqui como terceiro fluxo (ver README.md).
                 val camera = provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
                 sensorRotation = camera.cameraInfo.sensorRotationDegrees
                 if (orientationListener.canDetectOrientation()) orientationListener.enable()
@@ -320,7 +324,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                                 encoderClockLeadUs =
                                     bufferInfo.presentationTimeUs - SystemClock.elapsedRealtimeNanos() / 1000
 
-                                // Mantém aprox. 35 segundos de histórico na fila circular (1050 quadros a 30fps)
+                                // 1200 quadros ≈ 40 s a 30 quadros/s: folga sobre os 30 s, para o corte
+                                // poder voltar até o quadro-chave anterior ao início do trecho.
                                 while (sampleQueue.size > 1200) {
                                     sampleQueue.poll()
                                 }
@@ -331,11 +336,33 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                             outputFormat = mediaCodec?.outputFormat
                         }
                     }
-                } catch (_: Exception) {
-                    // Loop de drain seguro contra exceções de ciclo de vida
+                } catch (e: MediaCodec.CodecException) {
+                    // Passageiro (o encoder está ocupado): tenta de novo no próximo giro.
+                    if (e.isTransient) continue
+                    failEncoder(e)
+                    break
+                } catch (e: IllegalStateException) {
+                    // O stop() desligou o encoder no meio de um dequeue: saída normal.
+                    if (!isEncoding.get() || mediaCodec !== codec) break
+                    failEncoder(e)
+                    break
                 }
             }
-        }.apply { start() }
+        }.apply {
+            name = "ClippoBufferEncoder"
+            start()
+        }
+    }
+
+    /**
+     * O encoder morreu: sem ele não há buffer, e girar o laço de novo só gastaria processador.
+     * Registra no log e avisa o Dart pelo fluxo de poses (a tela mostra o erro).
+     */
+    private fun failEncoder(e: Exception) {
+        Log.e("ClippoBuffer", "encoder do buffer parou", e)
+        activity.runOnUiThread {
+            poseSink?.error("buffer-failed", "O buffer de vídeo parou: ${e.message}", null)
+        }
     }
 
     private fun stopEncoder() {
@@ -346,7 +373,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         try {
             mediaCodec?.stop()
             mediaCodec?.release()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w("ClippoBuffer", "encoder não fechou limpo", e)
+        }
         mediaCodec = null
 
         inputSurface?.release()
@@ -356,75 +385,98 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     }
 
     /**
-     * 🔜 BUFFER (Mobile): salvar os ~30 s que terminam em [untilMicros] num MP4 (R1).
+     * Salva os ~30 s que terminam no disparo num MP4 (R1) e responde {path, durationMs}.
+     * O trecho começa num quadro-chave (o MP4 não abre no meio de um grupo de quadros), então
+     * pode ter até 1 s a mais; se a sessão começou há menos de 30 s, sai o que houver (R5 🟡).
      */
     private fun saveHighlight(triggerMicros: Long, result: MethodChannel.Result) {
-        try {
-            val samples = sampleQueue.toList()
-            val format = outputFormat
-            val analysisLead = analysisClockLeadUs
-            val encoderLead = encoderClockLeadUs
-            if (samples.isEmpty() || format == null || analysisLead == null || encoderLead == null) {
-                return result.error("save-failed", "Buffer de vídeo ainda não possui quadros suficientes.", null)
-            }
-            // O disparo vem no relógio da análise; daqui para baixo tudo é no relógio do encoder.
-            val untilMicros = triggerMicros - analysisLead + encoderLead
-            Log.d(
-                "ClippoBuffer",
-                "disparo=$triggerMicros até(encoder)=$untilMicros diferença=${encoderLead - analysisLead} " +
-                    "buffer=${samples.first().info.presentationTimeUs}..${samples.last().info.presentationTimeUs}"
-            )
-
-            // Filtra quadros até o exato momento do disparo (untilMicros)
-            val relevantSamples = samples.filter { it.info.presentationTimeUs <= untilMicros }
-            if (relevantSamples.isEmpty()) {
-                return result.error("save-failed", "Nenhum quadro disponível até o momento especificado.", null)
-            }
-
-            // Janela desejada: 30 segundos antes de untilMicros (30.000.000 microssegundos)
-            val targetStartUs = untilMicros - 30_000_000L
-
-            // Encontra o índice inicial garantindo que o corte comece a partir de um Key Frame (I-frame)
-            var startIndex = 0
-            for (i in relevantSamples.indices) {
-                if (relevantSamples[i].info.presentationTimeUs >= targetStartUs) {
-                    var k = i
-                    while (k >= 0) {
-                        if ((relevantSamples[k].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                            startIndex = k
-                            break
-                        }
-                        k--
-                    }
-                    if (k < 0) {
-                        for (j in 0..i) {
-                            if ((relevantSamples[j].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                                startIndex = j
-                                break
-                            }
-                        }
-                    }
-                    break
+        // Tudo o que descreve o momento do disparo é lido agora; o MP4 é montado na outra thread.
+        val samples = sampleQueue.toList()
+        val format = outputFormat
+        val analysisLead = analysisClockLeadUs
+        val encoderLead = encoderClockLeadUs
+        // Câmera traseira: a fórmula do Android para a orientação de foto/vídeo. Vale a posição
+        // do celular na hora do disparo (ele fica apoiado durante a partida).
+        val rotation = (sensorRotation + deviceRotation) % 360
+        Log.d("ClippoBuffer", "rotação do vídeo=$rotation (sensor=$sensorRotation celular=$deviceRotation)")
+        if (samples.isEmpty() || format == null || analysisLead == null || encoderLead == null) {
+            return result.error("save-failed", "Buffer de vídeo ainda não possui quadros suficientes.", null)
+        }
+        saveExecutor.execute {
+            try {
+                val saved = writeHighlight(samples, format, triggerMicros - analysisLead + encoderLead, rotation)
+                activity.runOnUiThread { result.success(saved) }
+            } catch (e: Exception) {
+                Log.e("ClippoBuffer", "highlight não salvou", e)
+                activity.runOnUiThread {
+                    result.error("save-failed", "Erro ao processar o highlight: ${e.message}", null)
                 }
             }
+        }
+    }
 
-            val slice = relevantSamples.subList(startIndex, relevantSamples.size)
-            if (slice.isEmpty()) {
-                return result.error("save-failed", "Fatia de vídeo vazia.", null)
+    /** Monta o MP4 com os quadros até [untilMicros] (já no relógio do encoder). Roda no saveExecutor. */
+    private fun writeHighlight(
+        samples: List<EncodedSample>,
+        format: MediaFormat,
+        untilMicros: Long,
+        rotation: Int,
+    ): Map<String, Any> {
+        Log.d(
+            "ClippoBuffer",
+            "até(encoder)=$untilMicros buffer=${samples.first().info.presentationTimeUs}..${samples.last().info.presentationTimeUs}"
+        )
+
+        // Filtra quadros até o exato momento do disparo (untilMicros)
+        val relevantSamples = samples.filter { it.info.presentationTimeUs <= untilMicros }
+        if (relevantSamples.isEmpty()) {
+            throw IllegalStateException("Nenhum quadro disponível até o momento especificado.")
+        }
+
+        // Janela desejada: 30 segundos antes de untilMicros (30.000.000 microssegundos)
+        val targetStartUs = untilMicros - 30_000_000L
+
+        // Encontra o índice inicial garantindo que o corte comece a partir de um Key Frame (I-frame)
+        var startIndex = 0
+        for (i in relevantSamples.indices) {
+            if (relevantSamples[i].info.presentationTimeUs >= targetStartUs) {
+                var k = i
+                while (k >= 0) {
+                    if ((relevantSamples[k].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                        startIndex = k
+                        break
+                    }
+                    k--
+                }
+                if (k < 0) {
+                    for (j in 0..i) {
+                        if ((relevantSamples[j].info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                            startIndex = j
+                            break
+                        }
+                    }
+                }
+                break
             }
+        }
 
-            val firstTimestamp = slice.first().info.presentationTimeUs
-            val lastTimestamp = slice.last().info.presentationTimeUs
-            val durationMs = ((lastTimestamp - firstTimestamp) / 1000).coerceAtLeast(0)
+        val slice = relevantSamples.subList(startIndex, relevantSamples.size)
+        if (slice.isEmpty()) {
+            throw IllegalStateException("Fatia de vídeo vazia.")
+        }
 
-            val outputFile = File(activity.cacheDir, "highlight_${System.currentTimeMillis()}.mp4")
-            val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val firstTimestamp = slice.first().info.presentationTimeUs
+        val lastTimestamp = slice.last().info.presentationTimeUs
+        val durationMs = ((lastTimestamp - firstTimestamp) / 1000).coerceAtLeast(0)
+
+        // Pasta interna do app (filesDir), e não o cache: o Android apaga o cache sozinho quando
+        // falta espaço, e o highlight precisa ficar até subir para o banco (R13).
+        val folder = File(activity.filesDir, "highlights").apply { mkdirs() }
+        val outputFile = File(folder, "highlight_${System.currentTimeMillis()}.mp4")
+        val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        try {
             val trackIndex = muxer.addTrack(format)
-            // Câmera traseira: a fórmula do Android para a orientação de foto/vídeo. Vale a posição
-            // do celular na hora do disparo (ele fica apoiado durante a partida).
-            val rotation = (sensorRotation + deviceRotation) % 360
             muxer.setOrientationHint(rotation)
-            Log.d("ClippoBuffer", "rotação do vídeo=$rotation (sensor=$sensorRotation celular=$deviceRotation)")
             muxer.start()
 
             for (sample in slice) {
@@ -436,17 +488,14 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             }
 
             muxer.stop()
-            muxer.release()
-
-            result.success(
-                mapOf(
-                    "path" to outputFile.absolutePath,
-                    "durationMs" to durationMs
-                )
-            )
         } catch (e: Exception) {
-            result.error("save-failed", "Erro ao processar o highlight: ${e.message}", null)
+            outputFile.delete() // um MP4 pela metade não abre: melhor não deixar lixo na pasta
+            throw e
+        } finally {
+            muxer.release()
         }
+
+        return mapOf("path" to outputFile.absolutePath, "durationMs" to durationMs)
     }
 
     /**
@@ -627,6 +676,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     fun dispose() {
         stop()
         analysisExecutor.shutdown()
+        saveExecutor.shutdown()
         galleryExecutor.shutdown()
     }
 }

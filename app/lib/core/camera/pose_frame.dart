@@ -127,9 +127,6 @@ abstract final class PoseLandmarkIndex {
 
   /// A regra usa a profundidade do nariz para recusar quem está de costas.
   static const int nose = 0;
-  // Orelhas: só o laboratório usa, nas pistas de frente × costas.
-  static const int leftEar = 7;
-  static const int rightEar = 8;
 
   static const int leftShoulder = 11;
   static const int rightShoulder = 12;
