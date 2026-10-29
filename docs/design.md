@@ -291,6 +291,8 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
 | `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
 | `skeletonCard` | 80 | Esqueleto no formato do card de sessão fechado |
+| `recordButton` · `recordRing` · `recordIcon` | 80 · 4 · 34 | Gravação: botão de gravar · anel em volta · câmera dentro |
+| `captureChip` · `pulseDot` | 40 · 14 | Gravação: altura do chip (toque continua 48) · ponto pulsante do standby |
 | `backIcon` · `fieldIcon` · `checkIcon` | 22 · 20 · 16 | Chevron do voltar · olho no campo · ✓ no círculo |
 | `spinner` | 20 | Indicador de carregando dentro do botão |
 | `iconStroke` · `checkStroke` | 1,8 · 3 | Traço dos ícones de controle · traço do ✓ |
@@ -355,9 +357,17 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
 
+**Gravação** (ignoram o tema, sempre sobre a câmera ou o preto; adotados em 29/10/2026 🟡 até a gravação ser redesenhada na C):
+
+- **`ClippoRecordButton(caption, onPressed)`** — círculo `recordButton` em `wine` (pressionado `wineDeep`) com o ícone `capture` em `onWine` (`recordIcon`), anel `recordRing` em `captureRecordRing`; legenda em `label` / `captureTextMuted` `spaceM` abaixo. A legenda é o rótulo de acessibilidade.
+- **`ClippoCaptureChip(label, selected, onPressed)`** — pílula de altura `captureChip` (toque `minTouchTarget`), texto `label`. Não selecionado: `captureChip` com borda 1,5 em `captureChipBorder`, texto `onWine`. Selecionado: `peach`, texto `onPeach`. A troca anima em `focus`. Semântica com o estado "selecionado".
+- **`ClippoPulseDot()`** — ponto `pulseDot` em `wine` que acende e apaga num ciclo de `standbyPulse` (de 45 % a 100 %). Parado com "reduzir movimento". Semântica "Detecção do gesto ligada".
+- **`ClippoCaptureToast(title, detail?, success)`** — aviso centralizado: círculo `check` em `peach` com ✓ em `onPeach` (só quando `success`), título em `titleS` / `onWine`, detalhe em `label` / `captureTextMuted`. Região viva para o leitor de tela. Sem fundo nem tarja.
+- **`ClippoGhostButton(label, onPressed)`** — pílula contornada de altura `buttonHeight`, borda 1,5 em `captureGhostBorder`, texto `button` em `onWine` a 85 %. Ação que desfaz sobre o preto ("Cancelar gravação"); a ação principal ao lado é o `ClippoPrimaryButton.onWine`.
+
 Para ver todos os componentes nos dois temas: catálogo do app › **Componentes** (`app/lib/dev/component_gallery.dart`), com botão para trocar o tema.
 
-🟡 **Componentes das telas internas que ainda faltam** (cabeçalho de impacto da Sessão, linha de highlight, chips, switch, estatísticas, gravação): desenhe na direção C, nesta pasta, seguindo a seção 5. Card de sessão, avatares e a roda de navegação já estão prontos. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
+🟡 **Componentes das telas internas que ainda faltam** (cabeçalho de impacto da Sessão, linha de highlight, chips fora da gravação, switch, estatísticas): desenhe na direção C, nesta pasta, seguindo a seção 5. Card de sessão, avatares, a roda de navegação e os componentes da gravação já estão prontos. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
 
 ---
 

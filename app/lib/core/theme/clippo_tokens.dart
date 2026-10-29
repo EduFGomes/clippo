@@ -312,6 +312,11 @@ class ClippoSize {
   static const double navBottom = 28; // do botão até a base (+ área segura)
   static const double navClearance = 130; // folga no fim da lista, para a roda não cobrir
   static const double skeletonCard = 80; // esqueleto no formato do card de sessão fechado
+  static const double recordButton = 80; // botão de gravar, sem o anel
+  static const double recordRing = 4; // anel em volta do botão de gravar
+  static const double recordIcon = 34; // câmera dentro do botão de gravar
+  static const double captureChip = 40; // altura do chip sobre a câmera (toque continua 48)
+  static const double pulseDot = 14; // ponto pulsante do standby
 
   static const double icon = 24; // ícone da marca (grade 24), como na roda de navegação
   static const double backIcon = 22; // chevron do voltar
