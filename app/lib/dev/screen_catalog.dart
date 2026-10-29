@@ -32,7 +32,7 @@ class ScreenCatalog extends StatelessWidget {
     _Entry('Início', 'home', (_) => const HomeScreen()),
     _Entry('Sessão', 'home', (_) => const SessionScreen()),
     _Entry('Player', 'home', (_) => const PlayerScreen()),
-    _Entry('Gravar', 'capture', (_) => const CaptureScreen()),
+    _Entry('Gravar', 'capture', (_) => const CaptureScreen(friends: _demoFriends)),
     _Entry('Amigos', 'friends', (_) => const FriendsScreen()),
     _Entry('Perfil', 'profile', (_) => const ProfileScreen()),
     _Entry('Laboratório do gesto', 'dev/gesture_lab_screen', (_) => const GestureLabScreen()),
@@ -71,3 +71,10 @@ class _Entry {
   final String feature;
   final WidgetBuilder builder;
 }
+
+/// Amigos de exemplo para os chips da Gravação, até existir o repositório de amigos.
+const List<CaptureFriend> _demoFriends = [
+  CaptureFriend(id: 'rafa', firstName: 'Rafa'),
+  CaptureFriend(id: 'bruno', firstName: 'Bruno'),
+  CaptureFriend(id: 'alice', firstName: 'Alice'),
+];
