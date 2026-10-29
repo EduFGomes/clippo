@@ -23,7 +23,7 @@ class MainActivity : FlutterActivity() {
 
     // O Android entrega a resposta do pedido de permissão à Activity, não a quem pediu.
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (camera?.onPermissionResult(requestCode, grantResults) != true) {
+        if (camera?.onPermissionResult(requestCode, permissions, grantResults) != true) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         }
     }

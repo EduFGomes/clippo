@@ -52,7 +52,7 @@ Escuro, esportivo e vibrante — na linha de Strava e Nike. Referências de expe
 |---|---|
 | App Android com as telas descritas em [Telas](#4-telas) | Versão iOS 🟡 *(não descartada para o futuro)* |
 | Detecção do gesto no aparelho | Edição de vídeo dentro do app |
-| Buffer de 30 s e salvamento automático | Transmissão ao vivo |
+| Buffer e salvamento automático do highlight (15 a 60 s, com som) | Transmissão ao vivo |
 | Sessões compartilhadas entre participantes | Publicação aberta na Play Store (só teste interno) |
 | Amigos e perfil | Monetização |
 | Documentação e demo ao vivo | |
@@ -90,9 +90,9 @@ O modelo é **por sessão**: cada jogo é uma sessão, e quem participou dela v�
 | **Amigo** | Outro usuário com quem existe uma amizade. É de quem se escolhe os participantes de uma sessão. | `Friend` / `Friendship` |
 | **Sessão** | Um jogo gravado. Tem nome, data/hora de início, duração, local, quem gravou e a lista de participantes. Funciona como a "pasta compartilhada". | `Session` |
 | **Participante** | Usuário incluído numa sessão. Todo participante vê todos os highlights da sessão. | `Participant` |
-| **Highlight** | Trecho de ~30 s salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto, que nasce com um nome padrão (ex.: "Lance 3") e pode ser editado. | `Highlight` |
+| **Highlight** | Trecho de vídeo com som (15, 30, 45 ou 60 s; padrão 30) salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto, que nasce com um nome padrão (ex.: "Lance 3") e pode ser editado. | `Highlight` |
 | **Gesto** | O movimento **\ o /** que dispara o salvamento. | `Gesture` / `Trigger` |
-| **Buffer** | Os últimos 30 s de vídeo mantidos em memória enquanto a sessão grava. Não é salvo sozinho. | `Buffer` |
+| **Buffer** | Os últimos segundos de vídeo e som mantidos em memória enquanto a sessão grava (o suficiente para o highlight mais longo). Não é salvo sozinho. | `Buffer` |
 
 ```
 Usuário ──< Amizade >── Usuário
@@ -111,8 +111,8 @@ Usuário ──< Participante >── Sessão ──< Highlight
 
 ### 2.3 Gravar uma sessão
 1. **Preparar** — o usuário vê a câmera em tela cheia para posicionar o celular e, opcionalmente, escolhe com quais amigos está jogando ("gravar sozinho" ou "gravar com [amigo]").
-2. **Gravar** — ao tocar em iniciar, a tela fica **preta pura** (economia de bateria em telas OLED), com apenas um ponto pulsando indicando que a detecção está ativa. A câmera continua gravando e mantendo o buffer de 30 s. Um toque na tela mostra por alguns segundos as opções **"Encerrar sessão"** e **"Cancelar gravação"**.
-3. **Gesto detectado** — o app salva os últimos 30 s como highlight e mostra o aviso **"Highlight salvo"** por ~2,6 s. Depois volta sozinho ao estado de gravação, sem exigir toque.
+2. **Gravar** — ao tocar em iniciar, a tela fica **preta pura** (economia de bateria em telas OLED), com apenas um ponto pulsando indicando que a detecção está ativa. A câmera continua gravando e mantendo o buffer. Um toque na tela mostra por alguns segundos as opções **"Encerrar sessão"** e **"Cancelar gravação"**.
+3. **Gesto detectado** — o app salva os últimos segundos (a duração escolhida) como highlight, avisa quem está longe com um bip, um flash da lanterna e uma vibração, e mostra **"Highlight salvo"** por ~2,6 s. Depois volta sozinho ao estado de gravação, sem exigir toque.
 4. **Encerrar** — o usuário encerra a sessão e confirma os dados: nome, data e horário de início–fim (preenchidos automaticamente, editáveis), local (sugerido pela localização, editável) e participantes (pode adicionar mais). **"Salvar sessão"** volta à Início com a sessão nova no topo; **"Descartar"** abandona a sessão.
 
 ### 2.4 Ver sessões e highlights
@@ -140,12 +140,13 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 ### Gravação e gesto
 | # | Regra |
 |---|---|
-| R1 | O highlight contém os **~30 s anteriores** ao momento do gesto, mesmo que esse trecho se sobreponha a um highlight anterior: cada um leva os seus 30 s. |
+| R1 | O highlight contém os segundos **anteriores** ao momento do gesto, na duração que o usuário escolheu: **15, 30, 45 ou 60 s** (padrão 30). Vale mesmo que o trecho se sobreponha a um highlight anterior: cada um leva a sua duração inteira. 🟡 Onde o usuário escolhe (Preparar ou Perfil) ainda não foi desenhado. |
 | R2 | O highlight deve estar salvo em **até 3 s** após o gesto (critério de aceite). |
 | R3 | O gesto é válido só com **os dois braços** levantados em diagonal para fora, acima dos ombros, sem cruzar. Um braço só não dispara. |
 | R4 | Depois de um disparo, novos gestos são ignorados por **5 s** para não salvar o mesmo lance duas vezes. |
-| R5 | Se a sessão tem menos de 30 s de gravação quando o gesto acontece, salva o que houver. |
-| R6 | O buffer em si **nunca** é enviado ou guardado — só o que o gesto salvar. |
+| R5 | Se a sessão tem menos gravação que a duração escolhida quando o gesto acontece, salva o que houver. |
+| R6 | O buffer em si (imagem e som) **nunca** é enviado ou guardado — só o que o gesto salvar. |
+| R17 | O highlight grava **com som** se o microfone estiver liberado. O microfone é opcional: negado, o highlight sai só com imagem e o app avisa uma vez. |
 | R7 | Durante a gravação, a tela não mostra a imagem da câmera (só o ponto pulsante), e o aparelho não deve apagar a tela nem bloquear sozinho. |
 | R8 | A detecção acontece no aparelho; não depende de internet. |
 
@@ -225,7 +226,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 - **Erros** (e-mail já usado, senha errada, sem internet…) aparecem em português abaixo dos campos, com o texto vindo do `AuthRepository`, e o campo do erro fica marcado. Em "E-mail ou senha incorretos.", os dois campos ficam marcados. No Complete seu perfil, o erro de um campo aparece logo abaixo dele.
 - **Carregando:** o botão primário mostra que está trabalhando e não aceita um segundo toque.
 
-🟡 **Permissões** — câmera (obrigatória) e localização (opcional, só para sugerir o local), cada uma com o porquê em uma frase, pedidas quando fizerem sentido. Ainda sem tela.
+🟡 **Permissões** — câmera (obrigatória), microfone (opcional, para o som dos highlights) e localização (opcional, só para sugerir o local), cada uma com o porquê em uma frase, pedidas quando fizerem sentido. Ainda sem tela.
 
 ### 4.2 Início
 
@@ -294,7 +295,7 @@ A gravação ignora o tema claro/escuro.
 **Estado C — Highlight salvo**
 - Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
 - Some sozinho após **~2,6 s** e volta ao Estado B. Não exige toque.
-- Vibração leve ao salvar.
+- Aviso de highlight salvo para quem está longe do celular: **bip**, **flash curto da lanterna** e **vibração leve**, cada um com liga/desliga (padrão: todos ligados). 🟡 O bip é o do sistema até o design definir o som; onde ficam as chaves ainda não foi desenhado.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
