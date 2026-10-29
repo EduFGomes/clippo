@@ -216,6 +216,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `textLabel` | `#FFF1E8` a 55 % | `#241014` a 58 % | Rótulo dentro do campo, ícone do olho |
 | `placeholder` | `#FFF1E8` a 32 % | `#241014` a 36 % | Texto de exemplo no campo |
 | `accent` | `#FFC6A8` | `#741A2F` | 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓ |
+| `accentSoft` | `accent` a 18 % | `accent` a 14 % | Fatia acesa da roda de navegação, atrás do ícone |
 | `primary` | `#FFC6A8` | `#741A2F` | Fundo do botão primário |
 | `primaryPressed` | `peachPressed` | `wineDeep` | Botão primário pressionado |
 | `onPrimary` | `#241014` | `#FFF1E8` | Texto sobre `primary` / `accent` preenchido |
@@ -269,6 +270,9 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `fieldPaddingV` | 12 | Respiro vertical do campo |
 | `fieldPaddingEndWithAction` | 8 | Respiro à direita do campo com botão (olho, ✓) |
 | `stepGap` | 36 | Entre passos da `ClippoStepList` |
+| `avatarOverlap` | 10 | Quanto um avatar cobre o anterior na fileira |
+| `cardPadding` | 18 | Respiro interno do card de sessão |
+| `cardGap` | 10 | Entre cards da lista da Início |
 | `welcomeTop` · `welcomeHeroToPhrase` · `welcomePhraseToActions` | 60 · 26 · 56 | Boas-vindas: topo → "CLIPPO"; \O/ → frase; frase → botões |
 | `radiusField` | 18 | Campos |
 | `radiusPill` | 999 | Botões, círculos, traços do medidor |
@@ -277,9 +281,16 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `control` | 44 | Desenho do círculo de voltar e do botão do olho |
 | `minTouchTarget` | 48 | Área de toque mínima de qualquer controle, mesmo quando o desenho é menor |
 | `step` | 36 | Círculo de passo |
+| `avatar` | 32 | Avatar de participante na lista |
+| `avatarLarge` | 44 | Avatar do usuário no topo da Início |
 | `check` | 26 | Círculo do ✓ |
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
+| `icon` | 24 | Ícone da marca (grade 24) |
+| `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel da cor do fundo em volta dele |
+| `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
+| `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
+| `skeletonCard` | 80 | Esqueleto no formato do card de sessão fechado |
 | `backIcon` · `fieldIcon` · `checkIcon` | 22 · 20 · 16 | Chevron do voltar · olho no campo · ✓ no círculo |
 | `spinner` | 20 | Indicador de carregando dentro do botão |
 | `iconStroke` · `checkStroke` | 1,8 · 3 | Traço dos ícones de controle · traço do ✓ |
@@ -296,9 +307,11 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | Token | Valor | Uso |
 |---|---|---|
 | `standard` | `Cubic(0.2, 0.8, 0.2, 1)` | Curva padrão: sai rápido e assenta devagar |
+| `pop` | `Cubic(0.2, 1.3, 0.35, 1)` | Passa um pouco do alvo e volta: as seções saindo do botão da roda |
 | `enterFromWelcome` | 700 ms | Camada vinho some ao entrar vindo da boas-vindas |
 | `focus` | 160 ms | Borda de foco do campo, traço do medidor |
 | `enable` | 200 ms | Botão desabilitado → habilitado |
+| `wheelOpen` · `wheelClose` | 360 ms · 180 ms | Roda de navegação abrindo · fechando |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
@@ -307,8 +320,8 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 
 - **Outline**, traço de 1,6–1,8 na grade de 24, pontas e junções arredondadas, **sem preenchimento** em nenhum estado.
 - Cor: `text` por padrão, `textLabel` dentro de campos, `onPrimary` sobre `primary`.
-- Usados no onboarding: voltar (chevron, traço 1,8, 22 dp), olho / olho cortado (20 dp), ✓ (traço 3, dentro do círculo `check`). Hoje são desenhados em código, nos próprios componentes.
-- SVGs da marca para as próximas telas: [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Ainda não estão registrados no `pubspec.yaml`: o app precisa de um jeito de desenhar SVG antes.
+- Desenhados em código, no `ClippoIcon`: voltar (chevron para a esquerda, traço 1,8, 22 dp), **chevron para baixo** (sanfona do card de sessão, 22 dp), olho / olho cortado (20 dp), ✓ (traço 3, dentro do círculo `check`).
+- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
 - Precisa de outro ícone? **Lucide** ou **Phosphor (Light)** combinam; ajuste o traço e adicione o SVG à pasta.
 
 ### 3.7 Marca
@@ -321,7 +334,7 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 
 ## 4. Componentes
 
-Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por componente. **Os componentes são feitos pelo Gabriel (com o Claude) e entregues prontos**: o resto do time usa os que existem. Se nenhum servir, peça um novo ao Gabriel em vez de criar um parecido dentro da feature. A seção 5 é o padrão que quem cria componentes segue.
+Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por componente. Os componentes do onboarding foram feitos pelo Gabriel; em 20/10/2026 ele passou os das telas internas para quem estiver fazendo cada tela. Vale a mesma regra de sempre: **procure antes de criar**, e componente novo nasce aqui, nunca dentro de uma feature. A seção 5 é o padrão que quem cria componentes segue.
 
 - **`ClippoScreenGround`** — fundo de toda tela depois da boas-vindas: degradê vertical de `backgroundGlow` para `background` nos primeiros `glowHeight`, depois `background` liso. Padding `gutter` nas laterais, `sectionL` no topo (abaixo da área segura) e `screenBottom` + área segura embaixo. Com `enterFromWelcome: true`, uma camada `wine` cobre a tela e some em 700 ms (`standard`), sem bloquear toques. Recebe o conteúdo em `child` e a pilha de ações em `footer`, que fica presa no rodapé e rola junto quando não cabe (fonte grande, teclado aberto). Já inclui o `Scaffold` e a cor dos ícones da barra de status.
 - **`ClippoBackButton`** — círculo `control` com fundo `controlSoft` e chevron para a esquerda (traço 1,8, 22 dp, `text`). Área de toque `minTouchTarget`. Semântica "Voltar".
@@ -335,11 +348,16 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
   - **Mensagem de erro geral:** `label` / `error`, abaixo dos campos.
 - **`ClippoPasswordMeter(length)`** — 6 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles; acesos (`min(length, 6)`) em `accent`, os outros em `line`; legenda à direita em `label`: "6+ caracteres" (`textMuted`) ou "Pronto" (`accent`). Fica 10 dp abaixo do campo de senha, com recuo lateral de 6. Fora da semântica (o requisito já está no hint).
 - **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
+- **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
+- **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
+- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
+- **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar acende a fatia da seção sob o dedo e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
+- **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
 
 Para ver todos os componentes nos dois temas: catálogo do app › **Componentes** (`app/lib/dev/component_gallery.dart`), com botão para trocar o tema.
 
-🟡 **Componentes das telas internas** (navegação, card de sessão, cabeçalho, linha de highlight, chips, switch, estatísticas, avatares, gravação): ainda vão ser desenhados na C pelo Gabriel (com o Claude) e entregues prontos nesta pasta. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
+🟡 **Componentes das telas internas que ainda faltam** (cabeçalho de impacto da Sessão, linha de highlight, chips, switch, estatísticas, gravação): desenhe na direção C, nesta pasta, seguindo a seção 5. Card de sessão, avatares e a roda de navegação já estão prontos. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
 
 ---
 

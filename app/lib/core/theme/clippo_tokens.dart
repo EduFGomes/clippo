@@ -55,6 +55,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     required this.textLabel,
     required this.placeholder,
     required this.accent,
+    required this.accentSoft,
     required this.primary,
     required this.primaryPressed,
     required this.onPrimary,
@@ -88,6 +89,9 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
   /// 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓.
   final Color accent;
 
+  /// Fundo do destaque na roda de navegação: o accent bem apagado, atrás do ícone.
+  final Color accentSoft;
+
   /// Fundo do botão primário.
   final Color primary;
 
@@ -118,6 +122,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     textLabel: Color(0x8CFFF1E8), // 55 %
     placeholder: Color(0x52FFF1E8), // 32 %
     accent: ClippoBrand.peach,
+    accentSoft: Color(0x2EFFC6A8), // peach a 18 %
     primary: ClippoBrand.peach,
     primaryPressed: ClippoBrand.peachPressed,
     onPrimary: ClippoBrand.onPeach,
@@ -136,6 +141,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     textLabel: Color(0x94241014), // 58 %
     placeholder: Color(0x5C241014), // 36 %
     accent: ClippoBrand.wine,
+    accentSoft: Color(0x24741A2F), // wine a 14 %
     primary: ClippoBrand.wine,
     primaryPressed: ClippoBrand.wineDeep,
     onPrimary: ClippoBrand.onWine,
@@ -158,6 +164,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     Color? textLabel,
     Color? placeholder,
     Color? accent,
+    Color? accentSoft,
     Color? primary,
     Color? primaryPressed,
     Color? onPrimary,
@@ -175,6 +182,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
       textLabel: textLabel ?? this.textLabel,
       placeholder: placeholder ?? this.placeholder,
       accent: accent ?? this.accent,
+      accentSoft: accentSoft ?? this.accentSoft,
       primary: primary ?? this.primary,
       primaryPressed: primaryPressed ?? this.primaryPressed,
       onPrimary: onPrimary ?? this.onPrimary,
@@ -197,6 +205,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
       textLabel: Color.lerp(textLabel, other.textLabel, t)!,
       placeholder: Color.lerp(placeholder, other.placeholder, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
       primary: Color.lerp(primary, other.primary, t)!,
       primaryPressed: Color.lerp(primaryPressed, other.primaryPressed, t)!,
       onPrimary: Color.lerp(onPrimary, other.onPrimary, t)!,
@@ -268,6 +277,9 @@ class ClippoSpace {
   static const double fieldPaddingV = 12; // respiro vertical do campo
   static const double fieldPaddingEndWithAction = 8; // respiro à direita do campo com botão
   static const double stepGap = 36; // entre passos da ClippoStepList
+  static const double avatarOverlap = 10; // quanto um avatar cobre o anterior na fileira
+  static const double cardPadding = 18; // respiro interno do card de sessão
+  static const double cardGap = 10; // entre cards da lista
 
   // Boas-vindas.
   static const double welcomeTop = 60; // topo → "CLIPPO"
@@ -288,10 +300,20 @@ class ClippoSize {
   static const double control = 44; // desenho do círculo de voltar e do botão do olho
   static const double minTouchTarget = 48; // área de toque mínima de qualquer controle
   static const double step = 36; // círculo de passo
+  static const double avatar = 32; // avatar de participante na lista
+  static const double avatarLarge = 44; // avatar do usuário no topo da Início
   static const double check = 26; // círculo do ✓
   static const double meter = 4; // espessura do traço do medidor
   static const double glowHeight = 460; // altura do degradê do topo
+  static const double navButton = 56; // botão redondo da roda de navegação
+  static const double navItem = 56; // círculo de cada seção da roda
+  static const double navRing = 4; // anel da cor do fundo em volta do botão
+  static const double navRadius = 118; // raio do arco onde as seções pousam
+  static const double navBottom = 28; // do botão até a base (+ área segura)
+  static const double navClearance = 130; // folga no fim da lista, para a roda não cobrir
+  static const double skeletonCard = 80; // esqueleto no formato do card de sessão fechado
 
+  static const double icon = 24; // ícone da marca (grade 24), como na roda de navegação
   static const double backIcon = 22; // chevron do voltar
   static const double fieldIcon = 20; // olho dentro do campo
   static const double checkIcon = 16; // ✓ dentro do círculo check
@@ -314,6 +336,9 @@ class ClippoMotion {
   /// Curva padrão: sai rápido e assenta devagar.
   static const Curve standard = Cubic(0.2, 0.8, 0.2, 1);
 
+  /// Passa um pouco do alvo e volta: as seções da roda saindo do botão.
+  static const Curve pop = Cubic(0.2, 1.3, 0.35, 1);
+
   /// Camada vinho some ao entrar vindo da boas-vindas.
   static const Duration enterFromWelcome = Duration(milliseconds: 700);
 
@@ -327,6 +352,9 @@ class ClippoMotion {
   static const Duration standbyPulse = Duration(milliseconds: 2600); // ciclo do ponto pulsante
   static const Duration savedBanner = Duration(milliseconds: 2600); // aviso "Highlight salvo"
   static const Duration stopControls = Duration(milliseconds: 3200); // controles após um toque
+
+  static const Duration wheelOpen = Duration(milliseconds: 360); // roda abrindo
+  static const Duration wheelClose = Duration(milliseconds: 180); // roda fechando
 
   /// Sem animação quando o sistema pede "reduzir movimento".
   static bool reduced(BuildContext context) => MediaQuery.of(context).disableAnimations;

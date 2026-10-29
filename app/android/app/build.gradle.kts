@@ -29,6 +29,31 @@ android {
         versionName = flutter.versionName
     }
 
+    // Dois apps no mesmo celular: o Clippo normal e o laboratório do gesto, cada um com seu
+    // ícone. O "app" é o padrão (default-flavor no pubspec.yaml), então `flutter run` continua
+    // igual. O lab: flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
+    buildFeatures {
+        resValues = true // o nome de cada app (app_name) vem do sabor
+    }
+    flavorDimensions += "variant"
+    productFlavors {
+        create("app") {
+            dimension = "variant"
+            resValue("string", "app_name", "clippo")
+        }
+        create("lab") {
+            dimension = "variant"
+            applicationIdSuffix = ".lab"
+            resValue("string", "app_name", "Clippo Lab")
+        }
+    }
+
+    // O detector de pessoas (assets/efficientdet_lite0.tflite) é lido direto do APK: não pode
+    // ir comprimido.
+    androidResources {
+        noCompress += "tflite"
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -46,4 +71,27 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Câmera (CameraX): abre a câmera uma vez e entrega vários fluxos (imagem na tela, quadros
+    // para análise e, depois, o vídeo do buffer). Ver kotlin/.../camera/README.md.
+    val cameraX = "1.6.2"
+    implementation("androidx.camera:camera-camera2:$cameraX")
+    implementation("androidx.camera:camera-lifecycle:$cameraX")
+    implementation("androidx.camera:camera-view:$cameraX")
+
+    // Pontos do corpo (ML Kit Pose, BlazePose com 33 pontos), com o modelo embutido no app para
+    // funcionar sem internet (R8). O Google só publica versões beta desde a 17.0.0, de 2020.
+    // 🟡 Os dois modelos ficam até a medição a 8 m decidir qual usar: o "accurate" é mais
+    // preciso e mais pesado.
+    val mlKitPose = "18.0.0-beta5"
+    implementation("com.google.mlkit:pose-detection:$mlKitPose")
+    implementation("com.google.mlkit:pose-detection-accurate:$mlKitPose")
+
+    // Detector de pessoas (MediaPipe Tasks, Apache 2.0) para o modo várias pessoas: acha cada
+    // pessoa no quadro e um ML Kit para cada uma lê a pose do recorte dela. Modo escolhido
+    // (🟡 falta medir com 3–6 pessoas); ver kotlin/.../camera/MultiPersonAnalyzer.kt. O modelo (EfficientDet-Lite0, 4,6 MB) está em
+    // src/main/assets/, baixado de storage.googleapis.com/mediapipe-models.
+    implementation("com.google.mediapipe:tasks-vision:0.10.35")
 }

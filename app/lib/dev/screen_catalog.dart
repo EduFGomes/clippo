@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/dev/component_gallery.dart';
+import 'package:clippo/dev/gesture_lab_screen.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
 import 'package:clippo/features/friends/screens/friends_screen.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
@@ -34,6 +35,7 @@ class ScreenCatalog extends StatelessWidget {
     _Entry('Gravar', 'capture', (_) => const CaptureScreen()),
     _Entry('Amigos', 'friends', (_) => const FriendsScreen()),
     _Entry('Perfil', 'profile', (_) => const ProfileScreen()),
+    _Entry('Laboratório do gesto', 'dev/gesture_lab_screen', (_) => const GestureLabScreen()),
   ];
 
   @override
@@ -50,7 +52,7 @@ class ScreenCatalog extends StatelessWidget {
           for (final entry in _entries)
             ListTile(
               title: Text(entry.title),
-              subtitle: Text(entry.feature.startsWith('core/') ? entry.feature : 'features/${entry.feature}'),
+              subtitle: Text(entry.feature.contains('/') ? entry.feature : 'features/${entry.feature}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: entry.builder),

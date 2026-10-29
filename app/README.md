@@ -10,6 +10,15 @@ flutter analyze      # confere o código
 flutter test         # roda os testes
 ```
 
+O laboratório do gesto é instalado como um **segundo app** ("Clippo Lab"), ao lado do Clippo
+normal, com o sabor `lab` do Android:
+
+```bash
+flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
+```
+
+Sem `--flavor`, o `flutter run` usa o sabor `app` (o Clippo normal).
+
 ## Estrutura (por funcionalidade)
 
 ```

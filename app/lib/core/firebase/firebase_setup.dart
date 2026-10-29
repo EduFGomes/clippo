@@ -23,9 +23,11 @@ Future<void> setupFirebase() async {
   }
 
   // Projetos "demo-*" só existem no Emulator, então as chaves abaixo são de mentira de propósito.
+  // A apiKey falsa precisa ter o formato de uma real ("AIza" + 35 caracteres): no Android o
+  // Firebase Installations (usado pelas Functions) recusa qualquer outra com "Please set a valid API key".
   await Firebase.initializeApp(
     options: const FirebaseOptions(
-      apiKey: 'demo-api-key',
+      apiKey: 'AIzaSyDemoClippoEmulatorKey000000000000',
       appId: '1:000000000000:android:0000000000000000',
       messagingSenderId: '000000000000',
       projectId: 'demo-clippo',

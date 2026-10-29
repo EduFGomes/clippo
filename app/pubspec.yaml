@@ -13,6 +13,7 @@ dependencies:
   firebase_core: ^4.15.0
   flutter:
     sdk: flutter
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -22,10 +23,17 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # Sabor do Android usado quando o `flutter run` não diz qual. O "lab" instala o laboratório
+  # do gesto como um segundo app (ver android/app/build.gradle.kts).
+  default-flavor: app
+
   # Licenças das fontes (OFL), mostradas na tela de licenças do app.
   assets:
     - assets/fonts/Anton-OFL.txt
     - assets/fonts/Archivo-OFL.txt
+    # Ícones da marca (grade 24, stroke="currentColor"), desenhados com flutter_svg.
+    # Lista e regras em docs/design.md › 3.6 Ícones.
+    - assets/icons/
 
   # Fontes do design (Google Fonts, licença OFL), embutidas para funcionar sem internet.
   # Nomes das famílias usados em lib/core/theme/clippo_tokens.dart.

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/firebase/firebase_setup.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 
@@ -68,6 +69,19 @@ class AuthRepository {
   Future<bool> hasProfile(String uid) async {
     final snap = await _firestore.doc('users/$uid').get();
     return snap.exists;
+  }
+
+  /// O perfil público de quem está logado, atualizado sozinho quando mudar
+  /// (a Início usa para a saudação e o avatar do topo).
+  ///
+  /// Emite null enquanto o perfil não existe — quem criou a conta e ainda não
+  /// completou o perfil cai em "Complete seu perfil" pelo AuthGate.
+  Stream<UserProfile?> watchMyProfile() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return Stream<UserProfile?>.value(null);
+    return _firestore.doc('users/$uid').snapshots().map(
+          (snap) => snap.exists ? UserProfile.fromMap(snap.id, snap.data() ?? const {}) : null,
+        );
   }
 
   /// Chama a Cloud Function completeProfile (backend/functions/src/users/completeProfile.ts).
