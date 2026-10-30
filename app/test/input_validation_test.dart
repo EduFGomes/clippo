@@ -87,4 +87,79 @@ void main() {
       expect(validateBirthDate(DateTime(1899, 12, 31), today: today), isNotNull);
     });
   });
+
+  // --- Sessão: espelho de backend/functions/test/sessions.validation.test.ts ---
+
+  group('nome da sessão', () {
+    test('junta espaços e tira os das pontas', () {
+      expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
+      expect(validateSessionName('  Pelada   de quinta '), isNull);
+    });
+
+    test('recusa vazio e só espaços', () {
+      for (final raw in ['', '   ']) {
+        expect(validateSessionName(raw), 'Dê um nome para a sessão.');
+      }
+    });
+
+    test('recusa acima do limite', () {
+      expect(validateSessionName('a' * sessionNameMax), isNull);
+      expect(
+        validateSessionName('a' * (sessionNameMax + 1)),
+        'O nome da sessão pode ter até $sessionNameMax caracteres.',
+      );
+    });
+  });
+
+  group('local', () {
+    test('é opcional: sem local vira null', () {
+      for (final raw in [null, '', '   ']) {
+        expect(normalizeLocation(raw), isNull);
+        expect(validateLocation(raw), isNull);
+      }
+    });
+
+    test('normaliza e limita', () {
+      expect(normalizeLocation('  Quadra   do Parque '), 'Quadra do Parque');
+      expect(validateLocation('a' * (locationMax + 1)),
+          'O local pode ter até $locationMax caracteres.');
+    });
+  });
+
+  group('início e fim da sessão', () {
+    final inicio = DateTime.utc(2026, 10, 29, 22, 30);
+    final fim = DateTime.utc(2026, 10, 30, 0, 12);
+    final agora = DateTime.utc(2026, 10, 30, 1);
+
+    test('aceita um período normal', () {
+      expect(validateSessionPeriod(inicio, fim, now: agora), isNull);
+    });
+
+    test('recusa data faltando', () {
+      expect(validateSessionPeriod(null, fim, now: agora), 'Confira a data e a hora da sessão.');
+      expect(validateSessionPeriod(inicio, null, now: agora), 'Confira a data e a hora da sessão.');
+    });
+
+    test('recusa fim antes ou igual ao início', () {
+      expect(validateSessionPeriod(fim, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+      expect(validateSessionPeriod(inicio, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+    });
+
+    test('recusa sessão de mais de 12 horas', () {
+      expect(
+        validateSessionPeriod(DateTime.utc(2026, 10, 29), DateTime.utc(2026, 10, 29, 13),
+            now: agora),
+        'Uma sessão pode durar até $sessionMaxHours horas.',
+      );
+    });
+
+    test('recusa fim no futuro, mas tolera 5 min de relógio adiantado', () {
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 2), now: agora),
+          'A sessão não pode terminar no futuro.');
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 1, 4), now: agora), isNull);
+    });
+  });
 }
+

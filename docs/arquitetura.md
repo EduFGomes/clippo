@@ -49,8 +49,8 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 | `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
 | `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
 | `userPrivate/{uid}` — dados privados | `birthDate` string `AAAA-MM-DD` · `createdAt` timestamp | Só o dono | Só Functions (`completeProfile`) |
-| `sessions/{sessionId}` — um jogo gravado 🟡 | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, D15) |
-| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto 🟡 | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`; um gatilho marca `uploaded`, D15) |
+| `sessions/{sessionId}` — um jogo gravado | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, D15) |
+| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`; um gatilho marca `uploaded`, D15) |
 
 Regras de modelagem:
 - O **e-mail fica só no Firebase Auth**, nunca no Firestore.
@@ -133,8 +133,8 @@ baixam este vídeo" como se faz no Firestore. Os caminhos possíveis:
    Firestore tem a URL; quem tem a URL vê o vídeo, mesmo sem login);
 3. Uma **Function que gera URL assinada** a cada pedido (mais controle, mais latência).
 
-Caminho sugerido: `sessions/{sessionId}/highlights/{highlightId}/video.mp4` e
-`thumb.jpg`. `storage.rules` segue bloqueando tudo até a decisão.
+Caminho **combinado** (o `saveSession` devolve ele pronto para o app enviar):
+`sessions/{sessionId}/highlights/{highlightId}/video.mp4` e `thumb.jpg`. `storage.rules` segue bloqueando tudo até a decisão.
 
 ## Quem faz o quê
 
@@ -198,6 +198,7 @@ A parte de Git é uma **proposta** — ajustem na reunião se quiserem.
 - [ ] `cd app && flutter test` passando
 - [ ] `cd backend/functions && npm run build && npm test` passando (se mexeu no backend)
 - [ ] `cd backend/tests && npm test` passando (se mexeu em regras — com o Emulator desligado)
+- [ ] `cd backend/tests && npm run test:e2e` passando (se mexeu numa Function chamável)
 - [ ] Testei o fluxo no emulador com o Firebase Emulator rodando
 - [ ] Tela nova: [checklist de tela nova](design.md#6-checklist-de-tela-nova) conferido e tela adicionada ao catálogo
 - [ ] Coleção ou campo novo no Firestore: modelo de dados deste arquivo atualizado
@@ -235,7 +236,9 @@ Modelo para copiar: `backend/functions/src/users/completeProfile.ts` (chamável)
 5. Lembre: o Admin SDK **ignora as Security Rules**. A Function é responsável por tudo que grava.
 6. Nada do caminho crítico do gesto (salvar o highlight em até 3 s) pode depender de uma função: elas podem levar alguns segundos para "acordar".
 7. No app, chame pela camada `core/data` (veja `AuthRepository.completeProfile`).
-8. Teste: `npm test` (validação) e o fluxo no Emulator (logs em <http://localhost:4000> → Logs).
+8. Teste: `npm test` em `functions/` (validação, sem Emulator) e
+   `npm run test:e2e` em `tests/` (a função de verdade no Emulator; veja o `saveSession`
+   como modelo). Logs em <http://localhost:4000> → Logs.
 
 ### Mudar uma regra (Security Rules)
 
