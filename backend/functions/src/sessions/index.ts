@@ -1,8 +1,11 @@
 /**
  * Domínio: sessões.
  *
- * Planejado (D15 em docs/arquitetura.md): saveSession, chamada no "Salvar sessão" →
- * valida os dados e se os participantes são amigos do dono (R10) e grava a sessão e os
- * highlights numa transação.
+ * Pronto:
+ * - saveSession: chamada no "Salvar sessão" → valida, grava a sessão e os highlights
+ *   numa transação e devolve onde cada vídeo deve ser enviado (D15).
+ *
+ * 🟡 Falta: a conferência de R10 (participantes são amigos do dono) está em
+ *   `validation.ts › participantsAreFriends` e só passa a valer quando `Friendship` existir.
  */
-export {};
+export { saveSession } from "./saveSession";

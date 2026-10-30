@@ -1,7 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:cloud_functions/cloud_functions.dart';
+
 import 'package:clippo/core/data/session.dart';
+import 'package:clippo/core/firebase/firebase_setup.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 
 /// Erro ao ler sessões, com a mensagem pronta para a tela.
 ///
@@ -88,15 +92,20 @@ class SessionsSnapshot {
 /// ainda está bloqueada nas Security Rules até o grupo decidir quem grava
 /// (docs/arquitetura.md › Quem grava sessões e highlights).
 class SessionsRepository {
-  SessionsRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  SessionsRepository({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+    FirebaseFunctions? functions,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance,
+        _functions = functions ?? FirebaseFunctions.instanceFor(region: functionsRegion);
 
   /// Nome da coleção no Firestore. Igual ao de backend/firestore.rules.
   static const String collectionName = 'sessions';
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
 
   /// As sessões de que a pessoa logada participa, da mais recente para a mais
   /// antiga — é o que a Início lista (produto.md › 4.2).
@@ -136,6 +145,92 @@ class SessionsRepository {
       throw SessionsFailure.from(error);
     });
   }
+
+  /// Salva a sessão e os lances dela, no "Salvar sessão" (produto.md › 4.5, estado D).
+  ///
+  /// Chama a Cloud Function saveSession (D15): o app não grava sessão direto no
+  /// Firestore. Devolve, por lance, o caminho onde o vídeo deve ser enviado no Storage.
+  ///
+  /// É seguro repetir: o [sessionId] e o id de cada lance nascem no aparelho, então
+  /// chamar de novo depois de uma falha de rede não duplica nada — é assim que a fila
+  /// offline (R13) funciona.
+  Future<Map<String, String>> saveSession({
+    required String sessionId,
+    required String name,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    String? location,
+    List<String> participantIds = const [],
+    List<PendingHighlight> highlights = const [],
+  }) async {
+    // Nada vai para o servidor sem passar pela validação (regra 0 do AGENTS.md).
+    _check('name', validateSessionName(name));
+    _check('location', validateLocation(location));
+    _check('endedAt', validateSessionPeriod(startedAt, endedAt));
+
+    try {
+      final result = await _functions.httpsCallable('saveSession').call<Map<String, dynamic>>({
+        'sessionId': sessionId,
+        'name': normalizeSessionName(name),
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'endedAt': endedAt.toUtc().toIso8601String(),
+        'location': normalizeLocation(location),
+        'participantIds': participantIds,
+        'highlights': [for (final h in highlights) h.toJson()],
+      });
+      final paths = (result.data['videoPaths'] as Map?) ?? const {};
+      return paths.map((key, value) => MapEntry(key as String, value as String));
+    } on FirebaseFunctionsException catch (e) {
+      final details = e.details;
+      final field = details is Map ? details['field'] as String? : null;
+      throw SessionsFailure(
+        e.message ?? 'Não foi possível salvar a sessão. Tente de novo.',
+        code: field,
+      );
+    } on FirebaseException catch (e) {
+      throw SessionsFailure.from(e);
+    }
+  }
+
+  /// Barra o envio quando a validação do app encontrou um erro.
+  static void _check(String field, String? error) {
+    if (error != null) throw SessionsFailure(error, code: field);
+  }
+}
+
+/// Um lance salvo pelo gesto, esperando para ser enviado.
+///
+/// O [highlightId] nasce no aparelho junto com o MP4: é ele que faz o reenvio ser
+/// idempotente. O vídeo em [localPath] sobe para o Storage depois que a sessão é salva.
+class PendingHighlight {
+  const PendingHighlight({
+    required this.highlightId,
+    required this.localPath,
+    required this.offset,
+    required this.duration,
+    this.title,
+  });
+
+  final String highlightId;
+
+  /// Caminho do MP4 na pasta interna do app (o que o buffer devolveu).
+  final String localPath;
+
+  /// Momento do lance dentro da sessão.
+  final Duration offset;
+
+  /// Quanto o trecho tem de fato: até ~30 s (R1), menos se a sessão era curta (R5).
+  final Duration duration;
+
+  /// Vazio vira "Lance N" no servidor — ninguém precisa digitar na quadra.
+  final String? title;
+
+  Map<String, dynamic> toJson() => {
+        'highlightId': highlightId,
+        'title': title,
+        'offsetSeconds': offset.inSeconds,
+        'durationSeconds': duration.inSeconds,
+      };
 }
 
 SessionsRepository? _sessionsRepository;

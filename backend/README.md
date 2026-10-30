@@ -56,6 +56,18 @@ npm test
 
 O `npm test` sobe o Emulator, roda os testes e desliga.
 
+## Rodar o teste de ponta a ponta das funções
+
+```bash
+cd backend/tests
+npm run test:e2e
+```
+
+Compila as Functions, sobe Auth + Firestore + Functions, cria contas de verdade e chama
+`saveSession` como o app faria — até as Security Rules em cima do que foi gravado. É o
+único teste que percorre o caminho inteiro de escrita, então rode-o ao mexer numa função
+chamável. Ele e o `npm test` usam as mesmas portas: **um de cada vez**.
+
 **Regra do time:** toda mudança em `firestore.rules` ou `storage.rules` vem com pelo menos um teste de "pode" e um de "não pode", e passa por revisão de outra pessoa.
 
 ## Como escrever uma Cloud Function
@@ -78,6 +90,7 @@ Será ajustado quando o modelo de dados estiver definido.
 |---|---|---|---|
 | `completeProfile` ✅ | Chamada pelo app | Cria `users/{uid}`, reserva `usernames/{username}` e guarda a data de nascimento em `userPrivate/{uid}`, numa transação | Conta e perfil |
 | `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
+| `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo, grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R14 |
 | `onHighlightCreated` | Highlight criado no Firestore | Atualiza contadores e avisa os participantes por push | R16, Perfil |
 | `onVideoUploaded` | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
 | `acceptFriendInvite` | Chamada pelo app | Grava a amizade nos dois perfis de uma vez | R15 🟡 |
