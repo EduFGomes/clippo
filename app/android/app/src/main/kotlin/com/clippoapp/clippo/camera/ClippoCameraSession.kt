@@ -698,7 +698,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             // detector e cada recorte), não a imagem inteira.
             val raw = proxy.toBitmap()
             val prepMs = SystemClock.elapsedRealtime() - frame.startedAt
-            val result = many.analyze(raw, rotation)
+            val result = many.analyze(raw, rotation, deviceRotation)
             val analysisMs = SystemClock.elapsedRealtime() - frame.startedAt
             val people = result.people.map { person ->
                 mapOf(

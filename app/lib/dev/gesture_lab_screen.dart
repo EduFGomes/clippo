@@ -51,6 +51,8 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   bool _withSound = false;
   bool _microphoneAllowed = true;
   bool _showLimits = false;
+  // Os controles da gravação ficam escondidos: abertos, cobririam a câmera e os esqueletos.
+  bool _showRecording = false;
 
   GestureObservation? _last;
   PoseMeasurement? _measurement;
@@ -235,7 +237,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     try {
       final clip = await widget.camera.saveHighlight(until: until, length: _length);
       result = 'Salvo em ${clock.elapsedMilliseconds} ms: ${clip.duration.inSeconds} s '
-          '${clip.withSound ? 'com' : 'sem'} som em ${clip.path}';
+          '${clip.withSound ? 'com' : 'sem'} som · ${clip.path.split('/').last}';
       // Depois de salvo, e sem esperar: o aviso não entra no tempo do R2.
       widget.camera
           .signalSaved(sound: _sound, flash: _flash, vibration: _vibration)
@@ -244,7 +246,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       if (copyHighlightsToGallery) {
         try {
           await widget.camera.copyToGallery(clip);
-          result += ' · na galeria (álbum Clippo)';
+          result += ' · na galeria';
         } on CameraFailure catch (e) {
           result += ' · ${e.message}';
         }
@@ -392,19 +394,25 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                       label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
                       onPressed: () => setState(() => _showLimits = !_showLimits),
                     ),
-                    ClippoTextButton(label: 'Duração: ${_length.inSeconds} s', onPressed: _nextLength),
                     ClippoTextButton(
-                      label: 'Bip: ${_sound ? 'ligado' : 'desligado'}',
-                      onPressed: () => setState(() => _sound = !_sound),
+                      label: _showRecording ? 'Fechar gravação' : 'Ajustar gravação',
+                      onPressed: () => setState(() => _showRecording = !_showRecording),
                     ),
-                    ClippoTextButton(
-                      label: 'Flash: ${_flash ? 'ligado' : 'desligado'}',
-                      onPressed: () => setState(() => _flash = !_flash),
-                    ),
-                    ClippoTextButton(
-                      label: 'Vibração: ${_vibration ? 'ligada' : 'desligada'}',
-                      onPressed: () => setState(() => _vibration = !_vibration),
-                    ),
+                    if (_showRecording) ...[
+                      ClippoTextButton(label: 'Duração: ${_length.inSeconds} s', onPressed: _nextLength),
+                      ClippoTextButton(
+                        label: 'Bip: ${_sound ? 'ligado' : 'desligado'}',
+                        onPressed: () => setState(() => _sound = !_sound),
+                      ),
+                      ClippoTextButton(
+                        label: 'Flash: ${_flash ? 'ligado' : 'desligado'}',
+                        onPressed: () => setState(() => _flash = !_flash),
+                      ),
+                      ClippoTextButton(
+                        label: 'Vibração: ${_vibration ? 'ligada' : 'desligada'}',
+                        onPressed: () => setState(() => _vibration = !_vibration),
+                      ),
+                    ],
                     if (!_microphoneAllowed)
                       ClippoTextButton(label: 'Permitir microfone', onPressed: _requestMicrophone),
                   ],
