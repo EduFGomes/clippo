@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/session.dart';
 
 /// Erro ao ler sessões, com a mensagem pronta para a tela.
@@ -81,6 +82,18 @@ class SessionsSnapshot {
   bool get isEmpty => sessions.isEmpty;
 }
 
+/// Os highlights de uma sessão que chegaram, e de onde vieram.
+class HighlightsSnapshot {
+  const HighlightsSnapshot({required this.highlights, required this.fromCache});
+
+  final List<Highlight> highlights;
+
+  /// true quando os dados vieram apenas do cache local do aparelho.
+  final bool fromCache;
+
+  bool get isEmpty => highlights.isEmpty;
+}
+
 /// Tudo o que o app lê sobre sessões passa por aqui.
 ///
 /// As telas não falam direto com o Firestore (regra 4 do AGENTS.md): chamam estes
@@ -94,6 +107,9 @@ class SessionsRepository {
 
   /// Nome da coleção no Firestore. Igual ao de backend/firestore.rules.
   static const String collectionName = 'sessions';
+
+  /// Subcoleção de lances dentro de cada sessão.
+  static const String highlightsSubcollection = 'highlights';
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -129,6 +145,28 @@ class SessionsRepository {
         .map(
           (snapshot) => SessionsSnapshot(
             sessions: snapshot.docs.map(Session.fromDocument).toList(growable: false),
+            fromCache: snapshot.metadata.isFromCache,
+          ),
+        )
+        .handleError((Object error) {
+      throw SessionsFailure.from(error);
+    });
+  }
+
+  /// Os highlights de uma sessão em ordem cronológica (produto.md › 4.3).
+  Stream<HighlightsSnapshot> watchHighlightsOf(String sessionId) {
+    return _firestore
+        .collection(collectionName)
+        .doc(sessionId)
+        .collection(highlightsSubcollection)
+        .orderBy('offsetSeconds')
+        .snapshots()
+        .map(
+          (snapshot) => HighlightsSnapshot(
+            highlights: ensureDistinctHighlightTitles([
+              for (var i = 0; i < snapshot.docs.length; i++)
+                Highlight.fromDocument(snapshot.docs[i], index: i),
+            ]),
             fromCache: snapshot.metadata.isFromCache,
           ),
         )

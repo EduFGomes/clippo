@@ -15,26 +15,43 @@ class SessionLocation {
   final double? longitude;
 }
 
-/// Um participante como ele aparece na lista da Início: só o necessário para o avatar.
+/// Um participante como ele aparece na lista da Início e na tela Sessão.
 ///
 /// Vem da cópia `participantsPreview` guardada na própria sessão, não de `users/`:
 /// sem ela, desenhar a lista custaria uma leitura por participante de cada sessão.
-/// Em troca, quem trocou o nome ou a foto continua aparecendo com o antigo aqui —
-/// a tela Sessão lê os perfis de verdade.
 class SessionParticipant {
-  const SessionParticipant({required this.uid, required this.name, this.photoUrl});
+  const SessionParticipant({
+    required this.uid,
+    required this.name,
+    this.username,
+    this.photoUrl,
+  });
 
   SessionParticipant.fromMap(Map<String, dynamic> data)
       : uid = data['uid'] as String? ?? '',
         name = data['name'] as String? ?? '',
+        username = data['username'] as String?,
         photoUrl = data['photoUrl'] as String?;
 
   final String uid;
   final String name;
+  final String? username;
   final String? photoUrl;
 
   /// Primeiro nome, que é como os chips e as legendas chamam a pessoa ("Com Rafa").
   String get firstName => name.split(' ').first;
+
+  /// @usuário exibido na lista de participantes e no perfil.
+  String get displayUsername {
+    final raw = (username ?? '').trim();
+    if (raw.isNotEmpty) return raw.startsWith('@') ? raw.substring(1) : raw;
+    final clean = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .replaceAll(RegExp(r'\s+'), '.');
+    return clean.isEmpty ? uid : clean;
+  }
 }
 
 /// Uma sessão: um jogo gravado, com seus participantes e seus highlights.
@@ -126,6 +143,30 @@ class Session {
   int hiddenParticipantCount({int max = 5}) {
     final hidden = participantCount - max;
     return hidden > 0 ? hidden : 0;
+  }
+
+  /// Cria uma cópia da sessão com os campos atualizados pelo dono (R12).
+  Session copyWith({
+    String? name,
+    List<String>? participantIds,
+    List<SessionParticipant>? participants,
+    int? participantCount,
+    SessionLocation? location,
+    bool clearLocation = false,
+  }) {
+    return Session(
+      id: id,
+      name: name ?? this.name,
+      ownerId: ownerId,
+      participantIds: participantIds ?? this.participantIds,
+      participants: participants ?? this.participants,
+      participantCount: participantCount ?? this.participantCount,
+      startedAt: startedAt,
+      endedAt: endedAt,
+      duration: duration,
+      location: clearLocation ? null : (location ?? this.location),
+      highlightCount: highlightCount,
+    );
   }
 
   /// Sessão sem data vai para o fim da lista, não para o topo. Na prática o

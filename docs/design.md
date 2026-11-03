@@ -282,7 +282,8 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `minTouchTarget` | 48 | Área de toque mínima de qualquer controle, mesmo quando o desenho é menor |
 | `step` | 36 | Círculo de passo |
 | `avatar` | 32 | Avatar de participante na lista |
-| `avatarLarge` | 44 | Avatar do usuário no topo da Início |
+| `avatarLarge` · `avatarProfile` | 44 · 88 | Avatar do usuário no topo da Início · avatar grande no perfil de participante |
+| `qrCode` | 200 | Código QR para compartilhar sessão |
 | `check` | 26 | Círculo do ✓ |
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
@@ -291,6 +292,8 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
 | `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
 | `skeletonCard` | 80 | Esqueleto no formato do card de sessão fechado |
+| `thumbnailWidth` · `thumbnailHeight` | 108 · 96 | Largura de referência · altura da miniatura no card de highlight (`ClippoHighlightTile`) |
+| `playBadge` · `playerPlayButton` | 32 · 72 | Círculo do play sobre a miniatura · botão central de reproduzir/pausar no Player |
 | `backIcon` · `fieldIcon` · `checkIcon` | 22 · 20 · 16 | Chevron do voltar · olho no campo · ✓ no círculo |
 | `spinner` | 20 | Indicador de carregando dentro do botão |
 | `iconStroke` · `checkStroke` | 1,8 · 3 | Traço dos ícones de controle · traço do ✓ |
@@ -321,7 +324,7 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 - **Outline**, traço de 1,6–1,8 na grade de 24, pontas e junções arredondadas, **sem preenchimento** em nenhum estado.
 - Cor: `text` por padrão, `textLabel` dentro de campos, `onPrimary` sobre `primary`.
 - Desenhados em código, no `ClippoIcon`: voltar (chevron para a esquerda, traço 1,8, 22 dp), **chevron para baixo** (sanfona do card de sessão, 22 dp), olho / olho cortado (20 dp), ✓ (traço 3, dentro do círculo `check`).
-- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
+- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `pause`, `share`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
 - Precisa de outro ícone? **Lucide** ou **Phosphor (Light)** combinam; ajuste o traço e adicione o SVG à pasta.
 
 ### 3.7 Marca
@@ -351,6 +354,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
 - **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
+- **`ClippoHighlightTile(title, timing, onTap, thumbnailUrl?, uploading)`** — uma linha de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura `thumbnailWidth` × `thumbnailHeight` à esquerda com botão de play circular (`playBadge`) sobreposto; à direita, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`).
 - **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar acende a fatia da seção sob o dedo e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
