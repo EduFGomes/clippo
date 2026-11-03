@@ -294,7 +294,7 @@ A gravação ignora o tema claro/escuro.
 **Estado C — Highlight salvo**
 - Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
 - Some sozinho após **~2,6 s** e volta ao Estado B. Não exige toque.
-- Vibração leve ao salvar.
+- Sem vibração ao salvar (retirada em 29/10/2026): o celular fica longe, apoiado na quadra.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.

@@ -11,7 +11,7 @@ import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
 
-/// Um Kotlin de mentira: [permission] decide a permissão, e cada pedido de salvar é anotado.
+/// Câmera simulada: [permission] define a permissão inicial e [saves] registra os cortes pedidos.
 class _FakeCamera extends ClippoCamera {
   _FakeCamera({this.permission = true, this.failSave = false});
 
@@ -43,7 +43,7 @@ class _FakeCamera extends ClippoCamera {
   Stream<PoseFrame> get poses => const Stream.empty();
 }
 
-/// Uma detecção de mentira: o teste decide quando o gesto dispara.
+/// Detector simulado para disparar o gesto sob controle do teste.
 class _FakePipeline extends GesturePipeline {
   final _observations = StreamController<GestureObservation>.broadcast();
 
@@ -60,7 +60,12 @@ class _FakePipeline extends GesturePipeline {
 Widget _preview(BuildContext context) => const ColoredBox(color: ClippoBrand.wine);
 
 void main() {
-  Future<void> open(WidgetTester tester, {required _FakeCamera camera, _FakePipeline? pipeline}) async {
+  Future<void> open(
+    WidgetTester tester, {
+    required _FakeCamera camera,
+    _FakePipeline? pipeline,
+    VoidCallback? onSaved,
+  }) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -69,6 +74,7 @@ void main() {
         camera: camera,
         pipeline: pipeline ?? _FakePipeline(),
         preview: _preview,
+        onSaved: onSaved,
         friends: const [
           CaptureFriend(id: 'rafa', firstName: 'Rafa'),
           CaptureFriend(id: 'bruno', firstName: 'Bruno'),
@@ -104,7 +110,6 @@ void main() {
 
     expect(selected('Gravar sozinho'), isTrue);
     await tester.tap(find.text('Com Rafa'));
-    // A fileira rola: o segundo amigo já fica fora da tela.
     await tester.dragUntilVisible(find.text('Com Bruno'), find.byType(ListView), const Offset(-100, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Com Bruno'));
@@ -177,7 +182,7 @@ void main() {
     await tester.pump(ClippoMotion.savedBanner);
   });
 
-  testWidgets('cancelar volta a preparar; encerrar desliga a câmera', (tester) async {
+  testWidgets('cancelar pede confirmação antes de voltar a preparar; encerrar abre confirmação', (tester) async {
     final camera = _FakeCamera();
     await open(tester, camera: camera);
     await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
@@ -186,6 +191,22 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Cancelar gravação'));
     await tester.pump();
+    expect(find.text('Cancelar gravação?'), findsOneWidget);
+
+    // Desistir de cancelar mantém na gravação.
+    await tester.tap(find.text('Continuar gravando'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.bySemanticsLabel('Detecção do gesto ligada'), findsOneWidget);
+
+    // Confirmar cancelamento volta para preparar.
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Cancelar gravação'));
+    await tester.pump();
+    await tester.tap(find.text('Sim, cancelar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
 
     await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
@@ -194,14 +215,119 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Encerrar sessão'));
     await tester.pump();
+    await tester.pump();
     expect(camera.stopped, isTrue);
-    expect(find.text('Confirme a sessão'), findsOneWidget);
+    expect(find.text('CONFIRME A\nSESSÃO.'), findsOneWidget);
+    expect(find.text('Gravação encerrada · nenhum highlight'), findsOneWidget);
+    expect(find.text('Salvar sessão'), findsOneWidget);
+    expect(find.text('Descartar'), findsOneWidget);
   });
 
-  testWidgets('preparar não corta com fonte a 130 %', (tester) async {
+  testWidgets('confirmação: valida o nome da sessão antes de salvar', (tester) async {
+    var saved = false;
+    final camera = _FakeCamera();
+    await open(tester, camera: camera, onSaved: () => saved = true);
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    // Limpa o nome da sessão e tenta salvar: mostra erro e não salva.
+    await tester.enterText(find.byType(TextField).first, '   ');
+    await tester.pump();
+    await tester.tap(find.text('Salvar sessão'));
+    await tester.pump();
+    expect(find.text('Informe o nome da sessão.'), findsOneWidget);
+    expect(saved, isFalse);
+
+    // Preenche um nome válido e salva.
+    await tester.enterText(find.byType(TextField).first, 'Pelada de quarta');
+    await tester.pump();
+    expect(find.text('Informe o nome da sessão.'), findsNothing);
+    await tester.tap(find.text('Salvar sessão'));
+    await tester.pump();
+    expect(saved, isTrue);
+  });
+
+  testWidgets('confirmação: voltar à câmera preserva highlights e reabre câmera', (tester) async {
+    final camera = _FakeCamera();
+    await open(tester, camera: camera);
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Voltar à câmera'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+  });
+
+  testWidgets('confirmação: descartar pede confirmação, limpa highlights e volta a preparar', (tester) async {
+    final camera = _FakeCamera();
+    await open(tester, camera: camera);
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('Descartar'));
+    await tester.pump();
+    await tester.tap(find.text('Descartar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Descartar sessão?'), findsOneWidget);
+
+    await tester.tap(find.text('Sim, descartar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+  });
+
+  testWidgets('confirmação: adicionar amigo aos participantes', (tester) async {
+    final camera = _FakeCamera();
+    await open(tester, camera: camera);
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Você'), findsOneWidget);
+    expect(find.text('+ adicionar'), findsOneWidget);
+
+    await tester.tap(find.text('+ adicionar'));
+    await tester.pump();
+    expect(find.text('+ Rafa'), findsOneWidget);
+
+    await tester.tap(find.text('+ Rafa'));
+    await tester.pump();
+    expect(find.text('Rafa'), findsOneWidget);
+  });
+
+  testWidgets('preparar e confirmação não cortam com fonte a 130 %', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await open(tester, camera: _FakeCamera());
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
     expect(tester.takeException(), isNull);
   });
 }
