@@ -35,6 +35,9 @@ void main() {
     expect(clippoSavedPlaysCount(0), '0 lances salvos');
     expect(clippoParticipantCount(10), '10 participantes');
     expect(clippoParticipantCount(1), '1 participante');
+    expect(clippoSharedSessionsCount(12), '12 sessões juntos');
+    expect(clippoSharedSessionsCount(1), '1 sessão juntos');
+    expect(clippoSharedSessionsCount(0), 'nenhuma sessão ainda');
   });
 
   test('momento do highlight ("00:12:40 · 30s" e "enviando…") e tempo do player', () {
