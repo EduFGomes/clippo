@@ -16,6 +16,8 @@ const int passwordMax = 128;
 const int nameMax = 50;
 const int usernameMin = 3;
 const int usernameMax = 20;
+const int sessionNameMax = 50;
+const int sessionLocationMax = 80;
 
 final RegExp _emailPattern =
     RegExp(r'^[a-z0-9._%+-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$');
@@ -88,6 +90,29 @@ String? validateBirthDate(DateTime? date, {DateTime? today}) {
   final day = DateTime(date.year, date.month, date.day);
   if (day.isAfter(DateTime(now.year, now.month, now.day)) || date.year < 1900) {
     return 'Data de nascimento inválida.';
+  }
+  return null;
+}
+
+/// Nome da sessão: obrigatório, sem espaços nas pontas nem repetidos, até 50 caracteres.
+String normalizeSessionName(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+String? validateSessionName(String raw) {
+  final name = normalizeSessionName(raw);
+  if (name.isEmpty) return 'Informe o nome da sessão.';
+  if (name.length > sessionNameMax) {
+    return 'O nome da sessão pode ter até $sessionNameMax caracteres.';
+  }
+  return null;
+}
+
+/// Local da sessão: opcional; quando preenchido, sem espaços repetidos e até 80 caracteres.
+String normalizeSessionLocation(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+String? validateSessionLocation(String raw) {
+  final location = normalizeSessionLocation(raw);
+  if (location.length > sessionLocationMax) {
+    return 'O local pode ter até $sessionLocationMax caracteres.';
   }
   return null;
 }

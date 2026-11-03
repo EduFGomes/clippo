@@ -98,6 +98,8 @@ Use exatamente assim.
 | Nome | Informe seu nome. · O nome pode ter até 50 caracteres. |
 | Nome de usuário | Escolha um nome de usuário. · O nome de usuário precisa ter de 3 a 20 caracteres. · Use só letras sem acento, números, "_" e ".". · O ponto não pode ficar no começo, no fim ou repetido. |
 | Data de nascimento | Informe a data de nascimento. · Data de nascimento inválida. |
+| Nome da sessão | Informe o nome da sessão. · O nome da sessão pode ter até 50 caracteres. |
+| Local | O local pode ter até 80 caracteres. |
 
 **Telas internas** (vindas do protótipo v1; revisar quando forem redesenhadas na C)
 

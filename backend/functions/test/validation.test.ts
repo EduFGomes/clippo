@@ -5,6 +5,8 @@ import {
   normalizeBirthDate,
   normalizeEmail,
   normalizeName,
+  normalizeSessionLocation,
+  normalizeSessionName,
   normalizeUsername,
 } from "../src/users/validation";
 
@@ -77,5 +79,31 @@ describe("normalizeEmail", () => {
     42,
   ])("recusa %s", (value) => {
     expect(() => normalizeEmail(value)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeSessionName", () => {
+  it("junta espaços repetidos", () => {
+    expect(normalizeSessionName("  Pelada   de quinta ")).toBe("Pelada de quinta");
+  });
+
+  it("recusa nome vazio ou longo demais", () => {
+    expect(() => normalizeSessionName("   ")).toThrow(ValidationError);
+    expect(() => normalizeSessionName("a".repeat(51))).toThrow(ValidationError);
+    expect(() => normalizeSessionName(42)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeSessionLocation", () => {
+  it("aceita vazio devolvendo null e junta espaços repetidos", () => {
+    expect(normalizeSessionLocation("")).toBeNull();
+    expect(normalizeSessionLocation("   ")).toBeNull();
+    expect(normalizeSessionLocation(null)).toBeNull();
+    expect(normalizeSessionLocation("  Arena   Society ")).toBe("Arena Society");
+  });
+
+  it("recusa local longo demais", () => {
+    expect(() => normalizeSessionLocation("a".repeat(81))).toThrow(ValidationError);
+    expect(() => normalizeSessionLocation(42)).toThrow(ValidationError);
   });
 });

@@ -87,4 +87,20 @@ void main() {
       expect(validateBirthDate(DateTime(1899, 12, 31), today: today), isNotNull);
     });
   });
+
+  group('sessão', () {
+    test('nome da sessão: junta espaços e recusa vazio ou longo demais', () {
+      expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
+      expect(validateSessionName('Pelada de quinta'), isNull);
+      expect(validateSessionName('   '), 'Informe o nome da sessão.');
+      expect(validateSessionName('a' * 51), 'O nome da sessão pode ter até 50 caracteres.');
+    });
+
+    test('local da sessão: aceita vazio, junta espaços e recusa longo demais', () {
+      expect(normalizeSessionLocation('  Arena   Society '), 'Arena Society');
+      expect(validateSessionLocation(''), isNull);
+      expect(validateSessionLocation('Arena Society'), isNull);
+      expect(validateSessionLocation('a' * 81), 'O local pode ter até 80 caracteres.');
+    });
+  });
 }
