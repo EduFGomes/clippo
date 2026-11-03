@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:clippo/app.dart';
 import 'package:clippo/core/camera/clippo_camera.dart';
 import 'package:clippo/core/camera/pose_frame.dart';
+import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
@@ -65,6 +66,7 @@ void main() {
     required _FakeCamera camera,
     _FakePipeline? pipeline,
     VoidCallback? onSaved,
+    ValueChanged<Session>? onSessionCreated,
   }) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1;
@@ -75,6 +77,7 @@ void main() {
         pipeline: pipeline ?? _FakePipeline(),
         preview: _preview,
         onSaved: onSaved,
+        onSessionCreated: onSessionCreated,
         friends: const [
           CaptureFriend(id: 'rafa', firstName: 'Rafa'),
           CaptureFriend(id: 'bruno', firstName: 'Bruno'),
@@ -223,10 +226,16 @@ void main() {
     expect(find.text('Descartar'), findsOneWidget);
   });
 
-  testWidgets('confirmação: valida o nome da sessão antes de salvar', (tester) async {
+  testWidgets('confirmação: valida o nome e permite escolher sessão aberta ou fechada', (tester) async {
     var saved = false;
+    Session? createdSession;
     final camera = _FakeCamera();
-    await open(tester, camera: camera, onSaved: () => saved = true);
+    await open(
+      tester,
+      camera: camera,
+      onSaved: () => saved = true,
+      onSessionCreated: (s) => createdSession = s,
+    );
     await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
@@ -237,19 +246,37 @@ void main() {
 
     // Limpa o nome da sessão e tenta salvar: mostra erro e não salva.
     await tester.enterText(find.byType(TextField).first, '   ');
-    await tester.pump();
+    await tester.ensureVisible(find.text('Salvar sessão'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Salvar sessão'));
     await tester.pump();
+    await tester.ensureVisible(find.byType(TextField).first);
+    await tester.pumpAndSettle();
     expect(find.text('Informe o nome da sessão.'), findsOneWidget);
     expect(saved, isFalse);
 
-    // Preenche um nome válido e salva.
+    // Escolhe "Sessão fechada", preenche um nome válido e salva.
+    await tester.ensureVisible(find.text('Sessão fechada'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sessão fechada'));
+    await tester.pump();
+    expect(
+      find.text('Quem usar o código ou link pede sua permissão para entrar.'),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.byType(TextField).first);
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Pelada de quarta');
     await tester.pump();
     expect(find.text('Informe o nome da sessão.'), findsNothing);
+    await tester.ensureVisible(find.text('Salvar sessão'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Salvar sessão'));
     await tester.pump();
     expect(saved, isTrue);
+    expect(createdSession?.name, 'Pelada de quarta');
+    expect(createdSession?.isClosed, isTrue);
   });
 
   testWidgets('confirmação: voltar à câmera preserva highlights e reabre câmera', (tester) async {

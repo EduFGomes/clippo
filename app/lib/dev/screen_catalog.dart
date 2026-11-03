@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:clippo/app_shell.dart';
 import 'package:clippo/dev/component_gallery.dart';
 import 'package:clippo/dev/gesture_lab_screen.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
@@ -23,6 +24,7 @@ class ScreenCatalog extends StatelessWidget {
   const ScreenCatalog({super.key});
 
   static final List<_Entry> _entries = [
+    _Entry('App completo (Navegação)', 'app_shell', (_) => const AppShell()),
     _Entry('Componentes', 'core/widgets', (_) => const ComponentGallery()),
     _Entry('Boas-vindas', 'onboarding', (_) => const WelcomeScreen()),
     _Entry('Como funciona', 'onboarding', (_) => const HowItWorksScreen()),

@@ -6,17 +6,12 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
-import 'package:clippo/core/widgets/clippo_radial_nav.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
 import 'package:clippo/core/widgets/clippo_session_card.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
-import 'package:clippo/features/capture/screens/capture_screen.dart';
-import 'package:clippo/features/home/screens/home_screen.dart';
-import 'package:clippo/features/home/screens/session_screen.dart';
-import 'package:clippo/features/profile/screens/profile_screen.dart';
 
 /// Modelo de amigo ou usuário pesquisável na tela Amigos (docs/produto.md › 4.6).
 class FriendItem {
@@ -116,6 +111,8 @@ class FriendsScreen extends StatefulWidget {
     this.initialPendingInvites,
     this.directoryUsers,
     this.discoverableSessions,
+    this.onOpenSession,
+    this.onSessionJoined,
   });
 
   /// Lista inicial de amigos (permite testar o estado vazio passando `const []`).
@@ -129,6 +126,12 @@ class FriendsScreen extends StatefulWidget {
 
   /// Sessões disponíveis para pesquisar e entrar.
   final List<DiscoverableSession>? discoverableSessions;
+
+  /// Abre os detalhes de uma sessão sem importar outra feature (regra 3 do AGENTS.md).
+  final ValueChanged<DiscoverableSession>? onOpenSession;
+
+  /// Avisa a casca de navegação quando o usuário entra numa sessão aberta.
+  final ValueChanged<DiscoverableSession>? onSessionJoined;
 
   static const List<FriendItem> _defaultFriends = [
     FriendItem(
@@ -303,23 +306,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     super.dispose();
   }
 
-  void _onNavSelected(int index) {
-    if (index == 2) return;
-    final Widget destination;
-    switch (index) {
-      case 0:
-        destination = const HomeScreen();
-      case 1:
-        destination = const CaptureScreen();
-      case 3:
-      default:
-        destination = const ProfileScreen();
-    }
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => destination),
-    );
-  }
-
   void _acceptInvite(FriendItem person) {
     setState(() {
       _pendingInvites.removeWhere((item) => item.uid == person.uid);
@@ -362,6 +348,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           person: person,
           isFriend: isFriend,
           isRequestSent: _sentRequests.contains(person.uid),
+          onOpenSession: widget.onOpenSession,
         ),
       ),
     );
@@ -426,6 +413,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   void _joinSession(DiscoverableSession target) {
+    DiscoverableSession? joinedSession;
     setState(() {
       if (target.isClosed) {
         _sessions = [
@@ -438,13 +426,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         _sessions = [
           for (final s in _sessions)
             if (s.id == target.id && !s.joined)
-              s.copyWith(joined: true, participantCount: s.participantCount + 1)
+              (joinedSession = s.copyWith(joined: true, participantCount: s.participantCount + 1))
             else
               s,
         ];
         _sessionJoinFeedback = 'Você entrou em ${target.name}.';
       }
     });
+    if (joinedSession != null) {
+      widget.onSessionJoined?.call(joinedSession!);
+    }
   }
 
   void _joinSessionByCodeOrLink() {
@@ -477,6 +468,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           s.name.toLowerCase() == normalizedQuery,
     );
 
+    DiscoverableSession? joinedSession;
     setState(() {
       _sessionCodeError = null;
       _sessionCodeController.clear();
@@ -489,10 +481,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
           _sessionJoinFeedback =
               'Sessão fechada: pedido enviado para ${found.ownerName} liberar sua entrada em ${found.name}.';
         } else {
-          _sessions[existingIndex] = found.copyWith(
+          final updated = found.copyWith(
             joined: true,
             participantCount: found.participantCount + 1,
           );
+          _sessions[existingIndex] = updated;
+          joinedSession = updated;
           _sessionJoinFeedback = 'Você entrou em ${found.name}.';
         }
       } else {
@@ -510,55 +504,36 @@ class _FriendsScreenState extends State<FriendsScreen> {
           joined: true,
         );
         _sessions = [created, ..._sessions];
+        joinedSession = created;
         _sessionJoinFeedback = 'Você entrou em ${created.name}.';
       }
     });
+    if (joinedSession != null) {
+      widget.onSessionJoined?.call(joinedSession!);
+    }
   }
 
-  void _openSessionDetails() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SessionScreen()),
-    );
+  void _openSessionDetails(DiscoverableSession session) {
+    widget.onOpenSession?.call(session);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
+    return ClippoScreenGround(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Positioned.fill(
-            child: ClippoScreenGround(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _TopHeader(onInvite: _openInviteScreen),
-                  const SizedBox(height: ClippoSpace.section),
-                  _ModeTabs(
-                    selected: _tab,
-                    onSelected: (next) => setState(() => _tab = next),
-                  ),
-                  const SizedBox(height: ClippoSpace.section),
-                  if (_tab == _FriendsTab.friends)
-                    _buildFriendsSection()
-                  else
-                    _buildSessionsSection(),
-                  const SizedBox(height: ClippoSize.navClearance),
-                ],
-              ),
-            ),
+          _TopHeader(onInvite: _openInviteScreen),
+          const SizedBox(height: ClippoSpace.section),
+          _ModeTabs(
+            selected: _tab,
+            onSelected: (next) => setState(() => _tab = next),
           ),
-          Positioned.fill(
-            child: ClippoRadialNav(
-              currentIndex: 2,
-              onSelected: _onNavSelected,
-              items: const [
-                ClippoRadialNavItem(label: 'Início', icon: 'home'),
-                ClippoRadialNavItem(label: 'Gravar', icon: 'capture'),
-                ClippoRadialNavItem(label: 'Amigos', icon: 'friends'),
-                ClippoRadialNavItem(label: 'Perfil', icon: 'profile'),
-              ],
-            ),
-          ),
+          const SizedBox(height: ClippoSpace.section),
+          if (_tab == _FriendsTab.friends)
+            _buildFriendsSection()
+          else
+            _buildSessionsSection(),
         ],
       ),
     );
@@ -822,7 +797,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             _DiscoverSessionCard(
               session: filteredSessions[i],
               onJoin: () => _joinSession(filteredSessions[i]),
-              onOpen: _openSessionDetails,
+              onOpen: () => _openSessionDetails(filteredSessions[i]),
             ),
           ],
       ],
@@ -1582,11 +1557,13 @@ class _FriendProfileScreen extends StatefulWidget {
     required this.person,
     required this.isFriend,
     required this.isRequestSent,
+    this.onOpenSession,
   });
 
   final FriendItem person;
   final bool isFriend;
   final bool isRequestSent;
+  final ValueChanged<DiscoverableSession>? onOpenSession;
 
   @override
   State<_FriendProfileScreen> createState() => _FriendProfileScreenState();
@@ -1648,10 +1625,8 @@ class _FriendProfileScreenState extends State<_FriendProfileScreen> {
     });
   }
 
-  void _openSession() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SessionScreen()),
-    );
+  void _openSession(DiscoverableSession session) {
+    widget.onOpenSession?.call(session);
   }
 
   @override
@@ -1807,7 +1782,7 @@ class _FriendProfileScreenState extends State<_FriendProfileScreen> {
                     : 0,
                 expanded: _expandedSessionIndex == i,
                 onToggle: () => _toggleCard(i),
-                onAction: _openSession,
+                onAction: () => _openSession(shared[i]),
               ),
             ],
         ],

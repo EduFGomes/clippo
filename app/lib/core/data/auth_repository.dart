@@ -143,3 +143,13 @@ AuthRepository? _authRepository;
 /// Instância única usada pelo app. Só acesse depois de setupFirebase() (main.dart).
 /// Provisório até a área de front-end escolher o gerenciamento de estado.
 AuthRepository get authRepository => _authRepository ??= AuthRepository();
+
+/// Retorna `true` somente quando o Firebase está inicializado e há alguém logado.
+/// Nos testes de widget ou no catálogo sem login, devolve `false` sem lançar erro.
+bool get isUserSignedIn {
+  try {
+    return authRepository.currentUser != null;
+  } catch (_) {
+    return false;
+  }
+}

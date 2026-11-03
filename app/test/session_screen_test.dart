@@ -15,6 +15,7 @@ Session _session({
   String name = 'Pelada de quinta',
   int participants = 10,
   int highlightCount = 2,
+  bool isClosed = false,
 }) {
   return Session.fromMap(id, {
     'name': name,
@@ -32,6 +33,7 @@ Session _session({
     'durationSeconds': 6120,
     'location': const {'label': 'Quadra do Parque'},
     'highlightCount': highlightCount,
+    'isClosed': isClosed,
   });
 }
 
@@ -108,6 +110,7 @@ void main() {
     expect(find.text('PELADA DE\nQUINTA.'), findsOneWidget);
     expect(find.text('11 set 2026 · 1h 42min'), findsOneWidget);
     expect(find.text('Quadra do Parque'), findsOneWidget);
+    expect(find.text('Sessão aberta'), findsOneWidget);
     expect(find.text('10 participantes'), findsOneWidget);
     expect(find.text('Highlights'), findsOneWidget);
     expect(find.text('2 lances salvos'), findsOneWidget);
@@ -117,7 +120,7 @@ void main() {
     expect(find.text('00:12:40 · enviando…'), findsOneWidget);
   });
 
-  testWidgets('criador pode editar nome e local da sessão (R12); não-criador não vê o botão',
+  testWidgets('criador pode editar nome, local, sessão aberta/fechada e liberar pedido de entrada (R12)',
       (tester) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1;
@@ -140,7 +143,7 @@ void main() {
     await tester.pumpWidget(
       _app(
         SessionScreen(
-          session: _session(),
+          session: _session(participants: 2),
           currentUserId: 'alice',
           highlights: Stream.value(_fromServer(const <Highlight>[])),
         ),
@@ -152,6 +155,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('EDITAR\nSESSÃO.'), findsOneWidget);
+    expect(find.text('Pedidos para entrar'), findsOneWidget);
+    expect(find.text('Gui Santos'), findsOneWidget);
+
+    // Libera pedido de entrada de Gui Santos e muda para Sessão fechada.
+    await tester.ensureVisible(find.text('Liberar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Liberar'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Sessão fechada'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sessão fechada'));
+    await tester.pumpAndSettle();
 
     // Validação impede nome vazio.
     await tester.enterText(find.byType(TextField).first, '   ');
@@ -173,6 +188,8 @@ void main() {
 
     expect(find.text('FUTEBOL DE\nSEXTA.'), findsOneWidget);
     expect(find.text('Arena Society'), findsOneWidget);
+    expect(find.text('Sessão fechada'), findsOneWidget);
+    expect(find.text('3 participantes'), findsOneWidget);
   });
 
   testWidgets('clicar nos participantes mostra a lista de usuários e abre o perfil ao tocar',

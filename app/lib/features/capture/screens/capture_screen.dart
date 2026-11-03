@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:clippo/core/camera/clippo_camera.dart';
+import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
@@ -51,6 +52,7 @@ class CaptureScreen extends StatefulWidget {
     this.pipeline,
     this.preview,
     this.onSaved,
+    this.onSessionCreated,
   });
 
   final List<CaptureFriend> friends;
@@ -64,6 +66,9 @@ class CaptureScreen extends StatefulWidget {
 
   /// Chamado quando a sessão é confirmada e salva no Estado D.
   final VoidCallback? onSaved;
+
+  /// Recebe a [Session] criada no Estado D (com participantes e se é aberta ou fechada).
+  final ValueChanged<Session>? onSessionCreated;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -103,6 +108,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   String? _nameError;
   String? _locationError;
   bool _addingFriend = false;
+  bool _isClosedSession = false;
 
   List<CaptureFriend> get _unselectedFriends =>
       widget.friends.where((f) => !_selectedFriends.contains(f.id)).toList(growable: false);
@@ -399,12 +405,42 @@ class _CaptureScreenState extends State<CaptureScreen> {
       });
       return;
     }
-    _nameController.text = normalizeSessionName(_nameController.text);
-    _locationController.text = normalizeSessionLocation(_locationController.text);
+    final normalizedName = normalizeSessionName(_nameController.text);
+    final normalizedLocation = normalizeSessionLocation(_locationController.text);
+    _nameController.text = normalizedName;
+    _locationController.text = normalizedLocation;
+
+    final start = _recordingStartTime ?? DateTime.now();
+    final end = _recordingEndTime ?? start;
+    final rawDuration = end.difference(start);
+    final duration = rawDuration.inMinutes >= 1 ? rawDuration : const Duration(minutes: 45);
+    final selectedParticipants = <SessionParticipant>[
+      const SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
+      for (final friend in widget.friends)
+        if (_selectedFriends.contains(friend.id))
+          SessionParticipant(uid: friend.id, name: friend.firstName),
+    ];
+
+    final created = Session(
+      id: 'sessao-${start.millisecondsSinceEpoch}',
+      name: normalizedName,
+      ownerId: 'gustavo',
+      participantIds: [for (final p in selectedParticipants) p.uid],
+      participants: selectedParticipants,
+      participantCount: selectedParticipants.length,
+      startedAt: start,
+      endedAt: end,
+      duration: duration,
+      location: normalizedLocation.isEmpty ? null : SessionLocation(label: normalizedLocation),
+      highlightCount: _highlights.isEmpty ? 3 : _highlights.length,
+      isClosed: _isClosedSession,
+    );
+
+    widget.onSessionCreated?.call(created);
     widget.onSaved?.call();
     if (mounted) {
       if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(created);
       } else {
         _highlights.clear();
         _startCamera();
@@ -768,6 +804,41 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     onPressed: () => setState(() => _addingFriend = true),
                   ),
             ],
+          ),
+          const SizedBox(height: ClippoSpace.section),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceS),
+            child: Text(
+              'Acesso à sessão',
+              style: ClippoText.label.copyWith(color: colors.textLabel),
+            ),
+          ),
+          const SizedBox(height: ClippoSpace.spaceS),
+          Wrap(
+            spacing: ClippoSpace.spaceS,
+            runSpacing: ClippoSpace.spaceS,
+            children: [
+              ClippoCaptureChip(
+                label: 'Sessão aberta',
+                selected: !_isClosedSession,
+                onPressed: () => setState(() => _isClosedSession = false),
+              ),
+              ClippoCaptureChip(
+                label: 'Sessão fechada',
+                selected: _isClosedSession,
+                onPressed: () => setState(() => _isClosedSession = true),
+              ),
+            ],
+          ),
+          const SizedBox(height: ClippoSpace.spaceXs),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceS),
+            child: Text(
+              _isClosedSession
+                  ? 'Quem usar o código ou link pede sua permissão para entrar.'
+                  : 'Qualquer pessoa entra direto pelo código ou link.',
+              style: ClippoText.label.copyWith(color: colors.textMuted),
+            ),
           ),
         ],
       ),

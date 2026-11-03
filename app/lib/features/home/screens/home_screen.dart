@@ -16,10 +16,6 @@ import 'package:clippo/features/home/screens/session_screen.dart';
 /// Início: as sessões de que o usuário participa, da mais recente para a mais
 /// antiga (docs/produto.md › 4.2). Só um card fica aberto por vez, e o mais
 /// recente já começa aberto.
-///
-/// 🟡 Sem a navegação de nível superior (Início · Gravar · Amigos · Perfil):
-/// a forma dela, barra ou roda, é decisão do grupo
-/// (docs/arquitetura.md › Decisões em aberto).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.sessions, this.profile, this.onRecord});
 
@@ -32,21 +28,108 @@ class HomeScreen extends StatefulWidget {
 
   /// Leva à Gravação, a partir do estado vazio. Vem de fora porque a Início não
   /// pode importar a feature de captura (regra 3 do AGENTS.md): quem liga as duas
-  /// é a navegação de nível superior, que ainda não existe 🟡. Sem ela, o botão
-  /// aparece desabilitado.
+  /// é o `AppShell`. Sem ela, o botão aparece desabilitado.
   final VoidCallback? onRecord;
+
+  static final List<Session> defaultDemoSessions = [
+    Session(
+      id: 'pelada-quinta-11set',
+      name: 'Pelada de quinta',
+      ownerId: 'gustavo',
+      participantIds: const [
+        'gustavo',
+        'rafa',
+        'bruno',
+        'alice',
+        'caio',
+        'diego',
+        'leo',
+        'pedro',
+        'lucas',
+        'mateus',
+      ],
+      participants: const [
+        SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
+        SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
+        SessionParticipant(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
+        SessionParticipant(uid: 'alice', name: 'Alice Prado', username: 'alice.prado'),
+        SessionParticipant(uid: 'caio', name: 'Caio Nunes', username: 'caio.nunes'),
+      ],
+      participantCount: 10,
+      startedAt: DateTime(2026, 9, 11, 19, 30),
+      endedAt: DateTime(2026, 9, 11, 21, 12),
+      duration: const Duration(hours: 1, minutes: 42),
+      location: const SessionLocation(label: 'Quadra do Parque'),
+      highlightCount: 6,
+      isClosed: false,
+    ),
+    Session(
+      id: 'volei-terca-09set',
+      name: 'Vôlei de terça',
+      ownerId: 'gustavo',
+      participantIds: const ['gustavo', 'alice', 'rafa', 'bia'],
+      participants: const [
+        SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
+        SessionParticipant(uid: 'alice', name: 'Alice Prado', username: 'alice.prado'),
+        SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
+        SessionParticipant(uid: 'bia', name: 'Bia Ferreira', username: 'bia.ferreira'),
+      ],
+      participantCount: 8,
+      startedAt: DateTime(2026, 9, 9, 20, 0),
+      endedAt: DateTime(2026, 9, 9, 21, 45),
+      duration: const Duration(hours: 1, minutes: 45),
+      location: const SessionLocation(label: 'Ginásio Ibirapuera'),
+      highlightCount: 4,
+      isClosed: true,
+    ),
+    Session(
+      id: 'beach-sabado-06set',
+      name: 'Beach Tennis de sábado',
+      ownerId: 'rafa',
+      participantIds: const ['rafa', 'gustavo', 'bruno', 'caio'],
+      participants: const [
+        SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
+        SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
+        SessionParticipant(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
+        SessionParticipant(uid: 'caio', name: 'Caio Nunes', username: 'caio.nunes'),
+      ],
+      participantCount: 4,
+      startedAt: DateTime(2026, 9, 6, 16, 0),
+      endedAt: DateTime(2026, 9, 6, 17, 30),
+      duration: const Duration(hours: 1, minutes: 30),
+      location: const SessionLocation(label: 'Arena Praia Clube'),
+      highlightCount: 5,
+      isClosed: false,
+    ),
+  ];
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Stream<SessionsSnapshot> _sessions = widget.sessions ?? sessionsRepository.watchMySessions();
-  late final Stream<UserProfile?> _profile = widget.profile ?? authRepository.watchMyProfile();
+  late Stream<SessionsSnapshot> _sessions = _resolveSessions();
+  late final Stream<UserProfile?> _profile = _resolveProfile();
 
   /// Qual card está aberto. Null = nenhum; o primeiro da lista começa aberto.
   String? _openId;
   bool _touchedACard = false;
+
+  Stream<SessionsSnapshot> _resolveSessions() {
+    if (widget.sessions != null) return widget.sessions!;
+    if (isUserSignedIn) return sessionsRepository.watchMySessions();
+    return Stream<SessionsSnapshot>.value(
+      SessionsSnapshot(sessions: HomeScreen.defaultDemoSessions, fromCache: false),
+    );
+  }
+
+  Stream<UserProfile?> _resolveProfile() {
+    if (widget.profile != null) return widget.profile!;
+    if (isUserSignedIn) return authRepository.watchMyProfile();
+    return Stream<UserProfile?>.value(
+      const UserProfile(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
+    );
+  }
 
   void _toggle(Session session) {
     setState(() {
@@ -57,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Tentar de novo depois de um erro: refaz a consulta.
   void _retry() {
-    setState(() => _sessions = widget.sessions ?? sessionsRepository.watchMySessions());
+    setState(() => _sessions = _resolveSessions());
   }
 
   bool _isOpen(Session session, int index) =>
@@ -112,8 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSession(Session session) {
-    // 🟡 A tela Sessão ainda é provisória e não recebe a sessão escolhida.
-    // Quando ela for feita, passe [session] para ela.
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => SessionScreen(session: session)),
     );

@@ -74,6 +74,7 @@ class Session {
     required this.highlightCount,
     this.endedAt,
     this.location,
+    this.isClosed = false,
   });
 
   factory Session.fromMap(String id, Map<String, dynamic> data) {
@@ -99,6 +100,7 @@ class Session {
       duration: Duration(seconds: (data['durationSeconds'] as num?)?.toInt() ?? 0),
       location: location is Map<String, dynamic> ? SessionLocation.fromMap(location) : null,
       highlightCount: (data['highlightCount'] as num?)?.toInt() ?? 0,
+      isClosed: data['isClosed'] as bool? ?? false,
     );
   }
 
@@ -133,6 +135,10 @@ class Session {
   /// Quantos lances foram salvos nesta sessão.
   final int highlightCount;
 
+  /// `false` = sessão aberta (qualquer pessoa entra pelo código ou link);
+  /// `true` = sessão fechada (exige permissão do criador para entrar).
+  final bool isClosed;
+
   /// Quem gravou é o dono (R9) e, hoje, o único que edita a sessão (R12 🟡).
   bool isOwnedBy(String uid) => uid == ownerId;
 
@@ -153,6 +159,7 @@ class Session {
     int? participantCount,
     SessionLocation? location,
     bool clearLocation = false,
+    bool? isClosed,
   }) {
     return Session(
       id: id,
@@ -166,6 +173,7 @@ class Session {
       duration: duration,
       location: clearLocation ? null : (location ?? this.location),
       highlightCount: highlightCount,
+      isClosed: isClosed ?? this.isClosed,
     );
   }
 
