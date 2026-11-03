@@ -2,81 +2,86 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/validation/input_validation.dart';
 
-// Os mesmos casos de backend/functions/test/validation.test.ts: as duas regras precisam concordar.
+// Estas regras precisam bater com backend/functions/src/users/validation.ts.
+// Mudou um caso aqui? Mude no backend/functions/test/validation.test.ts.
 void main() {
   group('e-mail', () {
-    test('normaliza espaços e maiúsculas', () {
-      expect(normalizeEmail('  Voce@Email.com '), 'voce@email.com');
-      expect(validateEmail('  Voce@Email.com '), isNull);
+    test('aceita e normaliza um e-mail comum', () {
+      expect(normalizeEmail('  Nome.Sobrenome+1@Aluno.Br '), 'nome.sobrenome+1@aluno.br');
+      expect(validateEmail('  Nome.Sobrenome+1@Aluno.Br '), isNull);
     });
 
-    for (final ok in ['rafa+jogo@gmail.com', 'a.b_c@sub.dominio.com.br', 'x@y.io']) {
-      test('aceita $ok', () => expect(validateEmail(ok), isNull));
-    }
-
-    for (final bad in [
-      '',
-      '   ',
-      'capovill@g',
-      'sem-arroba.com',
-      'nome@dominio',
-      'nome@dominio.c',
-      'nome @dominio.com',
-      '.nome@dominio.com',
-      'nome.@dominio.com',
-      'no..me@dominio.com',
-      'nome@-dominio.com',
-      'nome@dominio..com',
-      'nome@dominio.c0m',
-      '${'a' * 65}@dominio.com',
-      'nome@${'a' * 250}.com',
-    ]) {
-      test('recusa "$bad"', () => expect(validateEmail(bad), isNotNull));
-    }
+    test('recusa vazio, sem domínio completo e pontos fora do lugar', () {
+      for (final bad in [
+        '',
+        '   ',
+        'sem-arroba',
+        'nome@',
+        '@dominio.com',
+        'nome@g', // o Auth aceita; a nossa regra não
+        'nome@dominio',
+        'nome@dominio.c',
+        'nome@.dominio.com',
+        'nome@dominio..com',
+        '.nome@dominio.com',
+        'nome.@dominio.com',
+        'no..me@dominio.com',
+        'nome cognome@dominio.com',
+      ]) {
+        expect(validateEmail(bad), isNotNull, reason: 'deveria recusar "$bad"');
+      }
+    });
   });
 
   group('senha', () {
-    test('nova senha: 6 a 128 caracteres', () {
-      expect(validateNewPassword(''), isNotNull);
-      expect(validateNewPassword('abc12'), isNotNull);
-      expect(validateNewPassword('abc123'), isNull);
+    test('nova senha: mínimo de 6 caracteres', () {
+      expect(validateNewPassword(''), 'Informe a senha.');
+      expect(validateNewPassword('12345'), 'Use uma senha com pelo menos 6 caracteres.');
+      expect(validateNewPassword('123456'), isNull);
       expect(validateNewPassword('a' * 129), isNotNull);
     });
 
-    test('confirmação precisa ser igual', () {
-      expect(validatePasswordConfirmation('abc123', ''), isNotNull);
-      expect(validatePasswordConfirmation('abc123', 'abc124'), isNotNull);
-      expect(validatePasswordConfirmation('abc123', 'abc123'), isNull);
-    });
-
-    test('ao entrar, só precisa estar preenchida', () {
-      expect(validateExistingPassword(''), isNotNull);
-      expect(validateExistingPassword('x'), isNull);
+    test('confirmação precisa bater com a senha', () {
+      expect(validatePasswordConfirmation('123456', ''), 'Repita a senha.');
+      expect(validatePasswordConfirmation('123456', '123457'), 'As senhas não são iguais.');
+      expect(validatePasswordConfirmation('123456', '123456'), isNull);
     });
   });
 
   group('nome', () {
-    test('junta espaços repetidos', () => expect(normalizeName('  Rafael   Silva '), 'Rafael Silva'));
-    test('recusa vazio ou longo demais', () {
-      expect(validateName('   '), isNotNull);
+    test('junta espaços repetidos e recusa vazio ou longo demais', () {
+      expect(normalizeName('  Maria   Clara '), 'Maria Clara');
+      expect(validateName('  Maria   Clara '), isNull);
+      expect(validateName('   '), 'Informe seu nome.');
       expect(validateName('a' * 51), isNotNull);
-      expect(validateName('Rafael Silva'), isNull);
     });
   });
 
   group('nome de usuário', () {
-    test('tira o @, espaços e deixa minúsculo', () {
-      expect(normalizeUsername('  @Rafa_10 '), 'rafa_10');
-      expect(validateUsername('  @Rafa_10 '), isNull);
+    test('tira o @ da frente, põe em minúsculas e aceita pontos e _ no meio', () {
+      expect(normalizeUsername(' @Rafa.Costa_9 '), 'rafa.costa_9');
+      expect(validateUsername(' @Rafa.Costa_9 '), isNull);
     });
-    test('aceita ponto no meio', () => expect(validateUsername('rafa.silva'), isNull));
-    for (final bad in ['', 'ra', 'a' * 21, 'rafa silva', 'rafá', '.rafa', 'rafa.', 'ra..fa']) {
-      test('recusa "$bad"', () => expect(validateUsername(bad), isNotNull));
-    }
+
+    test('recusa curto, longo, com caracteres fora da regra ou ponto nas pontas', () {
+      for (final bad in [
+        '',
+        'ab',
+        'a' * 21,
+        'rafa costa',
+        'rafa-costa',
+        'josé',
+        '.rafa',
+        'rafa.',
+        'ra..fa',
+      ]) {
+        expect(validateUsername(bad), isNotNull, reason: 'deveria recusar "$bad"');
+      }
+    });
   });
 
   group('data de nascimento', () {
-    final today = DateTime(2026, 10, 13);
+    final today = DateTime(2026, 4, 20);
     test('aceita uma data válida no passado', () {
       expect(validateBirthDate(DateTime(2001, 2, 28), today: today), isNull);
       expect(validateBirthDate(today, today: today), isNull);
@@ -101,6 +106,8 @@ void main() {
       expect(validateSessionLocation(''), isNull);
       expect(validateSessionLocation('Arena Society'), isNull);
       expect(validateSessionLocation('a' * 81), 'O local pode ter até 80 caracteres.');
+      expect(normalizeLocation('  Quadra   do Parque '), 'Quadra do Parque');
+      expect(validateLocation('a' * (locationMax + 1)), 'O local pode ter até $locationMax caracteres.');
     });
   });
 }

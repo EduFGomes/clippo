@@ -30,8 +30,40 @@ void main() {
     expect(clippoHighlightCount(7), '7 highlights');
     expect(clippoHighlightCount(1), '1 highlight');
     expect(clippoHighlightCount(0), 'nenhum highlight');
+    expect(clippoSavedPlaysCount(7), '7 lances salvos');
+    expect(clippoSavedPlaysCount(1), '1 lance salvo');
+    expect(clippoSavedPlaysCount(0), '0 lances salvos');
     expect(clippoParticipantCount(10), '10 participantes');
     expect(clippoParticipantCount(1), '1 participante');
+  });
+
+  test('momento do highlight ("00:12:40 · 30s" e "enviando…") e tempo do player', () {
+    expect(
+      clippoOffset(const Duration(minutes: 12, seconds: 40)),
+      '00:12:40',
+    );
+    expect(
+      clippoOffset(const Duration(hours: 1, minutes: 5, seconds: 2)),
+      '01:05:02',
+    );
+    expect(clippoShortSeconds(const Duration(seconds: 30)), '30s');
+    expect(
+      clippoHighlightTiming(
+        const Duration(minutes: 12, seconds: 40),
+        const Duration(seconds: 30),
+      ),
+      '00:12:40 · 30s',
+    );
+    expect(
+      clippoHighlightTiming(
+        const Duration(minutes: 12, seconds: 40),
+        const Duration(seconds: 30),
+        uploading: true,
+      ),
+      '00:12:40 · enviando…',
+    );
+    expect(clippoPlayerProgress(const Duration(seconds: 12)), '0:12');
+    expect(clippoPlayerProgress(const Duration(seconds: 30)), '0:30');
   });
 
   test('saudação muda com a hora e usa o primeiro nome', () {

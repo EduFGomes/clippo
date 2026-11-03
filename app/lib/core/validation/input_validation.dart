@@ -18,6 +18,8 @@ const int usernameMin = 3;
 const int usernameMax = 20;
 const int sessionNameMax = 50;
 const int sessionLocationMax = 80;
+const int locationMax = 60;
+const int sessionMaxHours = 12;
 
 final RegExp _emailPattern =
     RegExp(r'^[a-z0-9._%+-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$');
@@ -106,7 +108,7 @@ String? validateSessionName(String raw) {
   return null;
 }
 
-/// Local da sessão: opcional; quando preenchido, sem espaços repetidos e até 80 caracteres.
+/// Local da sessão (na Gravação): opcional; quando preenchido, sem espaços repetidos e até 80 caracteres.
 String normalizeSessionLocation(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
 
 String? validateSessionLocation(String raw) {
@@ -114,5 +116,30 @@ String? validateSessionLocation(String raw) {
   if (location.length > sessionLocationMax) {
     return 'O local pode ter até $sessionLocationMax caracteres.';
   }
+  return null;
+}
+
+/// O local é opcional: sem GPS e sem digitar, a sessão fica sem local.
+String? normalizeLocation(String? raw) {
+  final label = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  return label.isEmpty ? null : label;
+}
+
+String? validateLocation(String? raw) {
+  final label = normalizeLocation(raw);
+  if (label == null) return null;
+  if (label.length > locationMax) return 'O local pode ter até $locationMax caracteres.';
+  return null;
+}
+
+/// Início e fim da gravação.
+String? validateSessionPeriod(DateTime? startedAt, DateTime? endedAt, {DateTime? now}) {
+  if (startedAt == null || endedAt == null) return 'Confira a data e a hora da sessão.';
+  if (!endedAt.isAfter(startedAt)) return 'O fim da sessão precisa vir depois do início.';
+  if (endedAt.difference(startedAt).inSeconds > sessionMaxHours * 3600) {
+    return 'Uma sessão pode durar até $sessionMaxHours horas.';
+  }
+  final limit = (now ?? DateTime.now()).add(const Duration(minutes: 5));
+  if (endedAt.isAfter(limit)) return 'A sessão não pode terminar no futuro.';
   return null;
 }

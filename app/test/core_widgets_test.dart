@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
@@ -182,5 +183,24 @@ void main() {
     await tester.tap(find.text('Pelada de quinta'));
     await tester.pumpAndSettle();
     expect(toggles, 1);
+  });
+
+  testWidgets('linha de highlight mostra título, momento e avisa ao tocar', (tester) async {
+    await _setPhoneSize(tester);
+    var taps = 0;
+    await tester.pumpWidget(_app(Scaffold(
+      body: ClippoHighlightTile(
+        title: 'Lance 3',
+        timing: '00:12:40 · 30s',
+        onTap: () => taps++,
+      ),
+    )));
+
+    expect(find.text('Lance 3'), findsOneWidget);
+    expect(find.text('00:12:40 · 30s'), findsOneWidget);
+
+    await tester.tap(find.text('Lance 3'));
+    await tester.pumpAndSettle();
+    expect(taps, 1);
   });
 }

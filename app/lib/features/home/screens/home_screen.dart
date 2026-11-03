@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 🟡 A tela Sessão ainda é provisória e não recebe a sessão escolhida.
     // Quando ela for feita, passe [session] para ela.
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SessionScreen()),
+      MaterialPageRoute<void>(builder: (_) => SessionScreen(session: session)),
     );
   }
 }

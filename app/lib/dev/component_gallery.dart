@@ -6,6 +6,7 @@ import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_capture_toast.dart';
 import 'package:clippo/core/widgets/clippo_ghost_button.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_link_line.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
@@ -160,6 +161,30 @@ class _ComponentGalleryState extends State<ComponentGallery> {
                       expanded: _cardExpanded,
                       onToggle: () => setState(() => _cardExpanded = !_cardExpanded),
                       onAction: () {},
+                    ),
+                    const SizedBox(height: ClippoSpace.spaceL),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: ClippoHighlightTile(
+                              title: 'Jogada de cinema',
+                              timing: '00:12:40 · 30s',
+                              onTap: () {},
+                            ),
+                          ),
+                          const SizedBox(width: ClippoSpace.cardGap),
+                          Expanded(
+                            child: ClippoHighlightTile(
+                              title: 'Ponto antológico',
+                              timing: '00:27:08 · enviando…',
+                              uploading: true,
+                              onTap: () {},
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: ClippoSpace.sectionL),
                     const ClippoStepList(

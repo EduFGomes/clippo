@@ -302,6 +302,8 @@ class ClippoSize {
   static const double step = 36; // círculo de passo
   static const double avatar = 32; // avatar de participante na lista
   static const double avatarLarge = 44; // avatar do usuário no topo da Início
+  static const double avatarProfile = 88; // avatar grande no perfil de participante
+  static const double qrCode = 200; // código QR para compartilhar sessão
   static const double check = 26; // círculo do ✓
   static const double meter = 4; // espessura do traço do medidor
   static const double glowHeight = 460; // altura do degradê do topo
@@ -317,6 +319,10 @@ class ClippoSize {
   static const double recordIcon = 34; // câmera dentro do botão de gravar
   static const double captureChip = 40; // altura do chip sobre a câmera (toque continua 48)
   static const double pulseDot = 14; // ponto pulsante do standby
+  static const double thumbnailWidth = 108; // largura de referência da miniatura
+  static const double thumbnailHeight = 96; // altura da miniatura no card de highlight
+  static const double playBadge = 32; // círculo do play sobre a miniatura
+  static const double playerPlayButton = 72; // botão central de reproduzir/pausar no Player
 
   static const double icon = 24; // ícone da marca (grade 24), como na roda de navegação
   static const double backIcon = 22; // chevron do voltar
