@@ -32,6 +32,9 @@ void main() {
     expect(clippoHighlightCount(0), 'nenhum highlight');
     expect(clippoParticipantCount(10), '10 participantes');
     expect(clippoParticipantCount(1), '1 participante');
+    expect(clippoSharedSessionsCount(12), '12 sessões juntos');
+    expect(clippoSharedSessionsCount(1), '1 sessão juntos');
+    expect(clippoSharedSessionsCount(0), 'nenhuma sessão ainda');
   });
 
   test('saudação muda com a hora e usa o primeiro nome', () {

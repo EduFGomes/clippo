@@ -45,6 +45,12 @@ String clippoHighlightCount(int count) {
 String clippoParticipantCount(int count) =>
     count == 1 ? '1 participante' : '$count participantes';
 
+/// "12 sessões juntos", "1 sessão juntos", "nenhuma sessão ainda" (docs/produto.md › 4.6).
+String clippoSharedSessionsCount(int count) {
+  if (count <= 0) return 'nenhuma sessão ainda';
+  return count == 1 ? '1 sessão juntos' : '$count sessões juntos';
+}
+
 /// "Bom dia" até 11:59, "Boa tarde" até 17:59, "Boa noite" a partir das 18:00.
 String clippoGreeting(DateTime now) {
   if (now.hour < 12) return 'Bom dia';

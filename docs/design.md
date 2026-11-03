@@ -282,7 +282,7 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `minTouchTarget` | 48 | Área de toque mínima de qualquer controle, mesmo quando o desenho é menor |
 | `step` | 36 | Círculo de passo |
 | `avatar` | 32 | Avatar de participante na lista |
-| `avatarLarge` | 44 | Avatar do usuário no topo da Início |
+| `avatarLarge` · `avatarProfile` | 44 · 88 | Avatar do usuário no topo da Início · avatar grande no perfil |
 | `check` | 26 | Círculo do ✓ |
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |

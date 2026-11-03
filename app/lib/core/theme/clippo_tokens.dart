@@ -302,6 +302,7 @@ class ClippoSize {
   static const double step = 36; // círculo de passo
   static const double avatar = 32; // avatar de participante na lista
   static const double avatarLarge = 44; // avatar do usuário no topo da Início
+  static const double avatarProfile = 88; // avatar grande no perfil de amigo/participante
   static const double check = 26; // círculo do ✓
   static const double meter = 4; // espessura do traço do medidor
   static const double glowHeight = 460; // altura do degradê do topo
