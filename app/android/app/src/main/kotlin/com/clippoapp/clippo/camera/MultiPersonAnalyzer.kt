@@ -104,6 +104,10 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
 
         // Leituras seguidas sem pose (ou com a pose fora da caixa) até o recorte ser refeito.
         private const val MISSES_BEFORE_RECROP = 3
+
+        // Se a GPU falhar uma vez neste aparelho (no S24 dá GL_INVALID_VALUE), as próximas aberturas
+        // da câmera vão direto para o processador em vez de gastar ~6 s compilando shaders de novo.
+        @Volatile private var gpuWorks = true
     }
 
     class Person(val box: RectF, val points: DoubleArray?)
@@ -132,8 +136,9 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
     private val ready = AtomicReference<Pair<List<RectF>, Long>?>(null)
 
     private var detector: ObjectDetector = try {
-        createDetector(Delegate.GPU).also { onGpu = true }
+        if (gpuWorks) createDetector(Delegate.GPU).also { onGpu = true } else createDetector(Delegate.CPU)
     } catch (e: Exception) {
+        gpuWorks = false
         createDetector(Delegate.CPU)
     }
 
@@ -361,6 +366,7 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
         } catch (e: Exception) {
             if (!onGpu) throw e
             Log.w("ClippoMulti", "detector falhou na GPU, passando para o processador", e)
+            gpuWorks = false
             closeQuietly(detector)
             detector = createDetector(Delegate.CPU)
             onGpu = false
