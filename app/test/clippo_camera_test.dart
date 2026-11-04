@@ -194,6 +194,9 @@ void main() {
         sent = call;
         return null;
       });
+      await camera.signalSaved();
+      expect(sent?.method, 'signalSaved');
+      expect(sent?.arguments, {'sound': true, 'flash': true, 'vibrate': false});
       await camera.signalSaved(sound: true, flash: false, vibration: true);
       expect(sent?.method, 'signalSaved');
       expect(sent?.arguments, {'sound': true, 'flash': false, 'vibrate': true});

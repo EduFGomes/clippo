@@ -107,7 +107,7 @@ class ClippoCamera {
   /// Avisa quem joga longe do celular que o highlight foi salvo: um bip ([sound]), um flash
   /// curto da lanterna ([flash]) e uma vibração leve ([vibration]). Chame depois de
   /// [saveHighlight], para não atrasar o salvamento (R2).
-  Future<void> signalSaved({required bool sound, required bool flash, required bool vibration}) =>
+  Future<void> signalSaved({bool sound = true, bool flash = true, bool vibration = false}) =>
       _call<void>('signalSaved', {'sound': sound, 'flash': flash, 'vibrate': vibration});
 
   /// SÓ PARA A FASE DE TESTES: copia o MP4 de um [SavedClip] para a galeria (álbum Clippo), para

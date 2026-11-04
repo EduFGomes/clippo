@@ -112,7 +112,7 @@ Usuário ──< Participante >── Sessão ──< Highlight
 ### 2.3 Gravar uma sessão
 1. **Preparar** — o usuário vê a câmera em tela cheia para posicionar o celular e, opcionalmente, escolhe com quais amigos está jogando ("gravar sozinho" ou "gravar com [amigo]").
 2. **Gravar** — ao tocar em iniciar, a tela fica **preta pura** (economia de bateria em telas OLED), com apenas um ponto pulsando indicando que a detecção está ativa. A câmera continua gravando e mantendo o buffer. Um toque na tela mostra por alguns segundos as opções **"Encerrar sessão"** e **"Cancelar gravação"**.
-3. **Gesto detectado** — o app salva os últimos segundos (a duração escolhida) como highlight, avisa quem está longe com um bip, um flash da lanterna e uma vibração, e mostra **"Highlight salvo"** por ~2,6 s. Depois volta sozinho ao estado de gravação, sem exigir toque.
+3. **Gesto detectado** — o app salva os últimos segundos (a duração escolhida) como highlight, avisa quem está longe com um bip e um flash da lanterna (e vibração opcional, desligada por padrão), e mostra **"Highlight salvo"** por ~2,6 s. Depois volta sozinho ao estado de gravação, sem exigir toque.
 4. **Encerrar** — o usuário encerra a sessão e confirma os dados: nome, data e horário de início–fim (preenchidos automaticamente, editáveis), local (sugerido pela localização, editável) e participantes (pode adicionar mais). **"Salvar sessão"** volta à Início com a sessão nova no topo; **"Descartar"** abandona a sessão.
 
 ### 2.4 Ver sessões e highlights
@@ -295,7 +295,7 @@ A gravação ignora o tema claro/escuro.
 **Estado C — Highlight salvo**
 - Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
 - Some sozinho após **~2,6 s** e volta ao Estado B. Não exige toque.
-- Aviso de highlight salvo para quem está longe do celular: **bip**, **flash curto da lanterna** e **vibração leve**, cada um com liga/desliga (padrão: todos ligados). 🟡 O bip é o do sistema até o design definir o som; onde ficam as chaves ainda não foi desenhado.
+- Aviso de highlight salvo para quem está longe do celular: **bip**, **flash curto da lanterna** e **vibração leve**, cada um com liga/desliga (padrão: bip e flash ligados; vibração desligada para não derrubar o celular apoiado). 🟡 O bip é o do sistema até o design definir o som; onde ficam as chaves ainda não foi desenhado.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.

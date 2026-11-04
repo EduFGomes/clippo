@@ -42,11 +42,11 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
   bool _accurate = false;
   bool _restarting = false;
   // O que a Gravação vai deixar o usuário escolher: a duração do highlight (R1) e os avisos de
-  // highlight salvo, cada um com liga/desliga (padrão: todos ligados).
+  // highlight salvo, cada um com liga/desliga (padrão: bip e flash ligados; vibração desligada).
   Duration _length = HighlightLength.standard;
   bool _sound = true;
   bool _flash = true;
-  bool _vibration = true;
+  bool _vibration = false;
   // Se o buffer está gravando o som, e se o microfone foi liberado (opcional).
   bool _withSound = false;
   bool _microphoneAllowed = true;
