@@ -114,6 +114,10 @@ class ClippoCamera {
   /// o time assistir no celular. O produto guarda o highlight só na pasta do app.
   Future<void> copyToGallery(SavedClip clip) => _call<String>('copyToGallery', {'path': clip.path});
 
+  /// Apaga da pasta interna do app o MP4 de um [SavedClip] (quando o usuário descarta a sessão,
+  /// R14, ou depois que o envio para o banco é confirmado, R13).
+  Future<void> deleteHighlight(SavedClip clip) => _call<void>('deleteHighlight', {'path': clip.path});
+
   /// Um [PoseFrame] por quadro analisado, enquanto a câmera estiver ligada.
   ///
   /// O nativo só começa a mandar quando alguém escuta, e para quando a escuta é cancelada.
@@ -144,6 +148,7 @@ class ClippoCamera {
         'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),
         'gallery-unavailable' => const CameraFailure('A galeria só funciona no Android 10 ou mais novo.'),
         'gallery-failed' => const CameraFailure('Não foi possível copiar o lance para a galeria.'),
+        'delete-failed' => const CameraFailure('Não foi possível apagar o lance.'),
         _ => CameraFailure('Algo deu errado com a câmera (${e.code}).'),
       };
 }

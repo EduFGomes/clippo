@@ -202,6 +202,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                     ?: return result.error("bad-arguments", "Faltou path.", null)
                 copyToGallery(path, result)
             }
+            "deleteHighlight" -> {
+                val path = call.argument<String>("path")
+                    ?: return result.error("bad-arguments", "Faltou path.", null)
+                deleteHighlight(path, result)
+            }
             "stop" -> {
                 stop()
                 result.success(null)
@@ -616,6 +621,26 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 activity.runOnUiThread { result.success(uri.toString()) }
             } catch (e: Exception) {
                 activity.runOnUiThread { result.error("gallery-failed", "Erro ao copiar para a galeria: ${e.message}", null) }
+            }
+        }
+    }
+
+    /**
+     * Apaga um highlight salvo da pasta interna do app (quando a sessão é descartada, R14, ou
+     * depois que o vídeo subiu para o banco, R13). Idempotente: se já não existe, conclui sem erro.
+     */
+    private fun deleteHighlight(path: String, result: MethodChannel.Result) {
+        saveExecutor.execute {
+            try {
+                val folder = File(activity.filesDir, "highlights").canonicalFile
+                val target = File(path).canonicalFile
+                if (target.parentFile == folder && target.exists()) {
+                    target.delete()
+                }
+                activity.runOnUiThread { result.success(null) }
+            } catch (e: Exception) {
+                Log.w("ClippoBuffer", "não foi possível apagar o highlight: $path", e)
+                activity.runOnUiThread { result.error("delete-failed", "Não foi possível apagar o lance: ${e.message}", null) }
             }
         }
     }

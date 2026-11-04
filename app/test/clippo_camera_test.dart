@@ -250,6 +250,26 @@ void main() {
       );
     });
 
+    test('deleteHighlight manda o caminho do trecho e traduz o erro', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return null;
+      });
+      const clip = SavedClip(path: '/data/clippo/lance.mp4', duration: Duration(seconds: 30));
+      await camera.deleteHighlight(clip);
+      expect(sent?.method, 'deleteHighlight');
+      expect(sent?.arguments, {'path': '/data/clippo/lance.mp4'});
+
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        throw PlatformException(code: 'delete-failed', message: 'falhou');
+      });
+      await expectLater(
+        camera.deleteHighlight(clip),
+        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', 'Não foi possível apagar o lance.')),
+      );
+    });
+
     test('traduz o erro do Kotlin para uma mensagem da tela', () async {
       messenger.setMockMethodCallHandler(_commands, (call) async {
         throw PlatformException(code: 'no-permission', message: 'Sem permissão de câmera.');

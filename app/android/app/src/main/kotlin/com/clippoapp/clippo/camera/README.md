@@ -16,7 +16,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 
 | Canal | Tipo | O quê |
 |---|---|---|
-| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `start({accurate, multiPerson})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `signalSaved({sound, flash, vibrate})` · `copyToGallery({path})` (só nos testes) |
+| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `start({accurate, multiPerson})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `deleteHighlight({path})` · `signalSaved({sound, flash, vibrate})` · `copyToGallery({path})` (só nos testes) |
 | `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `people` (uma entrada por pessoa: `points` = null ou 33 × x, y, z, confiança, com z a profundidade, menor = mais perto; no modo várias pessoas, também `box`), e só no modo várias pessoas `prepMs`, `detectMs`, `poseMs` e `detectorGpu` |
 | `clippo/camera-preview` | Platform view | A imagem da câmera, para um `AndroidView` |
 
