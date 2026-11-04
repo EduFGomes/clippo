@@ -56,7 +56,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
    200 ms da lanterna (pela câmera aberta; aparece também no vídeo) e vibração de 40 ms.
 7. **Galeria só nos testes.** `copyToGallery({path})` copia o MP4 para o álbum DCIM/Clippo, para o
    time assistir. O produto guarda o highlight só na pasta do app.
-8. **Na gravação a tela não mostra a câmera** (R7): sem `PreviewView`, o primeiro fluxo fica sem
+8. **Na gravação a tela não mostra a câmera e não apaga sozinha** (R7): enquanto a câmera está ligada, `FLAG_KEEP_SCREEN_ON` impede o Android de apagar a tela e bloquear o celular (no laboratório a imagem e os esqueletos continuam na tela; no app final a tela fica preta `#000000`, desligando os pixels OLED). Sem `PreviewView`, o primeiro fluxo fica sem
    destino. Testado num Galaxy S24: sem `PreviewView`, a análise continua recebendo ~28 quadros
    por segundo. 🟡 Falta confirmar o mesmo com o buffer ligado.
 

@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.OrientationEventListener
+import android.view.WindowManager
 import android.util.Size
 import androidx.annotation.OptIn
 import androidx.camera.core.Camera
@@ -313,6 +314,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 boundCamera = camera
                 sensorRotation = camera.cameraInfo.sensorRotationDegrees
                 if (orientationListener.canDetectOrientation()) orientationListener.enable()
+                // R7: impede o celular de apagar a tela e bloquear sozinho durante a partida (no app
+                // a tela fica preta #000000 para poupar bateria OLED; no laboratório mostra a imagem).
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 result.success(mapOf("withSound" to (audio != null)))
             } catch (e: Exception) {
                 stopEncoder()
@@ -617,6 +621,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     }
 
     fun stop() {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         orientationListener.disable()
         cameraProvider?.unbindAll()
         boundCamera = null
