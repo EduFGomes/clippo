@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:clippo/core/camera/clippo_camera.dart';
 import 'package:clippo/core/data/session.dart';
+import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
@@ -13,6 +14,7 @@ import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_capture_toast.dart';
 import 'package:clippo/core/widgets/clippo_ghost_button.dart';
+import 'package:clippo/core/widgets/clippo_icon.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_pulse_dot.dart';
 import 'package:clippo/core/widgets/clippo_record_button.dart';
@@ -41,6 +43,25 @@ class CapturedHighlight {
 
   final SavedClip clip;
   final Duration offset;
+
+  /// Converte o clipe salvo localmente num [PendingHighlight] para o [SessionsRepository.saveSession].
+  PendingHighlight toPendingHighlight({required int position, int? maxOffsetSeconds}) {
+    final fileName = clip.path.split('/').last.replaceAll(RegExp(r'\.mp4$', caseSensitive: false), '');
+    final highlightId = validateEntityId(fileName) == null
+        ? fileName
+        : 'lance-${position.toString().padLeft(4, '0')}';
+    final safeDurationSeconds = clip.duration.inSeconds.clamp(1, highlightSecondsMax);
+    final rawOffsetSeconds = offset.inSeconds < 0 ? 0 : offset.inSeconds;
+    final safeOffsetSeconds = maxOffsetSeconds != null && rawOffsetSeconds > maxOffsetSeconds
+        ? maxOffsetSeconds
+        : rawOffsetSeconds;
+    return PendingHighlight(
+      highlightId: highlightId,
+      localPath: clip.path,
+      offset: Duration(seconds: safeOffsetSeconds),
+      duration: Duration(seconds: safeDurationSeconds),
+    );
+  }
 }
 
 /// Os 4 estados da Gravação (glossário: preparing, recording, saved, finishing).
@@ -57,6 +78,7 @@ class CaptureScreen extends StatefulWidget {
     this.highlightLength = HighlightLength.standard,
     this.pipeline,
     this.preview,
+    this.sessions,
     this.onSaved,
     this.onSessionCreated,
   });
@@ -64,7 +86,7 @@ class CaptureScreen extends StatefulWidget {
   final List<CaptureFriend> friends;
   final ClippoCamera camera;
 
-  /// Duração do trecho salvo a cada gesto (R1: 15, 30, 45 ou 60 s; padrão 30 s).
+  /// Duração inicial do trecho salvo a cada gesto (R1: 15, 30, 45 ou 60 s; padrão 30 s).
   final Duration highlightLength;
 
   /// Injetado nos testes para simular disparos do gesto sem câmera física.
@@ -72,6 +94,9 @@ class CaptureScreen extends StatefulWidget {
 
   /// Substitui a `AndroidView` da câmera nos testes e no preview de emulador.
   final WidgetBuilder? preview;
+
+  /// Repositório para salvar a sessão e os lances na Cloud Function saveSession (D15).
+  final SessionsRepository? sessions;
 
   /// Chamado quando a sessão é confirmada e salva no Estado D.
   final VoidCallback? onSaved;
@@ -92,9 +117,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
   bool _withSound = true;
   bool _micWarned = false;
 
+  // Configurações do modo de gravação (menu no canto superior direito).
+  late Duration _length = widget.highlightLength;
+  VideoResolution _resolution = VideoResolution.hd720;
+  bool _recordAudio = true;
+  bool _soundOnSave = true;
+  bool _flashOnSave = true;
+  bool _vibrationOnSave = false;
+
   CaptureStep _step = CaptureStep.preparing;
 
-  /// Amigos selecionados para a sessão. Vazio = "Gravar sozinho".
+  /// Amigos selecionados para a sessão no Estado D.
   final Set<String> _selectedFriends = {};
 
   /// Timestamp (relógio do sensor) do primeiro quadro gravado, usado para calcular o offset de cada highlight.
@@ -116,8 +149,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
   late final TextEditingController _dateController;
   late final TextEditingController _timeController;
   late final TextEditingController _locationController;
+  String? _sessionId;
   String? _nameError;
   String? _locationError;
+  String? _formError;
+  bool _saving = false;
   bool _addingFriend = false;
   bool _isClosedSession = false;
 
@@ -132,7 +168,34 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _dateController = TextEditingController(text: clippoDate(now));
     _timeController = TextEditingController(text: clippoTimeRange(now, now));
     _locationController = TextEditingController(text: 'Quadra local (GPS)');
+    _loadSavedSettings();
     _checkPermission();
+  }
+
+  Future<void> _loadSavedSettings() async {
+    try {
+      final saved = await widget.camera.loadSettings();
+      if (!mounted) return;
+      setState(() {
+        _length = saved.length;
+        _resolution = saved.resolution;
+        _recordAudio = saved.recordAudio;
+        _soundOnSave = saved.soundOnSave;
+        _flashOnSave = saved.flashOnSave;
+        _vibrationOnSave = saved.vibrationOnSave;
+      });
+    } catch (_) {}
+  }
+
+  void _persistSettings() {
+    widget.camera.saveSettings(CaptureSettings(
+      length: _length,
+      resolution: _resolution,
+      recordAudio: _recordAudio,
+      soundOnSave: _soundOnSave,
+      flashOnSave: _flashOnSave,
+      vibrationOnSave: _vibrationOnSave,
+    )).catchError((Object _) {});
   }
 
   @override
@@ -188,7 +251,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _subscription?.cancel();
     _subscription = _pipeline.watch(widget.camera.poses).listen(_onObservation, onError: _fail);
     try {
-      final withSound = await widget.camera.start(multiPerson: true);
+      final withSound = await widget.camera.start(
+        multiPerson: true,
+        fullHd: _resolution.fullHd,
+        recordAudio: _recordAudio,
+      );
       if (mounted) {
         setState(() {
           _camera = _CameraState.running;
@@ -234,9 +301,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// Exibe o aviso imediatamente e delega o corte do MP4 em segundo plano para não bloquear a análise.
   void _onGesture({required Duration until, required Duration offset}) {
     _showToast(error: null);
-    widget.camera.saveHighlight(until: until, length: widget.highlightLength).then((clip) {
-      // Avisa quem está longe na quadra (bip + flash da lanterna) depois que o MP4 foi salvo (R2).
-      widget.camera.signalSaved().catchError((Object _) {});
+    widget.camera.saveHighlight(until: until, length: _length).then((clip) {
+      // Avisa quem está longe na quadra depois que o MP4 foi salvo (R2), conforme configurado.
+      widget.camera
+          .signalSaved(sound: _soundOnSave, flash: _flashOnSave, vibration: _vibrationOnSave)
+          .catchError((Object _) {});
       _highlights.add(CapturedHighlight(clip: clip, offset: offset));
       // 🟡 TEMPORÁRIO (FASE DE TESTES): copia o MP4 para a galeria do celular depois de salvar (R2).
       // Remover quando o Player reproduzir o arquivo/URL real e o envio para o Storage (R13) estiver ativo.
@@ -266,6 +335,198 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _controlsTimer = Timer(ClippoMotion.stopControls, () {
       if (mounted) setState(() => _showControls = false);
     });
+  }
+
+  /// Menu de configurações do modo de gravação (tempo, resolução, microfone, bip, flash e vibração).
+  Future<void> _openSettings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Theme(
+          data: clippoTheme(Brightness.dark),
+          child: StatefulBuilder(
+            builder: (innerContext, setSheetState) {
+              final colors = ClippoColors.of(innerContext);
+              return Container(
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(ClippoRadius.radiusField)),
+                ),
+                padding: const EdgeInsets.fromLTRB(
+                  ClippoSpace.gutter,
+                  ClippoSpace.spaceL,
+                  ClippoSpace.gutter,
+                  ClippoSpace.screenBottom,
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: colors.line,
+                              borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceL),
+                        Text(
+                          'Configurações da gravação',
+                          style: ClippoText.titleS.copyWith(color: colors.text),
+                        ),
+                        const SizedBox(height: ClippoSpace.section),
+                        Text(
+                          'Tempo do highlight',
+                          style: ClippoText.label.copyWith(color: colors.textLabel),
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceS),
+                        Wrap(
+                          spacing: ClippoSpace.spaceS,
+                          runSpacing: ClippoSpace.spaceS,
+                          children: [
+                            for (final option in HighlightLength.options)
+                              ClippoCaptureChip(
+                                label: '${option.inSeconds}s',
+                                selected: _length == option,
+                                onPressed: () {
+                                  setState(() => _length = option);
+                                  setSheetState(() {});
+                                  _persistSettings();
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceL),
+                        Text(
+                          'Resolução da imagem',
+                          style: ClippoText.label.copyWith(color: colors.textLabel),
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceS),
+                        Wrap(
+                          spacing: ClippoSpace.spaceS,
+                          runSpacing: ClippoSpace.spaceS,
+                          children: [
+                            for (final res in VideoResolution.values)
+                              ClippoCaptureChip(
+                                label: res.label,
+                                selected: _resolution == res,
+                                onPressed: () {
+                                  if (_resolution == res) return;
+                                  setState(() => _resolution = res);
+                                  setSheetState(() {});
+                                  _persistSettings();
+                                  _startCamera();
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceL),
+                        Text(
+                          'Áudio e avisos ao salvar',
+                          style: ClippoText.label.copyWith(color: colors.textLabel),
+                        ),
+                        const SizedBox(height: ClippoSpace.spaceS),
+                        _settingToggle(
+                          colors: colors,
+                          title: 'Microfone',
+                          subtitle: 'Gravar som do ambiente nos highlights',
+                          value: _recordAudio && _withSound,
+                          onChanged: (enabled) async {
+                            if (enabled) {
+                              final hasMic = await widget.camera.hasMicrophonePermission();
+                              if (!hasMic) {
+                                await widget.camera.requestMicrophonePermission();
+                              }
+                            }
+                            if (!mounted) return;
+                            setState(() => _recordAudio = enabled);
+                            _persistSettings();
+                            await _startCamera();
+                            if (innerContext.mounted) setSheetState(() {});
+                          },
+                        ),
+                        _settingToggle(
+                          colors: colors,
+                          title: 'Som (bip)',
+                          subtitle: 'Aviso sonoro ao salvar um highlight',
+                          value: _soundOnSave,
+                          onChanged: (v) {
+                            setState(() => _soundOnSave = v);
+                            setSheetState(() {});
+                            _persistSettings();
+                          },
+                        ),
+                        _settingToggle(
+                          colors: colors,
+                          title: 'Flash',
+                          subtitle: 'Piscar a lanterna ao salvar um highlight',
+                          value: _flashOnSave,
+                          onChanged: (v) {
+                            setState(() => _flashOnSave = v);
+                            setSheetState(() {});
+                            _persistSettings();
+                          },
+                        ),
+                        _settingToggle(
+                          colors: colors,
+                          title: 'Vibração',
+                          subtitle: 'Vibrar o celular ao salvar um highlight',
+                          value: _vibrationOnSave,
+                          onChanged: (v) {
+                            setState(() => _vibrationOnSave = v);
+                            setSheetState(() {});
+                            _persistSettings();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _settingToggle({
+    required ClippoColors colors,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: ClippoSpace.spaceXs),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: ClippoText.body.copyWith(color: colors.text)),
+                Text(subtitle, style: ClippoText.label.copyWith(color: colors.textMuted)),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: ClippoBrand.onWine,
+            activeTrackColor: ClippoBrand.wine,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
   }
 
   /// Pede confirmação antes de cancelar ou descartar a sessão por segurança.
@@ -356,6 +617,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _addingFriend = false;
       _nameError = null;
       _locationError = null;
+      _formError = null;
     });
   }
 
@@ -377,6 +639,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStartTime = start;
       _recordingEndTime = end;
       _dateController.text = clippoDate(start);
+      _formError = null;
     });
   }
 
@@ -399,6 +662,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStartTime = newStart;
       _recordingEndTime = newEnd;
       _timeController.text = clippoTimeRange(newStart, newEnd);
+      _formError = null;
     });
   }
 
@@ -407,6 +671,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       widget.camera.deleteHighlight(h.clip).catchError((Object _) {});
     }
     _highlights.clear();
+    _sessionId = null;
   }
 
   void _backToCamera() {
@@ -427,13 +692,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() => _step = CaptureStep.preparing);
   }
 
-  void _saveSession() {
+  Future<void> _saveSession() async {
+    if (_saving) return;
     final nameError = validateSessionName(_nameController.text);
     final locationError = validateLocation(_locationController.text);
     if (nameError != null || locationError != null) {
       setState(() {
         _nameError = nameError;
         _locationError = locationError;
+        _formError = null;
       });
       return;
     }
@@ -443,8 +710,65 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _locationController.text = normalizedLocation ?? '';
 
     final start = _recordingStartTime ?? DateTime.now();
-    final end = _recordingEndTime ?? start;
-    final rawDuration = end.difference(start);
+    final rawEnd = _recordingEndTime ?? start;
+    final effectiveEnd = rawEnd.isAtSameMomentAs(start)
+        ? start.add(const Duration(minutes: 1))
+        : rawEnd;
+    final periodError = validateSessionPeriod(start, effectiveEnd);
+    if (periodError != null) {
+      setState(() => _formError = periodError);
+      return;
+    }
+
+    final sessionId = _sessionId ??= 'sessao-${start.millisecondsSinceEpoch}';
+    final repository = widget.sessions;
+    if (repository != null) {
+      setState(() {
+        _saving = true;
+        _formError = null;
+      });
+      try {
+        await repository.saveSession(
+          sessionId: sessionId,
+          name: normalizedName,
+          startedAt: start,
+          endedAt: effectiveEnd,
+          location: normalizedLocation,
+          participantIds: _selectedFriends.toList(growable: false),
+          highlights: [
+            for (var i = 0; i < _highlights.length; i++)
+              _highlights[i].toPendingHighlight(
+                position: i + 1,
+                maxOffsetSeconds: effectiveEnd.difference(start).inSeconds + 60,
+              ),
+          ],
+        );
+      } on SessionsFailure catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _saving = false;
+          if (e.code == 'name') {
+            _nameError = e.message;
+          } else if (e.code == 'location') {
+            _locationError = e.message;
+          } else {
+            _formError = e.message;
+          }
+        });
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _saving = false;
+          _formError = 'Não foi possível salvar a sessão. Tente de novo.';
+        });
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _saving = false);
+    }
+
+    final rawDuration = effectiveEnd.difference(start);
     final duration = rawDuration.inMinutes >= 1 ? rawDuration : const Duration(minutes: 45);
     final selectedParticipants = <SessionParticipant>[
       const SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
@@ -454,17 +778,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
     ];
 
     final created = Session(
-      id: 'sessao-${start.millisecondsSinceEpoch}',
+      id: sessionId,
       name: normalizedName,
       ownerId: 'gustavo',
       participantIds: [for (final p in selectedParticipants) p.uid],
       participants: selectedParticipants,
       participantCount: selectedParticipants.length,
       startedAt: start,
-      endedAt: end,
+      endedAt: effectiveEnd,
       duration: duration,
       location: normalizedLocation == null ? null : SessionLocation(label: normalizedLocation),
-      highlightCount: _highlights.isEmpty ? 3 : _highlights.length,
+      highlightCount: _highlights.length,
       isClosed: _isClosedSession,
     );
 
@@ -475,6 +799,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         Navigator.of(context).pop(created);
       } else {
         _highlights.clear();
+        _sessionId = null;
         _startCamera();
         setState(() => _step = CaptureStep.preparing);
       }
@@ -511,18 +836,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
           },
           child: Scaffold(
             backgroundColor: ClippoBrand.captureBackground,
-            body: recording ? _standby() : _prepare(),
+            body: Builder(
+              builder: (context) => recording ? _standby() : _prepare(context),
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ── Estado A: Preparar ───────────────────────────────────────────────────
+  // ── Estado A: Preparar (minimalista) ─────────────────────────────────────
 
-  Widget _prepare() {
+  Widget _prepare(BuildContext context) {
     return switch (_camera) {
-      _CameraState.running => _framing(),
+      _CameraState.running => _framing(context),
       _CameraState.checking || _CameraState.starting => const Center(child: CircularProgressIndicator()),
       _CameraState.needsPermission => _message(
           'O Clippo precisa da câmera para gravar os lances.',
@@ -562,7 +889,40 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Widget _framing() {
+  Widget _settingsButton(BuildContext context) {
+    final colors = ClippoColors.of(context);
+    return Semantics(
+      button: true,
+      label: 'Configurações da gravação',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openSettings,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: ClippoSize.minTouchTarget,
+            minHeight: ClippoSize.minTouchTarget,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: Container(
+              width: ClippoSize.control,
+              height: ClippoSize.control,
+              decoration: BoxDecoration(color: colors.controlSoft, shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: ClippoIcon(
+                ClippoIconShape.sliders,
+                size: ClippoSize.backIcon,
+                color: colors.text,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _framing(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -574,29 +934,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceM, ClippoSpace.gutter, 0),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const ClippoBackButton(),
-                    const SizedBox(width: ClippoSpace.spaceM),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ClippoSpace.spaceL,
-                          vertical: ClippoSpace.spaceM,
-                        ),
-                        decoration: BoxDecoration(
-                          color: ClippoBrand.captureOverlay,
-                          borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-                        ),
-                        child: Text(
-                          'Apoie o celular e enquadre o campo',
-                          style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
-                        ),
-                      ),
-                    ),
+                    _settingsButton(context),
                   ],
                 ),
               ),
-              if (!_withSound && !_micWarned)
+              if (_recordAudio && !_withSound && !_micWarned)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceS, ClippoSpace.gutter, 0),
                   child: Container(
@@ -616,46 +961,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ),
                 ),
               const Spacer(),
-              Container(
-                color: ClippoBrand.captureOverlay,
-                padding: const EdgeInsets.only(top: ClippoSpace.spaceL, bottom: ClippoSpace.screenBottom),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-                      child: Text('Gravar com', style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted)),
-                    ),
-                    SizedBox(
-                      height: ClippoSize.minTouchTarget * MediaQuery.textScalerOf(context).scale(1),
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-                        children: [
-                          ClippoCaptureChip(
-                            label: 'Gravar sozinho',
-                            selected: _selectedFriends.isEmpty,
-                            onPressed: () => setState(_selectedFriends.clear),
-                          ),
-                          for (final friend in widget.friends) ...[
-                            const SizedBox(width: ClippoSpace.spaceS),
-                            ClippoCaptureChip(
-                              label: 'Com ${friend.firstName}',
-                              selected: _selectedFriends.contains(friend.id),
-                              onPressed: () => _toggleFriend(friend.id),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: ClippoSpace.section),
-                    Center(
-                      child: ClippoRecordButton(
-                        caption: 'Iniciar detecção de gesto \\ o /',
-                        onPressed: _startRecording,
-                      ),
-                    ),
-                  ],
+              Padding(
+                padding: const EdgeInsets.only(bottom: ClippoSpace.screenBottom),
+                child: Center(
+                  child: ClippoRecordButton(
+                    onPressed: _startRecording,
+                  ),
                 ),
               ),
             ],
@@ -681,7 +992,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ? ClippoCaptureToast(
                       title: _saveError ?? 'Highlight salvo',
                       detail: _saveError == null
-                          ? 'últimos ${widget.highlightLength.inSeconds}s · gesto \\ o / detectado'
+                          ? 'últimos ${_length.inSeconds}s · gesto \\ o / detectado'
                           : null,
                       success: _saveError == null,
                     )
@@ -728,14 +1039,23 @@ class _CaptureScreenState extends State<CaptureScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_formError != null) ...[
+            Text(
+              _formError!,
+              style: ClippoText.label.copyWith(color: colors.error),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: ClippoSpace.spaceS),
+          ],
           ClippoPrimaryButton(
             label: 'Salvar sessão',
+            loading: _saving,
             onPressed: _saveSession,
           ),
           const SizedBox(height: ClippoSpace.spaceS),
           ClippoTextButton(
             label: 'Descartar',
-            onPressed: _confirmDiscardSession,
+            onPressed: _saving ? null : _confirmDiscardSession,
           ),
         ],
       ),

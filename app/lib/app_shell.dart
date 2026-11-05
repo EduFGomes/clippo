@@ -98,6 +98,7 @@ class _AppShellState extends State<AppShell> {
         builder: (_) => CaptureScreen(
           friends: _defaultCaptureFriends,
           preview: widget.capturePreview,
+          sessions: isUserSignedIn ? sessionsRepository : null,
           onSessionCreated: (created) {
             setState(() {
               _localSessions.insert(0, created);

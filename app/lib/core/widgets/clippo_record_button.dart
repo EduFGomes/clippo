@@ -3,12 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 
-/// Botão redondo de gravar sobre a câmera, com a legenda embaixo. Só na Gravação.
+/// Botão redondo de gravar sobre a câmera, com legenda opcional embaixo. Só na Gravação.
 class ClippoRecordButton extends StatefulWidget {
-  const ClippoRecordButton({super.key, required this.caption, required this.onPressed});
+  const ClippoRecordButton({
+    super.key,
+    this.caption,
+    this.semanticLabel = 'Iniciar gravação',
+    required this.onPressed,
+  });
 
-  /// Legenda embaixo do botão. Também é o rótulo de acessibilidade.
-  final String caption;
+  /// Legenda opcional embaixo do botão. Quando presente, também é o rótulo de acessibilidade.
+  final String? caption;
+  final String semanticLabel;
 
   final VoidCallback? onPressed;
 
@@ -29,7 +35,7 @@ class _ClippoRecordButtonState extends State<ClippoRecordButton> {
     return Semantics(
       button: true,
       enabled: active,
-      label: widget.caption,
+      label: widget.caption ?? widget.semanticLabel,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -59,12 +65,14 @@ class _ClippoRecordButtonState extends State<ClippoRecordButton> {
                   child: const ClippoSvgIcon('capture', color: ClippoBrand.onWine, size: ClippoSize.recordIcon),
                 ),
               ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              Text(
-                widget.caption,
-                textAlign: TextAlign.center,
-                style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
-              ),
+              if (widget.caption != null && widget.caption!.isNotEmpty) ...[
+                const SizedBox(height: ClippoSpace.spaceM),
+                Text(
+                  widget.caption!,
+                  textAlign: TextAlign.center,
+                  style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                ),
+              ],
             ],
           ),
         ),

@@ -2,6 +2,7 @@ package com.clippoapp.clippo.camera
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -93,7 +94,18 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
     // Terceiro fluxo: o CameraX desenha cada quadro na superfície de entrada do encoder do buffer
     // (ver setupEncoder). Mesma resolução dos outros dois, para os três caberem juntos na câmera.
-    private val bufferPreview = Preview.Builder().setResolutionSelector(resolution).build()
+    private fun buildBufferPreview(fullHd: Boolean): Preview {
+        val targetSize = if (fullHd) Size(1920, 1080) else Size(1280, 720)
+        val selector = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+            .setResolutionStrategy(
+                ResolutionStrategy(targetSize, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)
+            )
+            .build()
+        return Preview.Builder().setResolutionSelector(selector).build()
+    }
+
+    private var bufferPreview = buildBufferPreview(fullHd = false)
 
     private val analysis = ImageAnalysis.Builder()
         .setResolutionSelector(resolution)
@@ -115,6 +127,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     // Som do buffer: só existe com o microfone liberado; sem ele, o highlight sai sem som.
     @Volatile private var audio: AudioBuffer? = null
     private val signal = SaveSignal(activity)
+    private val prefs by lazy {
+        activity.getSharedPreferences("clippo_capture_settings", Context.MODE_PRIVATE)
+    }
     private var detector: PoseDetector? = null
     // Só no modo várias pessoas (o escolhido): acha as pessoas antes do ML Kit. Criado, usado e
     // fechado na thread da análise.
@@ -175,7 +190,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
-            "start" -> start(manyPeople = call.argument<Boolean>("multiPerson") ?: false, result)
+            "start" -> start(
+                manyPeople = call.argument<Boolean>("multiPerson") ?: false,
+                fullHd = call.argument<Boolean>("fullHd") ?: false,
+                recordAudio = call.argument<Boolean>("recordAudio") ?: true,
+                result = result,
+            )
             "saveHighlight" -> {
                 // Number, e não Long: o Flutter manda um int pequeno como Int e um grande como Long.
                 val untilMicros = call.argument<Number>("untilMicros")?.toLong()
@@ -204,6 +224,29 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             }
             "stop" -> {
                 stop()
+                result.success(null)
+            }
+            "loadSettings" -> {
+                result.success(
+                    mapOf(
+                        "lengthSeconds" to prefs.getInt("lengthSeconds", 30),
+                        "fullHd" to prefs.getBoolean("fullHd", false),
+                        "recordAudio" to prefs.getBoolean("recordAudio", true),
+                        "sound" to prefs.getBoolean("sound", true),
+                        "flash" to prefs.getBoolean("flash", true),
+                        "vibrate" to prefs.getBoolean("vibrate", false),
+                    )
+                )
+            }
+            "saveSettings" -> {
+                val editor = prefs.edit()
+                call.argument<Number>("lengthSeconds")?.let { editor.putInt("lengthSeconds", it.toInt()) }
+                call.argument<Boolean>("fullHd")?.let { editor.putBoolean("fullHd", it) }
+                call.argument<Boolean>("recordAudio")?.let { editor.putBoolean("recordAudio", it) }
+                call.argument<Boolean>("sound")?.let { editor.putBoolean("sound", it) }
+                call.argument<Boolean>("flash")?.let { editor.putBoolean("flash", it) }
+                call.argument<Boolean>("vibrate")?.let { editor.putBoolean("vibrate", it) }
+                editor.apply()
                 result.success(null)
             }
             else -> result.notImplemented()
@@ -249,7 +292,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         return true
     }
 
-    private fun start(manyPeople: Boolean, result: MethodChannel.Result) {
+    private fun start(
+        manyPeople: Boolean,
+        fullHd: Boolean = false,
+        recordAudio: Boolean = true,
+        result: MethodChannel.Result,
+    ) {
         if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
 
         // Ligar de novo sem desligar (ex.: dois toques seguidos em um botão do laboratório): desliga
@@ -290,12 +338,13 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
 
         // O encoder liga antes da câmera: o terceiro fluxo precisa da superfície dele.
         try {
-            setupEncoder()
+            bufferPreview = buildBufferPreview(fullHd)
+            setupEncoder(fullHd)
         } catch (e: Exception) {
             return result.error("encoder-init-failed", "Falha ao iniciar o encoder do buffer: ${e.message}", null)
         }
         // O som é opcional: sem o microfone (negado ou ocupado), o vídeo segue sem som.
-        audio = if (hasMicrophonePermission()) AudioBuffer(KEEP_US).takeIf { it.start() } else null
+        audio = if (recordAudio && hasMicrophonePermission()) AudioBuffer(KEEP_US).takeIf { it.start() } else null
 
         // Pegar o CameraX é assíncrono: a resposta para o Dart só sai quando a câmera abriu.
         val providerFuture = ProcessCameraProvider.getInstance(activity)
@@ -321,11 +370,13 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }, ContextCompat.getMainExecutor(activity))
     }
 
-    private fun setupEncoder() {
+    private fun setupEncoder(fullHd: Boolean = false) {
         sampleQueue.clear()
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720).apply {
+        val width = if (fullHd) 1920 else 1280
+        val height = if (fullHd) 1080 else 720
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, 3_000_000) // 3 Mbps
+            setInteger(MediaFormat.KEY_BIT_RATE, if (fullHd) 6_000_000 else 3_000_000) // 6 Mbps em 1080p, 3 Mbps em 720p
             setInteger(MediaFormat.KEY_FRAME_RATE, 30)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // Keyframe a cada 1 segundo para corte rápido
         }

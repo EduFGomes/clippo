@@ -139,6 +139,9 @@ void main() {
 
       expect(calls.map((c) => c.method), ['hasPermission', 'requestPermission', 'start', 'stop']);
       expect(calls[2].arguments, {'multiPerson': true});
+
+      await camera.start(multiPerson: true, fullHd: true, recordAudio: false);
+      expect(calls.last.arguments, {'multiPerson': true, 'fullHd': true, 'recordAudio': false});
     });
 
     test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {
@@ -268,6 +271,53 @@ void main() {
         camera.deleteHighlight(clip),
         throwsA(isA<CameraFailure>().having((f) => f.message, 'message', 'Não foi possível apagar o lance.')),
       );
+    });
+
+    test('loadSettings e saveSettings conversam com os nomes esperados', () async {
+      MethodCall? saveCall;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        if (call.method == 'loadSettings') {
+          return {
+            'lengthSeconds': 45,
+            'fullHd': true,
+            'recordAudio': false,
+            'sound': true,
+            'flash': false,
+            'vibrate': true,
+          };
+        }
+        if (call.method == 'saveSettings') {
+          saveCall = call;
+          return null;
+        }
+        return null;
+      });
+
+      final loaded = await camera.loadSettings();
+      expect(loaded.length, const Duration(seconds: 45));
+      expect(loaded.resolution, VideoResolution.fhd1080);
+      expect(loaded.recordAudio, isFalse);
+      expect(loaded.soundOnSave, isTrue);
+      expect(loaded.flashOnSave, isFalse);
+      expect(loaded.vibrationOnSave, isTrue);
+
+      await camera.saveSettings(const CaptureSettings(
+        length: Duration(seconds: 60),
+        resolution: VideoResolution.hd720,
+        recordAudio: true,
+        soundOnSave: false,
+        flashOnSave: true,
+        vibrationOnSave: false,
+      ));
+      expect(saveCall?.method, 'saveSettings');
+      expect(saveCall?.arguments, {
+        'lengthSeconds': 60,
+        'fullHd': false,
+        'recordAudio': true,
+        'sound': false,
+        'flash': true,
+        'vibrate': false,
+      });
     });
 
     test('traduz o erro do Kotlin para uma mensagem da tela', () async {

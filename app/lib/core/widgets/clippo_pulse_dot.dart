@@ -11,10 +11,20 @@ class ClippoPulseDot extends StatefulWidget {
 }
 
 class _ClippoPulseDotState extends State<ClippoPulseDot> with SingleTickerProviderStateMixin {
-  // Meio ciclo para cada lado: acende e apaga em standbyPulse.
+  // Meio ciclo para cada lado: cresce/acende e encolhe/apaga suavemente em standbyPulse.
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: ClippoMotion.standbyPulse ~/ 2,
+  );
+  late final Animation<double> _curved = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInOut,
+  );
+  late final Animation<double> _opacity = _curved.drive(
+    Tween<double>(begin: ClippoOpacity.disabled, end: 1.0),
+  );
+  late final Animation<double> _scale = _curved.drive(
+    Tween<double>(begin: 0.86, end: 1.14),
   );
 
   @override
@@ -39,13 +49,15 @@ class _ClippoPulseDotState extends State<ClippoPulseDot> with SingleTickerProvid
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Detecção do gesto ligada',
-      child: FadeTransition(
-        opacity: CurvedAnimation(parent: _controller, curve: ClippoMotion.standard)
-            .drive(Tween(begin: ClippoOpacity.disabled, end: 1)),
-        child: Container(
-          width: ClippoSize.pulseDot,
-          height: ClippoSize.pulseDot,
-          decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
+      child: ScaleTransition(
+        scale: _scale,
+        child: FadeTransition(
+          opacity: _opacity,
+          child: Container(
+            width: ClippoSize.pulseDot,
+            height: ClippoSize.pulseDot,
+            decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
+          ),
         ),
       ),
     );

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +7,7 @@ import 'package:clippo/app.dart';
 import 'package:clippo/core/camera/clippo_camera.dart';
 import 'package:clippo/core/camera/pose_frame.dart';
 import 'package:clippo/core/data/session.dart';
+import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
@@ -20,8 +20,12 @@ class _FakeCamera extends ClippoCamera {
   final bool failSave;
   final bool withSound;
   final List<Duration> saves = [];
+  final List<Duration> savedLengths = [];
   final List<String> deletedClips = [];
   final List<String> copiedToGallery = [];
+  bool lastFullHd = false;
+  bool lastRecordAudio = true;
+  ({bool sound, bool flash, bool vibration})? lastSignal;
   int signals = 0;
   bool stopped = false;
 
@@ -32,7 +36,17 @@ class _FakeCamera extends ClippoCamera {
   Future<bool> requestPermission() async => false;
 
   @override
-  Future<bool> start({bool multiPerson = false}) async => withSound;
+  Future<bool> hasMicrophonePermission() async => withSound;
+
+  @override
+  Future<bool> requestMicrophonePermission() async => true;
+
+  @override
+  Future<bool> start({bool multiPerson = false, bool fullHd = false, bool recordAudio = true}) async {
+    lastFullHd = fullHd;
+    lastRecordAudio = recordAudio;
+    return recordAudio && withSound;
+  }
 
   @override
   Future<void> stop() async => stopped = true;
@@ -40,13 +54,25 @@ class _FakeCamera extends ClippoCamera {
   @override
   Future<SavedClip> saveHighlight({required Duration until, Duration length = HighlightLength.standard}) async {
     saves.add(until);
+    savedLengths.add(length);
     if (failSave) throw const CameraFailure('Não foi possível salvar o lance.');
-    return const SavedClip(path: '/highlights/1.mp4', duration: Duration(seconds: 30));
+    return SavedClip(path: '/highlights/1.mp4', duration: length);
   }
 
   @override
   Future<void> signalSaved({bool sound = true, bool flash = true, bool vibration = false}) async {
     signals++;
+    lastSignal = (sound: sound, flash: flash, vibration: vibration);
+  }
+
+  CaptureSettings settings = const CaptureSettings();
+
+  @override
+  Future<CaptureSettings> loadSettings() async => settings;
+
+  @override
+  Future<void> saveSettings(CaptureSettings newSettings) async {
+    settings = newSettings;
   }
 
   @override
@@ -84,6 +110,7 @@ void main() {
     WidgetTester tester, {
     required _FakeCamera camera,
     _FakePipeline? pipeline,
+    SessionsRepository? sessions,
     VoidCallback? onSaved,
     ValueChanged<Session>? onSessionCreated,
   }) async {
@@ -95,6 +122,7 @@ void main() {
         camera: camera,
         pipeline: pipeline ?? _FakePipeline(),
         preview: _preview,
+        sessions: sessions,
         onSaved: onSaved,
         onSessionCreated: onSessionCreated,
         friends: const [
@@ -115,45 +143,64 @@ void main() {
     expect(find.textContaining('Configurações › Apps › Clippo'), findsOneWidget);
   });
 
-  testWidgets('preparar: dica, chips e botão de gravar', (tester) async {
+  testWidgets('preparar minimalista: só botões de voltar, configurações e gravar', (tester) async {
     await open(tester, camera: _FakeCamera());
-    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
-    expect(find.text('Gravar com'), findsOneWidget);
-    expect(find.text('Gravar sozinho'), findsOneWidget);
-    expect(find.text('Com Rafa'), findsOneWidget);
-    expect(find.text(r'Iniciar detecção de gesto \ o /'), findsOneWidget);
+    expect(find.bySemanticsLabel('Voltar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Configurações da gravação'), findsOneWidget);
+    expect(find.bySemanticsLabel('Iniciar gravação'), findsOneWidget);
+    expect(find.text('Apoie o celular e enquadre o campo'), findsNothing);
+    expect(find.text('Gravar com'), findsNothing);
+    expect(find.text(r'Iniciar detecção de gesto \ o /'), findsNothing);
   });
 
-  testWidgets('escolher um amigo desmarca "Gravar sozinho", e vice-versa', (tester) async {
-    final semantics = tester.ensureSemantics();
-    await open(tester, camera: _FakeCamera());
-    bool selected(String label) =>
-        tester.getSemantics(find.bySemanticsLabel(label)).flagsCollection.isSelected == Tristate.isTrue;
+  testWidgets('menu de configurações: altera tempo, resolução, microfone, som, flash e vibração', (tester) async {
+    final camera = _FakeCamera();
+    final pipeline = _FakePipeline();
+    await open(tester, camera: camera, pipeline: pipeline);
 
-    expect(selected('Gravar sozinho'), isTrue);
-    await tester.tap(find.text('Com Rafa'));
-    await tester.dragUntilVisible(find.text('Com Bruno'), find.byType(ListView), const Offset(-100, 0));
+    await tester.tap(find.bySemanticsLabel('Configurações da gravação'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Com Bruno'));
-    await tester.pump();
-    expect(selected('Gravar sozinho'), isFalse);
-    expect(selected('Com Rafa'), isTrue);
-    expect(selected('Com Bruno'), isTrue);
 
-    await tester.dragUntilVisible(find.text('Gravar sozinho'), find.byType(ListView), const Offset(100, 0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Gravar sozinho'));
+    expect(find.text('Configurações da gravação'), findsOneWidget);
+    expect(find.text('Tempo do highlight'), findsOneWidget);
+    expect(find.text('Resolução da imagem'), findsOneWidget);
+
+    await tester.tap(find.text('45s'));
     await tester.pump();
-    expect(selected('Gravar sozinho'), isTrue);
-    expect(selected('Com Rafa'), isFalse);
-    semantics.dispose();
+
+    await tester.tap(find.text('1080p (Full HD)'));
+    await tester.pump();
+    expect(camera.lastFullHd, isTrue);
+
+    // Liga a vibração (4º Switch: Microfone, Som, Flash, Vibração).
+    final switches = find.byType(Switch);
+    expect(switches, findsNWidgets(4));
+    await tester.tap(switches.at(3));
+    await tester.pump();
+
+    // Fecha o menu e inicia a gravação.
+    await tester.tapAt(const Offset(200, 50));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 10));
+    pipeline.frame(const Duration(seconds: 60), triggered: true);
+    await tester.pump();
+
+    expect(camera.savedLengths, [const Duration(seconds: 45)]);
+    expect(camera.lastSignal?.vibration, isTrue);
+    expect(camera.settings.length, const Duration(seconds: 45));
+    expect(camera.settings.resolution, VideoResolution.fhd1080);
+    expect(camera.settings.vibrationOnSave, isTrue);
+    expect(find.text(r'últimos 45s · gesto \ o / detectado'), findsOneWidget);
+    await tester.pump(ClippoMotion.savedBanner);
   });
 
   testWidgets('gravando: tela preta, e um toque mostra os controles por um tempo', (tester) async {
     await open(tester, camera: _FakeCamera());
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
-    expect(find.text('Apoie o celular e enquadre o campo'), findsNothing);
     expect(find.bySemanticsLabel('Detecção do gesto ligada'), findsOneWidget);
     expect(find.text('Encerrar sessão'), findsNothing);
 
@@ -176,7 +223,7 @@ void main() {
     await tester.pump();
     expect(camera.saves, isEmpty);
 
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     pipeline.frame(const Duration(seconds: 10));
     pipeline.frame(const Duration(seconds: 50), triggered: true);
@@ -196,7 +243,7 @@ void main() {
   testWidgets('se o buffer falha, o aviso mostra o erro', (tester) async {
     final pipeline = _FakePipeline();
     await open(tester, camera: _FakeCamera(failSave: true), pipeline: pipeline);
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     pipeline.frame(const Duration(seconds: 5), triggered: true);
     await tester.pump();
@@ -209,7 +256,7 @@ void main() {
   testWidgets('cancelar pede confirmação antes de voltar a preparar; encerrar abre confirmação', (tester) async {
     final camera = _FakeCamera();
     await open(tester, camera: camera);
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -231,9 +278,9 @@ void main() {
     await tester.tap(find.text('Sim, cancelar'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+    expect(find.bySemanticsLabel('Iniciar gravação'), findsOneWidget);
 
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -257,7 +304,7 @@ void main() {
       onSaved: () => saved = true,
       onSessionCreated: (s) => createdSession = s,
     );
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -303,7 +350,7 @@ void main() {
   testWidgets('confirmação: voltar à câmera preserva highlights e reabre câmera', (tester) async {
     final camera = _FakeCamera();
     await open(tester, camera: camera);
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -315,14 +362,14 @@ void main() {
     await tester.pump();
     await tester.pump();
     await tester.pump();
-    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+    expect(find.bySemanticsLabel('Iniciar gravação'), findsOneWidget);
   });
 
   testWidgets('confirmação: descartar pede confirmação, limpa highlights e volta a preparar', (tester) async {
     final camera = _FakeCamera();
     final pipeline = _FakePipeline();
     await open(tester, camera: camera, pipeline: pipeline);
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     pipeline.frame(const Duration(seconds: 15), triggered: true);
     await tester.pump();
@@ -341,7 +388,7 @@ void main() {
     await tester.tap(find.text('Sim, descartar'));
     await tester.pumpAndSettle();
     expect(camera.deletedClips, ['/highlights/1.mp4']);
-    expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+    expect(find.bySemanticsLabel('Iniciar gravação'), findsOneWidget);
   });
 
   testWidgets('sem microfone, avisa uma vez que os highlights saem sem som (R17)', (tester) async {
@@ -349,7 +396,7 @@ void main() {
     await open(tester, camera: camera);
     expect(find.text('Sem microfone · os highlights saem sem som'), findsOneWidget);
 
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -366,7 +413,7 @@ void main() {
   testWidgets('confirmação: adicionar amigo aos participantes', (tester) async {
     final camera = _FakeCamera();
     await open(tester, camera: camera);
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -386,13 +433,80 @@ void main() {
     expect(find.text('Rafa'), findsOneWidget);
   });
 
+  testWidgets('confirmação: envia sessão e lances pelo SessionsRepository e mantém id no reenvio (D15)', (tester) async {
+    final calls = <Map<String, dynamic>>[];
+    var shouldFail = true;
+    final repo = SessionsRepository(
+      callFunction: (name, payload) async {
+        expect(name, 'saveSession');
+        calls.add(payload);
+        if (shouldFail) {
+          throw const SessionsFailure('Sem internet. Suas sessões aparecem assim que você conectar.');
+        }
+        return {'sessionId': payload['sessionId'], 'videoPaths': <String, String>{}, 'created': true};
+      },
+    );
+    final camera = _FakeCamera();
+    final pipeline = _FakePipeline();
+    Session? created;
+    await open(
+      tester,
+      camera: camera,
+      pipeline: pipeline,
+      sessions: repo,
+      onSessionCreated: (s) => created = s,
+    );
+
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 5));
+    pipeline.frame(const Duration(seconds: 25), triggered: true);
+    await tester.pump();
+
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    // Seleciona o amigo Rafa na confirmação da sessão.
+    await tester.ensureVisible(find.text('+ adicionar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ adicionar'));
+    await tester.pump();
+    await tester.tap(find.text('+ Rafa'));
+    await tester.pump();
+
+    // Primeira tentativa falha: mostra o erro no rodapé e não sai da tela.
+    await tester.ensureVisible(find.text('Salvar sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Salvar sessão'));
+    await tester.pump();
+    expect(find.text('Sem internet. Suas sessões aparecem assim que você conectar.'), findsOneWidget);
+    expect(created, isNull);
+    expect(calls, hasLength(1));
+
+    // Segunda tentativa passa com o MESMO sessionId (idempotência, R13).
+    shouldFail = false;
+    await tester.tap(find.text('Salvar sessão'));
+    await tester.pump();
+    expect(calls, hasLength(2));
+    expect(calls[1]['sessionId'], calls[0]['sessionId']);
+    expect(calls[1]['participantIds'], ['rafa']);
+    final sentHighlights = calls[1]['highlights'] as List<dynamic>;
+    expect(sentHighlights, hasLength(1));
+    expect((sentHighlights.first as Map<String, dynamic>)['offsetSeconds'], 20);
+    expect(created?.id, calls[0]['sessionId']);
+    expect(created?.highlightCount, 1);
+  });
+
   testWidgets('preparar e confirmação não cortam com fonte a 130 %', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await open(tester, camera: _FakeCamera());
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
