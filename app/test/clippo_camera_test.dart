@@ -134,11 +134,11 @@ void main() {
 
       expect(await camera.hasPermission(), isTrue);
       expect(await camera.requestPermission(), isTrue);
-      await camera.start(accurate: true);
+      await camera.start(multiPerson: true);
       await camera.stop();
 
       expect(calls.map((c) => c.method), ['hasPermission', 'requestPermission', 'start', 'stop']);
-      expect(calls[2].arguments, {'accurate': true, 'multiPerson': false});
+      expect(calls[2].arguments, {'multiPerson': true});
     });
 
     test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {
@@ -152,9 +152,72 @@ void main() {
       final clip = await camera.saveHighlight(until: const Duration(microseconds: 715396052000));
 
       expect(sent?.method, 'saveHighlight');
-      expect(sent?.arguments, {'untilMicros': 715396052000});
+      expect(sent?.arguments, {'untilMicros': 715396052000, 'seconds': 30});
       expect(clip.path, '/data/clippo/lance.mp4');
       expect(clip.duration, const Duration(seconds: 30));
+      expect(clip.withSound, isFalse);
+    });
+
+    test('saveHighlight manda a duração escolhida e lê se o trecho tem som', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return {'path': '/data/clippo/lance.mp4', 'durationMs': 45000, 'withSound': true};
+      });
+
+      final clip = await camera.saveHighlight(until: Duration.zero, length: const Duration(seconds: 45));
+
+      expect(sent?.arguments, {'untilMicros': 0, 'seconds': 45});
+      expect(clip.duration, const Duration(seconds: 45));
+      expect(clip.withSound, isTrue);
+    });
+
+    test('saveHighlight recusa uma duração fora das opções, sem chamar o Kotlin', () async {
+      var called = false;
+      messenger.setMockMethodCallHandler(_commands, (call) async => called = true);
+      expect(
+        () => camera.saveHighlight(until: Duration.zero, length: const Duration(seconds: 20)),
+        throwsArgumentError,
+      );
+      expect(called, isFalse);
+    });
+
+    test('as durações vão de 15 a 60 s, e o padrão é 30 s', () {
+      expect(HighlightLength.options.map((d) => d.inSeconds), [15, 30, 45, 60]);
+      expect(HighlightLength.options, contains(HighlightLength.standard));
+      expect(HighlightLength.standard, const Duration(seconds: 30));
+    });
+
+    test('signalSaved manda cada aviso ligado ou desligado', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return null;
+      });
+      await camera.signalSaved();
+      expect(sent?.method, 'signalSaved');
+      expect(sent?.arguments, {'sound': true, 'flash': true, 'vibrate': false});
+      await camera.signalSaved(sound: true, flash: false, vibration: true);
+      expect(sent?.method, 'signalSaved');
+      expect(sent?.arguments, {'sound': true, 'flash': false, 'vibrate': true});
+    });
+
+    test('start devolve se o buffer está gravando com som', () async {
+      messenger.setMockMethodCallHandler(_commands, (call) async => {'withSound': true});
+      expect(await camera.start(), isTrue);
+      messenger.setMockMethodCallHandler(_commands, (call) async => null);
+      expect(await camera.start(), isFalse);
+    });
+
+    test('microfone: pergunta e pede pelos nomes que o Kotlin espera', () async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        calls.add(call.method);
+        return call.method == 'requestMicrophonePermission';
+      });
+      expect(await camera.hasMicrophonePermission(), isFalse);
+      expect(await camera.requestMicrophonePermission(), isTrue);
+      expect(calls, ['hasMicrophonePermission', 'requestMicrophonePermission']);
     });
 
     test('saveHighlight com erro do buffer vira uma mensagem da tela', () async {
@@ -184,6 +247,26 @@ void main() {
       await expectLater(
         camera.copyToGallery(clip),
         throwsA(isA<CameraFailure>().having((f) => f.message, 'message', contains('galeria'))),
+      );
+    });
+
+    test('deleteHighlight manda o caminho do trecho e traduz o erro', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return null;
+      });
+      const clip = SavedClip(path: '/data/clippo/lance.mp4', duration: Duration(seconds: 30));
+      await camera.deleteHighlight(clip);
+      expect(sent?.method, 'deleteHighlight');
+      expect(sent?.arguments, {'path': '/data/clippo/lance.mp4'});
+
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        throw PlatformException(code: 'delete-failed', message: 'falhou');
+      });
+      await expectLater(
+        camera.deleteHighlight(clip),
+        throwsA(isA<CameraFailure>().having((f) => f.message, 'message', 'Não foi possível apagar o lance.')),
       );
     });
 

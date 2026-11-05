@@ -13,8 +13,10 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.OrientationEventListener
+import android.view.WindowManager
 import android.util.Size
 import androidx.annotation.OptIn
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -30,7 +32,6 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.BinaryMessenger
@@ -51,11 +52,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Abre a câmera traseira com o CameraX e liga os fluxos:
  * - Preview: a imagem na tela, desenhada por um PreviewView (ver CameraPreviewFactory);
  * - ImageAnalysis: quadros para o ML Kit, que devolve os 33 pontos do corpo;
- * - Buffer (MediaCodec): terceiro fluxo para gravação em segundo plano dos últimos 30s.
+ * - Buffer (MediaCodec): terceiro fluxo para gravação em segundo plano dos últimos 60 s,
+ *   com o som do microfone ao lado (AudioBuffer), se ele estiver liberado.
  * Os pontos vão para o Dart, onde ficam a regra do gesto e o disparo (lib/core/gesture/).
  *
  * Ponte com o Dart:
- * - MethodChannel "clippo/camera": hasPermission, requestPermission, start, stop, saveHighlight;
+ * - MethodChannel "clippo/camera": hasPermission, requestPermission, hasMicrophonePermission,
+ *   requestMicrophonePermission, start, stop, saveHighlight, signalSaved, copyToGallery;
  * - EventChannel "clippo/camera/poses": um mapa por quadro analisado (formato em sendPose).
  */
 class ClippoCameraSession(private val activity: FlutterActivity) :
@@ -69,6 +72,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         const val LANDMARK_COUNT = 33
         // x, y, z (profundidade) e confiança. Mudou? Mude PoseLandmarkIndex.valuesPerPoint no Dart.
         const val VALUES_PER_LANDMARK = 4
+        // O highlight mais longo que dá para escolher (15, 30, 45 ou 60 s; as opções ficam no
+        // Dart, em HighlightLength). Mudou? Mude lá também.
+        const val MAX_CLIP_SECONDS = 60
+        // O buffer guarda 5 s a mais: o corte volta até o quadro-chave anterior ao início.
+        const val KEEP_US = (MAX_CLIP_SECONDS + 5) * 1_000_000L
     }
 
     // 16:9 nos dois fluxos: assim a imagem na tela e a imagem analisada mostram o mesmo
@@ -102,6 +110,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private val galleryExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private var cameraProvider: ProcessCameraProvider? = null
+    // A câmera aberta agora: a lanterna do aviso de highlight salvo acende por ela.
+    private var boundCamera: Camera? = null
+    // Som do buffer: só existe com o microfone liberado; sem ele, o highlight sai sem som.
+    @Volatile private var audio: AudioBuffer? = null
+    private val signal = SaveSignal(activity)
     private var detector: PoseDetector? = null
     // Só no modo várias pessoas (o escolhido): acha as pessoas antes do ML Kit. Criado, usado e
     // fechado na thread da análise.
@@ -111,9 +124,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     @Volatile private var generation = 0
     private var poseSink: EventChannel.EventSink? = null
     private var pendingPermission: MethodChannel.Result? = null
+    // Qual permissão responde o pedido aberto (o pedido da câmera também pede o microfone).
+    private var pendingPermissionAnswer: String? = null
 
-    // Buffer de 30 s: o encoder H.264 comprime os quadros e a fila guarda os últimos ~40 s já
-    // comprimidos, em memória (R6: nunca vai para o disco nem sai do aparelho). Salvar um
+    // Buffer: o encoder H.264 comprime os quadros e a fila guarda os últimos ~65 s já
+    // comprimidos, em memória (~25 MB a 3 Mbps) (R6: nunca vai para o disco nem sai do aparelho). Salvar um
     // highlight é só copiar um pedaço da fila para um MP4, sem comprimir de novo (R2).
     private var mediaCodec: MediaCodec? = null
     private var inputSurface: android.view.Surface? = null
@@ -158,7 +173,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         when (call.method) {
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
-            "start" -> start(
+            "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
+            "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
+            "start" -> start(manyPeople = call.argument<Boolean>("multiPerson") ?: false, result)
                 accurate = call.argument<Boolean>("accurate") ?: false,
                 manyPeople = call.argument<Boolean>("multiPerson") ?: false,
                 result,
@@ -167,12 +184,27 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 // Number, e não Long: o Flutter manda um int pequeno como Int e um grande como Long.
                 val untilMicros = call.argument<Number>("untilMicros")?.toLong()
                     ?: return result.error("bad-arguments", "Faltou untilMicros.", null)
-                saveHighlight(untilMicros, result)
+                val seconds = (call.argument<Number>("seconds")?.toInt() ?: 30).coerceIn(1, MAX_CLIP_SECONDS)
+                saveHighlight(untilMicros, seconds, result)
+            }
+            "signalSaved" -> {
+                signal.play(
+                    sound = call.argument<Boolean>("sound") ?: false,
+                    flash = call.argument<Boolean>("flash") ?: false,
+                    vibrate = call.argument<Boolean>("vibrate") ?: false,
+                    camera = boundCamera,
+                )
+                result.success(null)
             }
             "copyToGallery" -> {
                 val path = call.argument<String>("path")
                     ?: return result.error("bad-arguments", "Faltou path.", null)
                 copyToGallery(path, result)
+            }
+            "deleteHighlight" -> {
+                val path = call.argument<String>("path")
+                    ?: return result.error("bad-arguments", "Faltou path.", null)
+                deleteHighlight(path, result)
             }
             "stop" -> {
                 stop()
@@ -185,25 +217,43 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private fun hasPermission() =
         ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
+    private fun hasMicrophonePermission() =
+        ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    /** Pede a câmera e, junto, o microfone (opcional: sem ele, o highlight sai sem som). */
     private fun requestPermission(result: MethodChannel.Result) {
         if (hasPermission()) return result.success(true)
+        val missing = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            .filter { ContextCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED }
+        requestPermissions(missing.toTypedArray(), result)
+    }
+
+    /** Abre a pergunta do Android; [result] recebe se a PRIMEIRA permissão de [permissions] foi dada. */
+    private fun requestPermissions(permissions: Array<String>, result: MethodChannel.Result) {
+        val answer = permissions.first()
+        if (ContextCompat.checkSelfPermission(activity, answer) == PackageManager.PERMISSION_GRANTED) {
+            return result.success(true)
+        }
         if (pendingPermission != null) {
             return result.error("permission-pending", "Já existe um pedido de permissão aberto.", null)
         }
         // A resposta chega depois, na MainActivity, que repassa para onPermissionResult.
         pendingPermission = result
-        ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), PERMISSION_REQUEST)
+        pendingPermissionAnswer = answer
+        ActivityCompat.requestPermissions(activity, permissions, PERMISSION_REQUEST)
     }
 
     /** Chamado pela MainActivity. Devolve true se a resposta era deste pedido. */
-    fun onPermissionResult(requestCode: Int, grantResults: IntArray): Boolean {
+    fun onPermissionResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
         if (requestCode != PERMISSION_REQUEST) return false
-        pendingPermission?.success(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+        val index = permissions.indexOf(pendingPermissionAnswer)
+        pendingPermission?.success(index >= 0 && grantResults.getOrNull(index) == PackageManager.PERMISSION_GRANTED)
         pendingPermission = null
+        pendingPermissionAnswer = null
         return true
     }
 
-    private fun start(accurate: Boolean, manyPeople: Boolean, result: MethodChannel.Result) {
+    private fun start(manyPeople: Boolean, result: MethodChannel.Result) {
         if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
 
         // Ligar de novo sem desligar (ex.: dois toques seguidos em um botão do laboratório): desliga
@@ -217,11 +267,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         // de várias pessoas terminar de abrir.
         detector?.close()
         detector = PoseDetection.getClient(
-            if (accurate) {
-                AccuratePoseDetectorOptions.Builder().setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE).build()
-            } else {
-                PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
-            }
+            PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
         )
         if (manyPeople) {
             // Abrir o detector (na GPU, compilar os shaders) leva segundos: fora da thread da tela,
@@ -230,7 +276,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             analysisExecutor.execute {
                 val startedAt = SystemClock.elapsedRealtime()
                 try {
-                    val created = MultiPersonAnalyzer(activity, accurate)
+                    val created = MultiPersonAnalyzer(activity)
                     Log.d("ClippoMulti", "detector aberto em ${SystemClock.elapsedRealtime() - startedAt} ms, GPU=${created.onGpu}")
                     if (generation == myGeneration) {
                         multiPerson = created
@@ -252,6 +298,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         } catch (e: Exception) {
             return result.error("encoder-init-failed", "Falha ao iniciar o encoder do buffer: ${e.message}", null)
         }
+        // O som é opcional: sem o microfone (negado ou ocupado), o vídeo segue sem som.
+        audio = if (hasMicrophonePermission()) AudioBuffer(KEEP_US).takeIf { it.start() } else null
 
         // Pegar o CameraX é assíncrono: a resposta para o Dart só sai quando a câmera abriu.
         val providerFuture = ProcessCameraProvider.getInstance(activity)
@@ -263,9 +311,13 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 // Presa ao ciclo de vida da tela: o CameraX desliga a câmera sozinho quando o
                 // app vai para segundo plano e liga de novo quando ele volta.
                 val camera = provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
+                boundCamera = camera
                 sensorRotation = camera.cameraInfo.sensorRotationDegrees
                 if (orientationListener.canDetectOrientation()) orientationListener.enable()
-                result.success(null)
+                // R7: impede o celular de apagar a tela e bloquear sozinho durante a partida (no app
+                // a tela fica preta #000000 para poupar bateria OLED; no laboratório mostra a imagem).
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                result.success(mapOf("withSound" to (audio != null)))
             } catch (e: Exception) {
                 stopEncoder()
                 result.error("camera-unavailable", "Não foi possível abrir a câmera: ${e.message}", null)
@@ -309,7 +361,9 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                     when {
                         index >= 0 -> {
                             val encodedBuffer = mediaCodec?.getOutputBuffer(index)
-                            if (encodedBuffer != null && bufferInfo.size > 0) {
+                            // A configuração do decodificador já vem no outputFormat: não é um quadro.
+                            val isConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                            if (encodedBuffer != null && bufferInfo.size > 0 && !isConfig) {
                                 val copiedData = ByteBuffer.allocateDirect(bufferInfo.size)
                                 encodedBuffer.position(bufferInfo.offset)
                                 encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
@@ -324,10 +378,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                                 encoderClockLeadUs =
                                     bufferInfo.presentationTimeUs - SystemClock.elapsedRealtimeNanos() / 1000
 
-                                // 1200 quadros ≈ 40 s a 30 quadros/s: folga sobre os 30 s, para o corte
-                                // poder voltar até o quadro-chave anterior ao início do trecho.
-                                while (sampleQueue.size > 1200) {
-                                    sampleQueue.poll()
+                                // Por tempo, e não por número de quadros: a câmera pode mandar menos de
+                                // 30 por segundo no escuro.
+                                while (bufferInfo.presentationTimeUs -
+                                    (sampleQueue.peekFirst()?.info?.presentationTimeUs ?: break) > KEEP_US
+                                ) {
+                                    sampleQueue.pollFirst()
                                 }
                             }
                             mediaCodec?.releaseOutputBuffer(index, false)
@@ -382,19 +438,26 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         inputSurface = null
         sampleQueue.clear()
         encoderClockLeadUs = null
+
+        audio?.stop()
+        audio = null
     }
 
     /**
-     * Salva os ~30 s que terminam no disparo num MP4 (R1) e responde {path, durationMs}.
+     * Salva os [seconds] s que terminam no disparo num MP4 (R1) e responde
+     * {path, durationMs, withSound}.
      * O trecho começa num quadro-chave (o MP4 não abre no meio de um grupo de quadros), então
      * pode ter até 1 s a mais; se a sessão começou há menos de 30 s, sai o que houver (R5 🟡).
      */
-    private fun saveHighlight(triggerMicros: Long, result: MethodChannel.Result) {
+    private fun saveHighlight(triggerMicros: Long, seconds: Int, result: MethodChannel.Result) {
         // Tudo o que descreve o momento do disparo é lido agora; o MP4 é montado na outra thread.
         val samples = sampleQueue.toList()
         val format = outputFormat
         val analysisLead = analysisClockLeadUs
         val encoderLead = encoderClockLeadUs
+        val sound = audio
+        val soundFormat = sound?.format
+        val soundSamples = if (sound != null && soundFormat != null) sound.snapshot() else emptyList()
         // Câmera traseira: a fórmula do Android para a orientação de foto/vídeo. Vale a posição
         // do celular na hora do disparo (ele fica apoiado durante a partida).
         val rotation = (sensorRotation + deviceRotation) % 360
@@ -404,7 +467,10 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }
         saveExecutor.execute {
             try {
-                val saved = writeHighlight(samples, format, triggerMicros - analysisLead + encoderLead, rotation)
+                val saved = writeHighlight(
+                    Clip(samples, format, triggerMicros - analysisLead + encoderLead, seconds, rotation),
+                    Sound(soundSamples, soundFormat, encoderLead),
+                )
                 activity.runOnUiThread { result.success(saved) }
             } catch (e: Exception) {
                 Log.e("ClippoBuffer", "highlight não salvou", e)
@@ -415,13 +481,22 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }
     }
 
-    /** Monta o MP4 com os quadros até [untilMicros] (já no relógio do encoder). Roda no saveExecutor. */
-    private fun writeHighlight(
-        samples: List<EncodedSample>,
-        format: MediaFormat,
-        untilMicros: Long,
-        rotation: Int,
-    ): Map<String, Any> {
+    /** O que o MP4 leva de imagem: [untilMicros] já está no relógio do encoder. */
+    private class Clip(
+        val samples: List<EncodedSample>,
+        val format: MediaFormat,
+        val untilMicros: Long,
+        val seconds: Int,
+        val rotation: Int,
+    )
+
+    /** O que o MP4 leva de som: carimbos no elapsedRealtime; somando [encoderLeadUs], no do encoder. */
+    private class Sound(val samples: List<AudioBuffer.Sample>, val format: MediaFormat?, val encoderLeadUs: Long)
+
+    /** Monta o MP4 com os quadros do trecho e, se houver, o som do mesmo intervalo. Roda no saveExecutor. */
+    private fun writeHighlight(clip: Clip, sound: Sound): Map<String, Any> {
+        val samples = clip.samples
+        val untilMicros = clip.untilMicros
         Log.d(
             "ClippoBuffer",
             "até(encoder)=$untilMicros buffer=${samples.first().info.presentationTimeUs}..${samples.last().info.presentationTimeUs}"
@@ -433,8 +508,8 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             throw IllegalStateException("Nenhum quadro disponível até o momento especificado.")
         }
 
-        // Janela desejada: 30 segundos antes de untilMicros (30.000.000 microssegundos)
-        val targetStartUs = untilMicros - 30_000_000L
+        // Janela desejada: a duração escolhida antes de untilMicros
+        val targetStartUs = untilMicros - clip.seconds * 1_000_000L
 
         // Encontra o índice inicial garantindo que o corte comece a partir de um Key Frame (I-frame)
         var startIndex = 0
@@ -469,22 +544,37 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         val lastTimestamp = slice.last().info.presentationTimeUs
         val durationMs = ((lastTimestamp - firstTimestamp) / 1000).coerceAtLeast(0)
 
+        // O som do mesmo intervalo da imagem, já no relógio do encoder.
+        val soundFormat = sound.format
+        val soundSlice = if (soundFormat == null) emptyList() else sound.samples
+            .map { it to it.info.presentationTimeUs + sound.encoderLeadUs }
+            .filter { (_, t) -> t in firstTimestamp..lastTimestamp }
+
         // Pasta interna do app (filesDir), e não o cache: o Android apaga o cache sozinho quando
         // falta espaço, e o highlight precisa ficar até subir para o banco (R13).
         val folder = File(activity.filesDir, "highlights").apply { mkdirs() }
         val outputFile = File(folder, "highlight_${System.currentTimeMillis()}.mp4")
         val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         try {
-            val trackIndex = muxer.addTrack(format)
-            muxer.setOrientationHint(rotation)
+            val videoTrack = muxer.addTrack(clip.format)
+            val soundTrack = if (soundSlice.isNotEmpty() && soundFormat != null) muxer.addTrack(soundFormat) else -1
+            muxer.setOrientationHint(clip.rotation)
             muxer.start()
 
-            for (sample in slice) {
-                val relTime = sample.info.presentationTimeUs - firstTimestamp
-                val adjustedInfo = MediaCodec.BufferInfo().apply {
-                    set(0, sample.info.size, relTime.coerceAtLeast(0L), sample.info.flags)
+            fun write(track: Int, buffer: ByteBuffer, info: MediaCodec.BufferInfo, encoderTime: Long) {
+                val relTime = (encoderTime - firstTimestamp).coerceAtLeast(0L)
+                // duplicate(): a mesma fila serve aos próximos highlights, e o muxer não mexe nela.
+                val adjustedInfo = MediaCodec.BufferInfo().apply { set(0, info.size, relTime, info.flags) }
+                muxer.writeSampleData(track, buffer.duplicate(), adjustedInfo)
+            }
+            // Imagem e som intercalados pela hora, como um player espera ler.
+            var next = 0
+            for (frame in slice) {
+                while (soundTrack >= 0 && next < soundSlice.size && soundSlice[next].second <= frame.info.presentationTimeUs) {
+                    val (sample, time) = soundSlice[next++]
+                    write(soundTrack, sample.buffer, sample.info, time)
                 }
-                muxer.writeSampleData(trackIndex, sample.buffer, adjustedInfo)
+                write(videoTrack, frame.buffer, frame.info, frame.info.presentationTimeUs)
             }
 
             muxer.stop()
@@ -495,7 +585,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             muxer.release()
         }
 
-        return mapOf("path" to outputFile.absolutePath, "durationMs" to durationMs)
+        return mapOf("path" to outputFile.absolutePath, "durationMs" to durationMs, "withSound" to soundSlice.isNotEmpty())
     }
 
     /**
@@ -530,9 +620,31 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         }
     }
 
+    /**
+     * Apaga um highlight salvo da pasta interna do app (quando a sessão é descartada, R14, ou
+     * depois que o vídeo subiu para o banco, R13). Idempotente: se já não existe, conclui sem erro.
+     */
+    private fun deleteHighlight(path: String, result: MethodChannel.Result) {
+        saveExecutor.execute {
+            try {
+                val folder = File(activity.filesDir, "highlights").canonicalFile
+                val target = File(path).canonicalFile
+                if (target.parentFile == folder && target.exists()) {
+                    target.delete()
+                }
+                activity.runOnUiThread { result.success(null) }
+            } catch (e: Exception) {
+                Log.w("ClippoBuffer", "não foi possível apagar o highlight: $path", e)
+                activity.runOnUiThread { result.error("delete-failed", "Não foi possível apagar o lance: ${e.message}", null) }
+            }
+        }
+    }
+
     fun stop() {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         orientationListener.disable()
         cameraProvider?.unbindAll()
+        boundCamera = null
         analysis.clearAnalyzer()
         detector?.close()
         detector = null
@@ -611,7 +723,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             // detector e cada recorte), não a imagem inteira.
             val raw = proxy.toBitmap()
             val prepMs = SystemClock.elapsedRealtime() - frame.startedAt
-            val result = many.analyze(raw, rotation)
+            val result = many.analyze(raw, rotation, deviceRotation)
             val analysisMs = SystemClock.elapsedRealtime() - frame.startedAt
             val people = result.people.map { person ->
                 mapOf(
@@ -677,6 +789,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         stop()
         analysisExecutor.shutdown()
         saveExecutor.shutdown()
+        signal.release()
         galleryExecutor.shutdown()
     }
 }

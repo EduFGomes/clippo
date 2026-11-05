@@ -16,7 +16,7 @@ App Android que guarda sempre os últimos 30 segundos de uma partida amadora. Qu
 
 | Arquivo | O que tem |
 |---|---|
-| [`docs/produto.md`](docs/produto.md) | O que o app faz e por quê: visão, regras de negócio R1–R16, telas, decisões de produto em aberto, equipe |
+| [`docs/produto.md`](docs/produto.md) | O que o app faz e por quê: visão, regras de negócio R1–R17, telas, decisões de produto em aberto, equipe |
 | [`docs/design.md`](docs/design.md) | Como o Clippo parece e soa: voz, glossário, cores, fontes, componentes e como criar um no padrão |
 | [`docs/arquitetura.md`](docs/arquitetura.md) | Como o sistema é construído e como contribuir: decisões, modelo de dados, Git, Functions, Security Rules |
 

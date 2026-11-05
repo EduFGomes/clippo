@@ -10,7 +10,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 ## Estrutura
 - `app/` — Flutter. Organização **por funcionalidade**: `lib/features/<feature>/{screens,widgets,state,data}` e `lib/core/` para o que é compartilhado.
 - `backend/` — `firestore.rules`, `storage.rules`, `functions/` (TypeScript, Cloud Functions 2ª geração) e `tests/` (testes das regras no Emulator).
-- `docs/` — três arquivos: `produto.md` (visão, regras de negócio R1–R16, telas, equipe), `design.md` (voz, glossário, tokens, componentes) e `arquitetura.md` (decisões, modelo de dados, como contribuir).
+- `docs/` — três arquivos: `produto.md` (visão, regras de negócio R1–R17, telas, equipe), `design.md` (voz, glossário, tokens, componentes) e `arquitetura.md` (decisões, modelo de dados, como contribuir).
 
 ## Regras que não podem ser quebradas
 0. **REGRA ABSOLUTA — nada sem validação.** Nenhum dado digitado pelo usuário vai para o Firebase Auth, o Firestore, o Storage ou uma Cloud Function sem ser validado **duas vezes, com as mesmas regras e mensagens**:

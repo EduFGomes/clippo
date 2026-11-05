@@ -69,7 +69,7 @@ sombra, refletor) — a luz muda muito o resultado.
 **Montagem:** celular em pé, apoiado na altura do peito, câmera traseira, enquadrando a pessoa de
 corpo inteiro. Marque no chão 2, 4, 6 e 8 m.
 
-**Para cada distância e cada modelo** (o laboratório troca entre `base` e `accurate`):
+**Para cada distância** (2, 4, 6 e 8 m, com o modelo padrão `base`):
 
 1. **20 gestos de frente**, um de cada vez: braços abaixados → \ o / por ~1 s → abaixados.
    Espere ~6 s entre um e outro (a espera da R4 é de 5 s). Conte quantos dispararam.
@@ -82,7 +82,6 @@ corpo inteiro. Marque no chão 2, 4, 6 e 8 m.
 | Distância | Modelo | Gestos que dispararam (de 20) | Indevidos nos "quase" (de 10) | Indevidos em 1 min | Quadros/s | ML Kit (ms) | Observações |
 |---|---|---|---|---|---|---|---|
 | 2 m | base | | | | | | |
-| 2 m | accurate | | | | | | |
 | … | | | | | | | |
 
 **Como ler o resultado:**
@@ -92,8 +91,6 @@ corpo inteiro. Marque no chão 2, 4, 6 e 8 m.
   laboratório e **repita a distância inteira**.
 - **Disparo indevido:** anote o que a pessoa estava fazendo. Um disparo indevido pesa mais que um
   gesto perdido: salva lances que ninguém pediu.
-- **Escolha do modelo:** fica o que passar nas 4 distâncias; se os dois passarem, o `base` (mais leve).
-  De longe, confira a medida do nariz no `accurate`: de perto ela já ficou mais próxima do limite.
+- **Modelo:** definido o `base` (`com.google.mlkit:pose-detection`), por ser mais leve e rápido no modo várias pessoas e funcionar bem nos testes.
 
-Depois da medição, atualize a tabela "Limites atuais" e a decisão em aberto do modelo em
-`docs/arquitetura.md`.
+Depois da medição em quadra, atualize a tabela "Limites atuais".
