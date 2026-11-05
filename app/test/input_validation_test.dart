@@ -2,7 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/validation/input_validation.dart';
 
-// Os mesmos casos de backend/functions/test/validation.test.ts: as duas regras precisam concordar.
+// Os mesmos casos de backend/functions/test/validation.test.ts e sessions.validation.test.ts:
+// as duas regras precisam concordar (regra 0 do AGENTS.md).
 void main() {
   group('e-mail', () {
     test('normaliza espaços e maiúsculas', () {
@@ -85,6 +86,168 @@ void main() {
       expect(validateBirthDate(null, today: today), isNotNull);
       expect(validateBirthDate(DateTime(2027, 1, 1), today: today), isNotNull);
       expect(validateBirthDate(DateTime(1899, 12, 31), today: today), isNotNull);
+    });
+  });
+
+  // --- Sessão: espelho de backend/functions/test/sessions.validation.test.ts ---
+
+  group('id vindo do aparelho', () {
+    test('aceita o que o app gera', () {
+      expect(validateEntityId('sessao_2026-10-29_AbC123'), isNull);
+      expect(validateEntityId('lance-0001'), isNull);
+    });
+
+    test('recusa id curto, com espaço, com barra ou longo demais', () {
+      for (final raw in ['', 'abc', 'com espaco', '../outra', 'a' * 65]) {
+        expect(
+          validateEntityId(raw),
+          'Não foi possível salvar a sessão. Tente de novo.',
+        );
+      }
+    });
+  });
+
+  group('nome da sessão', () {
+    test('junta espaços e tira os das pontas', () {
+      expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
+      expect(validateSessionName('  Pelada   de quinta '), isNull);
+    });
+
+    test('recusa vazio e só espaços', () {
+      for (final raw in ['', '   ']) {
+        expect(validateSessionName(raw), 'Dê um nome para a sessão.');
+      }
+    });
+
+    test('recusa acima do limite', () {
+      expect(validateSessionName('a' * sessionNameMax), isNull);
+      expect(
+        validateSessionName('a' * (sessionNameMax + 1)),
+        'O nome da sessão pode ter até $sessionNameMax caracteres.',
+      );
+    });
+  });
+
+  group('local', () {
+    test('é opcional: sem local vira null', () {
+      for (final raw in [null, '', '   ']) {
+        expect(normalizeLocation(raw), isNull);
+        expect(validateLocation(raw), isNull);
+      }
+    });
+
+    test('normaliza e limita', () {
+      expect(normalizeLocation('  Quadra   do Parque '), 'Quadra do Parque');
+      expect(validateLocation('a' * (locationMax + 1)),
+          'O local pode ter até $locationMax caracteres.');
+    });
+  });
+
+  group('início e fim da sessão', () {
+    final inicio = DateTime.utc(2026, 10, 29, 22, 30);
+    final fim = DateTime.utc(2026, 10, 30, 0, 12);
+    final agora = DateTime.utc(2026, 10, 30, 1);
+
+    test('aceita um período normal', () {
+      expect(validateSessionPeriod(inicio, fim, now: agora), isNull);
+    });
+
+    test('recusa data faltando', () {
+      expect(validateSessionPeriod(null, fim, now: agora), 'Confira a data e a hora da sessão.');
+      expect(validateSessionPeriod(inicio, null, now: agora), 'Confira a data e a hora da sessão.');
+    });
+
+    test('recusa fim antes ou igual ao início', () {
+      expect(validateSessionPeriod(fim, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+      expect(validateSessionPeriod(inicio, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+    });
+
+    test('recusa sessão de mais de 12 horas', () {
+      expect(
+        validateSessionPeriod(DateTime.utc(2026, 10, 29), DateTime.utc(2026, 10, 29, 13),
+            now: agora),
+        'Uma sessão pode durar até $sessionMaxHours horas.',
+      );
+    });
+
+    test('recusa fim no futuro, mas tolera 5 min de relógio adiantado', () {
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 2), now: agora),
+          'A sessão não pode terminar no futuro.');
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 1, 4), now: agora), isNull);
+    });
+  });
+
+  group('participantes', () {
+    test('o dono entra primeiro e sem repetidos (R9)', () {
+      expect(
+        normalizeParticipantIds(['bob', 'alice', 'bob'], ownerId: 'alice'),
+        ['alice', 'bob'],
+      );
+      expect(normalizeParticipantIds(const [], ownerId: 'alice'), ['alice']);
+    });
+
+    test('recusa uid vazio', () {
+      expect(
+        validateParticipantIds(['bob', ''], ownerId: 'alice'),
+        'Confira quem jogou com você.',
+      );
+    });
+
+    test('recusa acima do limite', () {
+      final muitos = List<String>.generate(participantsMax, (i) => 'u$i');
+      expect(
+        validateParticipantIds(muitos, ownerId: 'alice'),
+        'Uma sessão pode ter até $participantsMax participantes.',
+      );
+      expect(
+        validateParticipantIds(muitos.take(participantsMax - 1).toList(), ownerId: 'alice'),
+        isNull,
+      );
+    });
+  });
+
+  group('highlights (título, momento e duração)', () {
+    test('título vazio vira "Lance N" pela posição', () {
+      expect(normalizeHighlightTitle(null, 1), 'Lance 1');
+      expect(normalizeHighlightTitle('', 2), 'Lance 2');
+      expect(normalizeHighlightTitle('   ', 3), 'Lance 3');
+      expect(validateHighlightTitle(null), isNull);
+      expect(validateHighlightTitle('   '), isNull);
+    });
+
+    test('mantém e normaliza o título que a pessoa escreveu', () {
+      expect(normalizeHighlightTitle('  Voleio  do Rafa ', 1), 'Voleio do Rafa');
+      expect(validateHighlightTitle('  Voleio  do Rafa '), isNull);
+    });
+
+    test('recusa título do lance acima do limite', () {
+      expect(validateHighlightTitle('a' * highlightTitleMax), isNull);
+      expect(
+        validateHighlightTitle('a' * (highlightTitleMax + 1)),
+        'O nome do lance pode ter até $highlightTitleMax caracteres.',
+      );
+    });
+
+    test('recusa lance fora da sessão, com 1 min de folga', () {
+      expect(
+        validateHighlightOffset(-1, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(
+        validateHighlightOffset(6200, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(validateHighlightOffset(6150, sessionDurationSeconds: 6120), isNull);
+    });
+
+    test('recusa duração zerada, negativa ou absurda', () {
+      for (final d in [0, -1, highlightSecondsMax + 1]) {
+        expect(validateHighlightDuration(d), 'Confira a duração dos lances.');
+      }
+      expect(validateHighlightDuration(30), isNull);
+      expect(validateHighlightDuration(highlightSecondsMax), isNull);
     });
   });
 }

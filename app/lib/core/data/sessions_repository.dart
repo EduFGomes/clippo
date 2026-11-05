@@ -1,20 +1,30 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:clippo/core/data/session.dart';
+import 'package:clippo/core/firebase/firebase_setup.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 
-/// Erro ao ler sessões, com a mensagem pronta para a tela.
+/// Assinatura para interceptar chamadas de Cloud Functions nos testes sem precisar do Firebase.
+typedef CallableInvoker = Future<Map<String, dynamic>> Function(
+  String functionName,
+  Map<String, dynamic> payload,
+);
+
+/// Erro ao ler ou gravar sessões, com a mensagem pronta para a tela.
 ///
 /// A regra do projeto é nunca mostrar erro técnico: "Erro 503" e
 /// "permission-denied" viram frases curtas que dizem o que fazer
-/// (docs/design.md › 2. Voz e texto). O [code] fica só para quem for investigar.
+/// (docs/design.md › 2. Voz e texto). O [code] fica só para quem for investigar
+/// (ou para indicar qual campo do formulário falhou).
 class SessionsFailure implements Exception {
   const SessionsFailure(this.message, {this.code});
 
   /// O que a pessoa lê.
   final String message;
 
-  /// Código do Firebase. Nunca aparece na interface.
+  /// Código do Firebase ou nome do campo inválido. Nunca aparece na interface.
   final String? code;
 
   /// Traduz o que o Firestore jogou para uma frase que faz sentido na quadra.
@@ -81,22 +91,34 @@ class SessionsSnapshot {
   bool get isEmpty => sessions.isEmpty;
 }
 
-/// Tudo o que o app lê sobre sessões passa por aqui.
+/// Tudo o que o app lê e grava sobre sessões passa por aqui.
 ///
-/// As telas não falam direto com o Firestore (regra 4 do AGENTS.md): chamam estes
-/// métodos. Hoje este repositório só lê — a escrita (criar sessão, salvar highlight)
-/// ainda está bloqueada nas Security Rules até o grupo decidir quem grava
-/// (docs/arquitetura.md › Quem grava sessões e highlights).
+/// As telas não falam direto com o Firestore nem com as Functions (regra 4 do
+/// AGENTS.md): chamam estes métodos. A leitura vem do Firestore; a escrita
+/// passa pela Cloud Function `saveSession` (D15 em docs/arquitetura.md › Quem
+/// grava sessões e highlights), mantendo as Security Rules fechadas para escrita.
 class SessionsRepository {
-  SessionsRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  SessionsRepository({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+    FirebaseFunctions? functions,
+    CallableInvoker? callFunction,
+  })  : _firestore = (() => firestore ?? FirebaseFirestore.instance),
+        _auth = (() => auth ?? FirebaseAuth.instance),
+        _callFunction = (callFunction ??
+            ((name, payload) async =>
+                (await (functions ??
+                            FirebaseFunctions.instanceFor(region: functionsRegion))
+                        .httpsCallable(name)
+                        .call<Map<String, dynamic>>(payload))
+                    .data));
 
   /// Nome da coleção no Firestore. Igual ao de backend/firestore.rules.
   static const String collectionName = 'sessions';
 
-  final FirebaseFirestore _firestore;
-  final FirebaseAuth _auth;
+  final FirebaseFirestore Function() _firestore;
+  final FirebaseAuth Function() _auth;
+  final CallableInvoker _callFunction;
 
   /// As sessões de que a pessoa logada participa, da mais recente para a mais
   /// antiga — é o que a Início lista (produto.md › 4.2).
@@ -104,7 +126,7 @@ class SessionsRepository {
   /// Emite de novo a cada mudança no servidor, então a sessão que outro
   /// participante acabou de salvar aparece sozinha, sem recarregar a tela.
   Stream<SessionsSnapshot> watchMySessions() {
-    final uid = _auth.currentUser?.uid;
+    final uid = _auth().currentUser?.uid;
     if (uid == null) {
       // Não deveria acontecer: a Início só existe depois do login (AuthGate).
       return Stream<SessionsSnapshot>.error(
@@ -121,7 +143,7 @@ class SessionsRepository {
   /// encontrar a primeira sessão de outra pessoa. A ordenação precisa do índice
   /// composto de backend/firestore.indexes.json.
   Stream<SessionsSnapshot> watchSessionsOf(String uid) {
-    return _firestore
+    return _firestore()
         .collection(collectionName)
         .where('participantIds', arrayContains: uid)
         .orderBy('startedAt', descending: true)
@@ -136,6 +158,128 @@ class SessionsRepository {
       throw SessionsFailure.from(error);
     });
   }
+
+  /// Salva a sessão e os lances dela, no "Salvar sessão" (produto.md › 4.5, estado D).
+  ///
+  /// Chama a Cloud Function saveSession (D15): o app não grava sessão direto no
+  /// Firestore. Devolve, por lance, o caminho onde o vídeo deve ser enviado no Storage.
+  ///
+  /// É seguro repetir: o [sessionId] e o id de cada lance nascem no aparelho, então
+  /// chamar de novo depois de uma falha de rede não duplica nada — é assim que a fila
+  /// offline (R13) funciona.
+  Future<Map<String, String>> saveSession({
+    required String sessionId,
+    required String name,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    String? location,
+    List<String> participantIds = const [],
+    List<PendingHighlight> highlights = const [],
+    DateTime? now,
+  }) async {
+    // Nada vai para o servidor sem passar pela validação (regra 0 do AGENTS.md).
+    _check('sessionId', validateEntityId(sessionId));
+    _check('name', validateSessionName(name));
+    _check('location', validateLocation(location));
+    _check('endedAt', validateSessionPeriod(startedAt, endedAt, now: now));
+    _check('participantIds', validateParticipantIds(participantIds));
+
+    if (highlights.length > highlightsMax) {
+      throw const SessionsFailure(
+        'Uma sessão pode ter até $highlightsMax lances.',
+        code: 'highlights',
+      );
+    }
+
+    final sessionDurationSeconds = endedAt.difference(startedAt).inSeconds;
+    final seenHighlightIds = <String>{};
+    for (final h in highlights) {
+      _check('highlights', validateEntityId(h.highlightId));
+      if (!seenHighlightIds.add(h.highlightId)) {
+        throw const SessionsFailure(
+          'Não foi possível salvar os lances.',
+          code: 'highlights',
+        );
+      }
+      _check(
+        'highlights',
+        validateHighlightOffset(
+          h.offset.inSeconds,
+          sessionDurationSeconds: sessionDurationSeconds,
+        ),
+      );
+      _check('highlights', validateHighlightDuration(h.duration.inSeconds));
+      _check('highlights', validateHighlightTitle(h.title));
+    }
+
+    final payload = <String, dynamic>{
+      'sessionId': sessionId,
+      'name': normalizeSessionName(name),
+      'startedAt': startedAt.toUtc().toIso8601String(),
+      'endedAt': endedAt.toUtc().toIso8601String(),
+      'location': normalizeLocation(location),
+      'participantIds': normalizeParticipantIds(participantIds),
+      'highlights': [
+        for (var i = 0; i < highlights.length; i++)
+          highlights[i].toJson(position: i + 1),
+      ],
+    };
+
+    try {
+      final data = await _callFunction('saveSession', payload);
+      final paths = (data['videoPaths'] as Map?) ?? const {};
+      return paths.map((key, value) => MapEntry(key as String, value as String));
+    } on FirebaseFunctionsException catch (e) {
+      final details = e.details;
+      final field = details is Map ? details['field'] as String? : null;
+      throw SessionsFailure(
+        e.message ?? 'Não foi possível salvar a sessão. Tente de novo.',
+        code: field,
+      );
+    } on FirebaseException catch (e) {
+      throw SessionsFailure.from(e);
+    }
+  }
+
+  /// Barra o envio quando a validação do app encontrou um erro.
+  static void _check(String field, String? error) {
+    if (error != null) throw SessionsFailure(error, code: field);
+  }
+}
+
+/// Um lance salvo pelo gesto, esperando para ser enviado.
+///
+/// O [highlightId] nasce no aparelho junto com o MP4: é ele que faz o reenvio ser
+/// idempotente. O vídeo em [localPath] sobe para o Storage depois que a sessão é salva.
+class PendingHighlight {
+  const PendingHighlight({
+    required this.highlightId,
+    required this.localPath,
+    required this.offset,
+    required this.duration,
+    this.title,
+  });
+
+  final String highlightId;
+
+  /// Caminho do MP4 na pasta interna do app (o que o buffer devolveu).
+  final String localPath;
+
+  /// Momento do lance dentro da sessão.
+  final Duration offset;
+
+  /// Quanto o trecho tem de fato: até ~30 s (R1), menos se a sessão era curta (R5).
+  final Duration duration;
+
+  /// Vazio vira "Lance N" — ninguém precisa digitar na quadra.
+  final String? title;
+
+  Map<String, dynamic> toJson({int? position}) => {
+        'highlightId': highlightId,
+        'title': position != null ? normalizeHighlightTitle(title, position) : title,
+        'offsetSeconds': offset.inSeconds,
+        'durationSeconds': duration.inSeconds,
+      };
 }
 
 SessionsRepository? _sessionsRepository;
