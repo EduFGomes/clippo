@@ -14,11 +14,15 @@ import 'package:clippo/features/capture/screens/capture_screen.dart';
 
 /// Câmera simulada: [permission] define a permissão inicial e [saves] registra os cortes pedidos.
 class _FakeCamera extends ClippoCamera {
-  _FakeCamera({this.permission = true, this.failSave = false});
+  _FakeCamera({this.permission = true, this.failSave = false, this.withSound = true});
 
   final bool permission;
   final bool failSave;
+  final bool withSound;
   final List<Duration> saves = [];
+  final List<String> deletedClips = [];
+  final List<String> copiedToGallery = [];
+  int signals = 0;
   bool stopped = false;
 
   @override
@@ -28,7 +32,7 @@ class _FakeCamera extends ClippoCamera {
   Future<bool> requestPermission() async => false;
 
   @override
-  Future<bool> start({bool multiPerson = false}) async => true;
+  Future<bool> start({bool multiPerson = false}) async => withSound;
 
   @override
   Future<void> stop() async => stopped = true;
@@ -38,6 +42,21 @@ class _FakeCamera extends ClippoCamera {
     saves.add(until);
     if (failSave) throw const CameraFailure('Não foi possível salvar o lance.');
     return const SavedClip(path: '/highlights/1.mp4', duration: Duration(seconds: 30));
+  }
+
+  @override
+  Future<void> signalSaved({bool sound = true, bool flash = true, bool vibration = false}) async {
+    signals++;
+  }
+
+  @override
+  Future<void> deleteHighlight(SavedClip clip) async {
+    deletedClips.add(clip.path);
+  }
+
+  @override
+  Future<void> copyToGallery(SavedClip clip) async {
+    copiedToGallery.add(clip.path);
   }
 
   @override
@@ -163,6 +182,8 @@ void main() {
     pipeline.frame(const Duration(seconds: 50), triggered: true);
     await tester.pump();
     expect(camera.saves, [const Duration(seconds: 50)]);
+    expect(camera.signals, 1);
+    expect(camera.copiedToGallery, ['/highlights/1.mp4']);
     expect(find.text('Highlight salvo'), findsOneWidget);
     expect(find.text(r'últimos 30s · gesto \ o / detectado'), findsOneWidget);
 
@@ -299,8 +320,11 @@ void main() {
 
   testWidgets('confirmação: descartar pede confirmação, limpa highlights e volta a preparar', (tester) async {
     final camera = _FakeCamera();
-    await open(tester, camera: camera);
+    final pipeline = _FakePipeline();
+    await open(tester, camera: camera, pipeline: pipeline);
     await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 15), triggered: true);
     await tester.pump();
     await tester.tapAt(const Offset(206, 400));
     await tester.pump();
@@ -316,7 +340,27 @@ void main() {
 
     await tester.tap(find.text('Sim, descartar'));
     await tester.pumpAndSettle();
+    expect(camera.deletedClips, ['/highlights/1.mp4']);
     expect(find.text('Apoie o celular e enquadre o campo'), findsOneWidget);
+  });
+
+  testWidgets('sem microfone, avisa uma vez que os highlights saem sem som (R17)', (tester) async {
+    final camera = _FakeCamera(withSound: false);
+    await open(tester, camera: camera);
+    expect(find.text('Sem microfone · os highlights saem sem som'), findsOneWidget);
+
+    await tester.tap(find.text(r'Iniciar detecção de gesto \ o /'));
+    await tester.pump();
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Voltar à câmera'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Sem microfone · os highlights saem sem som'), findsNothing);
   });
 
   testWidgets('confirmação: adicionar amigo aos participantes', (tester) async {

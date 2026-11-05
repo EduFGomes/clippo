@@ -21,6 +21,11 @@ import 'package:clippo/core/widgets/clippo_screen_title.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 
+/// 🟡 TEMPORÁRIO (FASE DE TESTES): copia cada highlight salvo na Gravação para a galeria do celular
+/// (álbum Clippo), para assistir aos vídeos enquanto o Player real e o upload (R13) não estão ligados.
+/// Para desligar sem mexer no código: `--dart-define=COPY_TO_GALLERY=false`.
+const bool copyCapturedHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', defaultValue: true);
+
 /// Amigo disponível nos chips de participantes da sessão ("Com `firstName`").
 /// 🟡 Provisório até existir o repositório de amigos em `core/data/`.
 class CaptureFriend {
@@ -49,6 +54,7 @@ class CaptureScreen extends StatefulWidget {
     super.key,
     this.friends = const [],
     this.camera = const ClippoCamera(),
+    this.highlightLength = HighlightLength.standard,
     this.pipeline,
     this.preview,
     this.onSaved,
@@ -57,6 +63,9 @@ class CaptureScreen extends StatefulWidget {
 
   final List<CaptureFriend> friends;
   final ClippoCamera camera;
+
+  /// Duração do trecho salvo a cada gesto (R1: 15, 30, 45 ou 60 s; padrão 30 s).
+  final Duration highlightLength;
 
   /// Injetado nos testes para simular disparos do gesto sem câmera física.
   final GesturePipeline? pipeline;
@@ -80,6 +89,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   _CameraState _camera = _CameraState.checking;
   String? _error;
+  bool _withSound = true;
+  bool _micWarned = false;
 
   CaptureStep _step = CaptureStep.preparing;
 
@@ -177,8 +188,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _subscription?.cancel();
     _subscription = _pipeline.watch(widget.camera.poses).listen(_onObservation, onError: _fail);
     try {
-      await widget.camera.start(multiPerson: true);
-      if (mounted) setState(() => _camera = _CameraState.running);
+      final withSound = await widget.camera.start(multiPerson: true);
+      if (mounted) {
+        setState(() {
+          _camera = _CameraState.running;
+          _withSound = withSound;
+        });
+      }
     } catch (e) {
       _fail(e);
     }
@@ -204,6 +220,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStartTime = DateTime.now();
       _recordingStart = null;
       _showControls = false;
+      _micWarned = true;
     });
   }
 
@@ -217,8 +234,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// Exibe o aviso imediatamente e delega o corte do MP4 em segundo plano para não bloquear a análise.
   void _onGesture({required Duration until, required Duration offset}) {
     _showToast(error: null);
-    widget.camera.saveHighlight(until: until).then((clip) {
+    widget.camera.saveHighlight(until: until, length: widget.highlightLength).then((clip) {
+      // Avisa quem está longe na quadra (bip + flash da lanterna) depois que o MP4 foi salvo (R2).
+      widget.camera.signalSaved().catchError((Object _) {});
       _highlights.add(CapturedHighlight(clip: clip, offset: offset));
+      // 🟡 TEMPORÁRIO (FASE DE TESTES): copia o MP4 para a galeria do celular depois de salvar (R2).
+      // Remover quando o Player reproduzir o arquivo/URL real e o envio para o Storage (R13) estiver ativo.
+      if (copyCapturedHighlightsToGallery) {
+        widget.camera.copyToGallery(clip).catchError((Object _) {});
+      }
     }).catchError((Object e) {
       if (mounted) _showToast(error: e is CameraFailure ? e.message : 'Não foi possível salvar o lance.');
     });
@@ -307,6 +331,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (!mounted) return;
     if (confirmed) {
       _toastTimer?.cancel();
+      _discardHighlights();
       setState(() {
         _step = CaptureStep.preparing;
         _showControls = false;
@@ -377,6 +402,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
   }
 
+  void _discardHighlights() {
+    for (final h in _highlights) {
+      widget.camera.deleteHighlight(h.clip).catchError((Object _) {});
+    }
+    _highlights.clear();
+  }
+
   void _backToCamera() {
     _startCamera();
     setState(() => _step = CaptureStep.preparing);
@@ -390,7 +422,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       cancelLabel: 'Voltar',
     );
     if (!mounted || !confirmed) return;
-    _highlights.clear();
+    _discardHighlights();
     _startCamera();
     setState(() => _step = CaptureStep.preparing);
   }
@@ -564,6 +596,25 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ],
                 ),
               ),
+              if (!_withSound && !_micWarned)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceS, ClippoSpace.gutter, 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ClippoSpace.spaceL,
+                      vertical: ClippoSpace.spaceS,
+                    ),
+                    decoration: BoxDecoration(
+                      color: ClippoBrand.captureOverlay,
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                    ),
+                    child: Text(
+                      'Sem microfone · os highlights saem sem som',
+                      style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
               const Spacer(),
               Container(
                 color: ClippoBrand.captureOverlay,
@@ -629,7 +680,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
               child: saved
                   ? ClippoCaptureToast(
                       title: _saveError ?? 'Highlight salvo',
-                      detail: _saveError == null ? 'últimos 30s · gesto \\ o / detectado' : null,
+                      detail: _saveError == null
+                          ? 'últimos ${widget.highlightLength.inSeconds}s · gesto \\ o / detectado'
+                          : null,
                       success: _saveError == null,
                     )
                   : const ClippoPulseDot(),

@@ -176,10 +176,6 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
             "start" -> start(manyPeople = call.argument<Boolean>("multiPerson") ?: false, result)
-                accurate = call.argument<Boolean>("accurate") ?: false,
-                manyPeople = call.argument<Boolean>("multiPerson") ?: false,
-                result,
-            )
             "saveHighlight" -> {
                 // Number, e não Long: o Flutter manda um int pequeno como Int e um grande como Long.
                 val untilMicros = call.argument<Number>("untilMicros")?.toLong()
