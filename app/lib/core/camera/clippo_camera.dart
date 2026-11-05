@@ -76,13 +76,13 @@ class ClippoCamera {
   Future<bool> requestMicrophonePermission() =>
       _call<bool>('requestMicrophonePermission').then((granted) => granted ?? false);
 
-  /// Liga a câmera traseira e a análise. [accurate] escolhe o modelo mais preciso do ML Kit
-  /// (🟡 os dois existem até a medição a 8 m decidir). [multiPerson] acha cada pessoa do quadro
+  /// Liga a câmera traseira e a análise (modelo padrão `base` do ML Kit).
+  /// [multiPerson] acha cada pessoa do quadro
   /// com um detector antes do ML Kit (o modo escolhido); sem ele, o ML Kit segue uma pessoa só.
   ///
   /// Devolve se o buffer está gravando o som (o microfone liberado e aberto).
-  Future<bool> start({bool accurate = false, bool multiPerson = false}) async {
-    final data = await _call<Map<Object?, Object?>>('start', {'accurate': accurate, 'multiPerson': multiPerson});
+  Future<bool> start({bool multiPerson = false}) async {
+    final data = await _call<Map<Object?, Object?>>('start', {'multiPerson': multiPerson});
     return data?['withSound'] as bool? ?? false;
   }
 

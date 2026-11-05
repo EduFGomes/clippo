@@ -134,11 +134,11 @@ void main() {
 
       expect(await camera.hasPermission(), isTrue);
       expect(await camera.requestPermission(), isTrue);
-      await camera.start(accurate: true);
+      await camera.start(multiPerson: true);
       await camera.stop();
 
       expect(calls.map((c) => c.method), ['hasPermission', 'requestPermission', 'start', 'stop']);
-      expect(calls[2].arguments, {'accurate': true, 'multiPerson': false});
+      expect(calls[2].arguments, {'multiPerson': true});
     });
 
     test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {

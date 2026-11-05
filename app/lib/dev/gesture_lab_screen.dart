@@ -39,7 +39,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
 
   _CameraState _state = _CameraState.checking;
   String? _error;
-  bool _accurate = false;
   bool _restarting = false;
   // O que a Gravação vai deixar o usuário escolher: a duração do highlight (R1) e os avisos de
   // highlight salvo, cada um com liga/desliga (padrão: bip e flash ligados; vibração desligada).
@@ -118,7 +117,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     _pipeline.reset();
     _subscription = widget.camera.poses.listen((frame) => _onObservation(_pipeline.observe(frame)), onError: _fail);
     try {
-      final withSound = await widget.camera.start(accurate: _accurate, multiPerson: true);
+      final withSound = await widget.camera.start(multiPerson: true);
       final microphoneAllowed = await widget.camera.hasMicrophonePermission();
       if (mounted) {
         setState(() {
@@ -146,9 +145,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
       _fail(e);
     }
   }
-
-  /// Trocar de modelo exige recriar o detector no Kotlin: desliga e liga de novo.
-  Future<void> _toggleModel() => _restart(() => _accurate = !_accurate);
 
 
   /// Enquanto a câmera religa, novos toques são ignorados: dois religamentos ao mesmo tempo
@@ -374,7 +370,7 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   // O detector leva uns segundos para abrir; até lá, os quadros vêm do modo de uma pessoa.
                   '${last?.frame.detectTime == null ? 'Abrindo o detector de pessoas (alguns segundos)…\n' : ''}'
                   '${last == null ? '' : '${_peopleText(last)}\n'}'
-                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'} · '
+                  'Disparos: $_triggers · modelo base · '
                   '${_withSound ? 'gravando com som' : _microphoneAllowed ? 'sem som (o microfone não abriu)' : 'sem som (microfone não liberado)'}'
                   '${_lastSave == null ? '' : '\nÚltimo salvamento: $_lastSave'}',
                   style: ClippoText.label.copyWith(
@@ -386,10 +382,6 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                 Wrap(
                   spacing: ClippoSpace.gutter,
                   children: [
-                    ClippoTextButton(
-                      label: _accurate ? 'Usar modelo base' : 'Usar modelo accurate',
-                      onPressed: _toggleModel,
-                    ),
                     ClippoTextButton(
                       label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
                       onPressed: () => setState(() => _showLimits = !_showLimits),

@@ -23,7 +23,6 @@ import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
 import com.google.mlkit.vision.pose.PoseLandmark
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import java.io.Closeable
 import java.util.concurrent.ExecutorService
@@ -66,7 +65,7 @@ import kotlin.math.roundToInt
  * descarta os quadros que chegarem (KEEP_ONLY_LATEST). O custo cresce com o número de pessoas: uma
  * leitura de pose por pessoa. O detector, na thread dele, não entra nessa conta.
  */
-class MultiPersonAnalyzer(private val context: Context, private val accurate: Boolean) : Closeable {
+class MultiPersonAnalyzer(private val context: Context) : Closeable {
 
     companion object {
         private const val MODEL = "efficientdet_lite0.tflite"
@@ -170,11 +169,7 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
     )
 
     private fun takePoses(): PoseDetector = idlePoses.removeFirstOrNull() ?: PoseDetection.getClient(
-        if (accurate) {
-            AccuratePoseDetectorOptions.Builder().setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE).build()
-        } else {
-            PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
-        }
+        PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
     )
 
     /**

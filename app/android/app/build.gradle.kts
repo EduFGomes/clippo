@@ -83,11 +83,9 @@ dependencies {
 
     // Pontos do corpo (ML Kit Pose, BlazePose com 33 pontos), com o modelo embutido no app para
     // funcionar sem internet (R8). O Google só publica versões beta desde a 17.0.0, de 2020.
-    // 🟡 Os dois modelos ficam até a medição a 8 m decidir qual usar: o "accurate" é mais
-    // preciso e mais pesado.
+    // modelo base (pose-detection) escolhido por ser mais leve e rápido no modo várias pessoas.
     val mlKitPose = "18.0.0-beta5"
     implementation("com.google.mlkit:pose-detection:$mlKitPose")
-    implementation("com.google.mlkit:pose-detection-accurate:$mlKitPose")
 
     // Detector de pessoas (MediaPipe Tasks, Apache 2.0) para o modo várias pessoas: acha cada
     // pessoa no quadro e um ML Kit para cada uma lê a pose do recorte dela. Modo escolhido

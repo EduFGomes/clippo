@@ -32,7 +32,6 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.BinaryMessenger
@@ -176,7 +175,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
-            "start" -> start(
+            "start" -> start(manyPeople = call.argument<Boolean>("multiPerson") ?: false, result)
                 accurate = call.argument<Boolean>("accurate") ?: false,
                 manyPeople = call.argument<Boolean>("multiPerson") ?: false,
                 result,
@@ -254,7 +253,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         return true
     }
 
-    private fun start(accurate: Boolean, manyPeople: Boolean, result: MethodChannel.Result) {
+    private fun start(manyPeople: Boolean, result: MethodChannel.Result) {
         if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
 
         // Ligar de novo sem desligar (ex.: dois toques seguidos em um botão do laboratório): desliga
@@ -268,11 +267,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         // de várias pessoas terminar de abrir.
         detector?.close()
         detector = PoseDetection.getClient(
-            if (accurate) {
-                AccuratePoseDetectorOptions.Builder().setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE).build()
-            } else {
-                PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
-            }
+            PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
         )
         if (manyPeople) {
             // Abrir o detector (na GPU, compilar os shaders) leva segundos: fora da thread da tela,
@@ -281,7 +276,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             analysisExecutor.execute {
                 val startedAt = SystemClock.elapsedRealtime()
                 try {
-                    val created = MultiPersonAnalyzer(activity, accurate)
+                    val created = MultiPersonAnalyzer(activity)
                     Log.d("ClippoMulti", "detector aberto em ${SystemClock.elapsedRealtime() - startedAt} ms, GPU=${created.onGpu}")
                     if (generation == myGeneration) {
                         multiPerson = created
