@@ -2,9 +2,14 @@ package com.clippoapp.clippo.camera
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Region
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
@@ -17,7 +22,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
+import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import java.io.Closeable
 import java.util.concurrent.ExecutorService
@@ -35,6 +40,12 @@ import kotlin.math.roundToInt
  * 3. a cada quadro, cada ML Kit lê os 33 pontos do seu recorte, e os pontos voltam para as
  *    coordenadas da imagem inteira.
  *
+ * O ML Kit lê UMA pessoa por imagem, a mais visível. Com duas pessoas lado a lado, o recorte
+ * quadrado de uma inclui a outra, e o ML Kit dela passava a seguir a vizinha (dois esqueletos na
+ * mesma pessoa, e o gesto de um atribuído ao outro; teste de 29/10/2026). Por isso, antes da
+ * leitura, as caixas das outras pessoas são pintadas de cinza no recorte ([hideOthers]), e uma
+ * pose cujos ombros caem fora da caixa da pessoa é descartada ([belongsTo]).
+ *
  * Por que um ML Kit por pessoa: no modo stream o ML Kit procura a pessoa uma vez e depois só segue
  * a região do quadro anterior, o que é rápido e estável, mas ele fica preso a UMA pessoa. Dando a
  * cada pessoa o seu, com o seu recorte, cada um segue a sua. (Um ML Kit só, no modo de imagem
@@ -44,11 +55,17 @@ import kotlin.math.roundToInt
  * A imagem nunca é girada inteira: o detector recebe uma cópia em pé e com metade do tamanho (ele
  * reduz para 320×320 de qualquer jeito), e cada recorte é girado sozinho, já pequeno.
  *
+ * "Em pé" é o do celular (a tela fica sempre em pé). Com o celular deitado no tripé, as pessoas
+ * aparecem deitadas nessa imagem, e o detector, treinado com gente em pé, acha pior gente deitada.
+ * Por isso a cópia do detector é girada também pela posição do celular (as pessoas ficam em pé
+ * nela) e as caixas voltam para a imagem em pé do celular. O ML Kit lê o recorte sem esse giro:
+ * ele estima a inclinação do corpo sozinho (no teste no corredor de 27/10/2026 leu gente deitada).
+ *
  * [analyze] roda na thread da análise e bloqueia até a pose terminar: enquanto isso, o CameraX
  * descarta os quadros que chegarem (KEEP_ONLY_LATEST). O custo cresce com o número de pessoas: uma
  * leitura de pose por pessoa. O detector, na thread dele, não entra nessa conta.
  */
-class MultiPersonAnalyzer(private val context: Context, private val accurate: Boolean) : Closeable {
+class MultiPersonAnalyzer(private val context: Context) : Closeable {
 
     companion object {
         private const val MODEL = "efficientdet_lite0.tflite"
@@ -77,6 +94,19 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
         // O recorte é refeito quando a caixa da pessoa passa a ocupar menos que isso dele (ela
         // andou para a beira ou mudou de tamanho). Refazer à toa faz o ML Kit perder a região.
         private const val KEEP_CROP = 0.8f
+
+        // ...e também quando ficou grande ou pequeno demais para a pessoa, ou com ela fora do
+        // centro (ex.: o recorte de quando ela estava de braços levantados). No teste de 29/10/2026,
+        // recortes assim deixaram metade das leituras sem pose; centrados, nenhuma.
+        private const val CROP_SIZE_SLACK = 1.3f
+        private const val CROP_CENTER_SLACK = 0.15f
+
+        // Leituras seguidas sem pose (ou com a pose fora da caixa) até o recorte ser refeito.
+        private const val MISSES_BEFORE_RECROP = 3
+
+        // Se a GPU falhar uma vez neste aparelho (no S24 dá GL_INVALID_VALUE), as próximas aberturas
+        // da câmera vão direto para o processador em vez de gastar ~6 s compilando shaders de novo.
+        @Volatile private var gpuWorks = true
     }
 
     class Person(val box: RectF, val points: DoubleArray?)
@@ -85,7 +115,9 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
     class Result(val people: List<Person>, val detectMs: Long, val poseMs: Long)
 
     /** Uma pessoa acompanhada: a última caixa do detector, o recorte e o ML Kit dela. */
-    private class Track(var box: RectF, var crop: Rect, val poses: PoseDetector)
+    private class Track(var box: RectF, var crop: Rect, val poses: PoseDetector) {
+        var misses = 0
+    }
 
     /**
      * Se o detector roda na placa de vídeo. Começa tentando a GPU; se ela não abrir ou falhar no
@@ -103,12 +135,24 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
     private val ready = AtomicReference<Pair<List<RectF>, Long>?>(null)
 
     private var detector: ObjectDetector = try {
-        createDetector(Delegate.GPU).also { onGpu = true }
+        if (gpuWorks) createDetector(Delegate.GPU).also { onGpu = true } else createDetector(Delegate.CPU)
     } catch (e: Exception) {
+        gpuWorks = false
         createDetector(Delegate.CPU)
     }
 
     private val tracks = mutableListOf<Track>()
+
+    // Diagnóstico (log ClippoMulti, uma linha por segundo): por que uma pessoa ficou sem pose.
+    private var statsSince = SystemClock.elapsedRealtime()
+    private var statsReads = 0
+    private var statsEmpty = 0
+    private var statsOutside = 0
+    private var statsMasked = 0
+    private var statsRecrops = 0
+
+    // O cinza que cobre as outras pessoas no recorte: liso, para o ML Kit não achar nada ali.
+    private val hidePaint = Paint().apply { color = Color.rgb(128, 128, 128) }
 
     // ML Kits de quem saiu do quadro, para reaproveitar: abrir um novo carrega o modelo de novo.
     private val idlePoses = ArrayDeque<PoseDetector>()
@@ -125,18 +169,16 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
     )
 
     private fun takePoses(): PoseDetector = idlePoses.removeFirstOrNull() ?: PoseDetection.getClient(
-        if (accurate) {
-            AccuratePoseDetectorOptions.Builder().setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE).build()
-        } else {
-            PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
-        }
+        PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.STREAM_MODE).build()
     )
 
     /**
      * [raw] é o quadro como veio do sensor (deitado); [rotation] é quanto girar para ficar em pé.
-     * Pontos e caixas voltam no referencial da imagem em pé.
+     * [deviceRotation] é a posição do celular (0, 90, 180 ou 270, no sentido horário): quanto
+     * girar a imagem em pé para as pessoas ficarem em pé. Pontos e caixas voltam no referencial
+     * da imagem em pé do celular.
      */
-    fun analyze(raw: Bitmap, rotation: Int): Result {
+    fun analyze(raw: Bitmap, rotation: Int, deviceRotation: Int): Result {
         val toUpright = uprightMatrix(raw, rotation)
         val width = if (rotation % 180 == 0) raw.width else raw.height
         val height = if (rotation % 180 == 0) raw.height else raw.width
@@ -147,14 +189,45 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
             updateTracks(boxes, width, height)
             detectMs = ms
         }
-        if (!detecting && !closed) startDetect(raw, rotation)
+        if (!detecting && !closed) startDetect(raw, rotation, deviceRotation)
 
         val poseStart = SystemClock.elapsedRealtime()
         val toRaw = Matrix().also { toUpright.invert(it) }
         val people = tracks.map { track ->
             val c = track.crop
-            val pose = Tasks.await(track.poses.process(InputImage.fromBitmap(cropUpright(raw, rotation, toRaw, c), 0)))
-            Person(track.box, pose.toPoints(c.left.toDouble(), c.top.toDouble()))
+            val cropped = cropUpright(raw, rotation, toRaw, c)
+            val image = hideOthers(cropped, c, track)
+            val pose = Tasks.await(track.poses.process(InputImage.fromBitmap(image, 0)))
+            val found = pose.toPoints(c.left.toDouble(), c.top.toDouble())
+            val points = found?.takeIf { belongsTo(it, track.box) }
+            statsReads++
+            if (tracks.any { it !== track && RectF.intersects(it.box, RectF(c)) }) statsMasked++
+            if (found == null) statsEmpty++ else if (points == null) statsOutside++
+            // O ML Kit se perdeu nesta pessoa: um recorte novo, centrado nela, faz ele procurar de novo.
+            track.misses = if (points == null) track.misses + 1 else 0
+            if (track.misses >= MISSES_BEFORE_RECROP) {
+                track.crop = cropAround(track.box, width, height)
+                track.misses = 0
+                statsRecrops++
+            }
+            Person(track.box, points)
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (now - statsSince >= 1000) {
+            // Mesmo sem ninguém: "pessoas=0" é o detector não achando ninguém (ex.: celular deitado).
+            Log.d(
+                "ClippoMulti",
+                "celular=$deviceRotation pessoas=${tracks.size} leituras=$statsReads com outras pintadas=$statsMasked " +
+                    "sem pose=$statsEmpty fora da caixa=$statsOutside recortes refeitos=$statsRecrops " +
+                    "recortes=${tracks.joinToString { it.crop.toShortString() }} " +
+                    "caixas=${tracks.joinToString { it.box.toShortString() }}",
+            )
+            statsSince = now
+            statsReads = 0
+            statsEmpty = 0
+            statsOutside = 0
+            statsMasked = 0
+            statsRecrops = 0
         }
         return Result(people, detectMs, SystemClock.elapsedRealtime() - poseStart)
     }
@@ -179,24 +252,66 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
         return Bitmap.createBitmap(raw, left, top, right - left, bottom - top, turn, false)
     }
 
-    /** Uma detecção na thread do detector, com uma cópia pequena e em pé do quadro. */
-    private fun startDetect(raw: Bitmap, rotation: Int) {
+    /**
+     * Pinta de cinza, no recorte de [track], as caixas das outras pessoas, menos o pedaço que cai
+     * dentro da caixa dele (se uma pessoa está na frente da outra, a de trás não perde o corpo).
+     * [image] é o recorte em pé, com a origem em ([crop].left, [crop].top) da imagem inteira.
+     */
+    private fun hideOthers(image: Bitmap, crop: Rect, track: Track): Bitmap {
+        val area = RectF(crop)
+        val others = tracks.filter { it !== track && RectF.intersects(it.box, area) }
+        if (others.isEmpty()) return image
+        val target = if (image.isMutable) image else image.copy(Bitmap.Config.ARGB_8888, true)
+        Canvas(target).apply {
+            translate(-crop.left.toFloat(), -crop.top.toFloat())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                clipOutRect(track.box)
+            } else {
+                @Suppress("DEPRECATION") // clipOutRect só existe a partir do Android 8
+                clipRect(track.box, Region.Op.DIFFERENCE)
+            }
+            for (other in others) drawRect(other.box, hidePaint)
+        }
+        return target
+    }
+
+    /** Se a pose é mesmo de quem está em [box]: o meio dos ombros tem que cair dentro da caixa. */
+    private fun belongsTo(points: DoubleArray, box: RectF): Boolean {
+        val n = ClippoCameraSession.VALUES_PER_LANDMARK
+        val left = PoseLandmark.LEFT_SHOULDER * n
+        val right = PoseLandmark.RIGHT_SHOULDER * n
+        val x = (points[left] + points[right]) / 2
+        val y = (points[left + 1] + points[right + 1]) / 2
+        return box.contains(x.toFloat(), y.toFloat())
+    }
+
+    /**
+     * Uma detecção na thread do detector, com uma cópia pequena do quadro com as pessoas em pé
+     * (girada por [rotation] e pela posição do celular, [deviceRotation]).
+     */
+    private fun startDetect(raw: Bitmap, rotation: Int, deviceRotation: Int) {
+        val turn = (rotation + deviceRotation) % 360
         val small = Bitmap.createBitmap(
             raw, 0, 0, raw.width, raw.height,
             Matrix().apply {
-                postRotate(rotation.toFloat())
+                postRotate(turn.toFloat())
                 postScale(DETECT_SCALE, DETECT_SCALE)
             },
             true,
         )
+        // Da cópia do detector para a imagem em pé do celular: desfaz a redução e o giro (de volta
+        // ao sensor) e gira só por [rotation]. Com o celular em pé, é só desfazer a redução.
+        val toUpright = Matrix().apply {
+            uprightMatrix(raw, turn).invert(this)
+            postConcat(uprightMatrix(raw, rotation))
+            preScale(1 / DETECT_SCALE, 1 / DETECT_SCALE)
+        }
         detecting = true
         detectorThread.execute {
             try {
                 if (closed) return@execute
                 val startedAt = SystemClock.elapsedRealtime()
-                val boxes = detect(small).map { box ->
-                    RectF(box.left / DETECT_SCALE, box.top / DETECT_SCALE, box.right / DETECT_SCALE, box.bottom / DETECT_SCALE)
-                }
+                val boxes = detect(small).map { box -> RectF(box).also { toUpright.mapRect(it) } }
                 ready.set(boxes to SystemClock.elapsedRealtime() - startedAt)
             } catch (e: Exception) {
                 Log.e("ClippoMulti", "detector falhou", e)
@@ -215,7 +330,8 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
             if (match != null) {
                 left.remove(match)
                 match.box = box
-                if (coverage(box, match.crop) < KEEP_CROP) match.crop = cropAround(box, width, height)
+                val ideal = cropAround(box, width, height)
+                if (coverage(box, match.crop) < KEEP_CROP || !fits(match.crop, ideal)) match.crop = ideal
                 kept += match
             } else {
                 kept += Track(box, cropAround(box, width, height), takePoses())
@@ -245,6 +361,7 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
         } catch (e: Exception) {
             if (!onGpu) throw e
             Log.w("ClippoMulti", "detector falhou na GPU, passando para o processador", e)
+            gpuWorks = false
             closeQuietly(detector)
             detector = createDetector(Delegate.CPU)
             onGpu = false
@@ -274,6 +391,16 @@ class MultiPersonAnalyzer(private val context: Context, private val accurate: Bo
         val shared = intersection(a, b)
         val union = area(a) + area(b) - shared
         return if (union > 0) shared / union else 0f
+    }
+
+    /** Se o recorte atual ainda serve: tamanho e centro perto dos do recorte [ideal] para a caixa de agora. */
+    private fun fits(crop: Rect, ideal: Rect): Boolean {
+        val ratio = crop.width().toFloat() * crop.height() / (ideal.width().toFloat() * ideal.height())
+        val side = maxOf(ideal.width(), ideal.height())
+        val dx = kotlin.math.abs(crop.exactCenterX() - ideal.exactCenterX())
+        val dy = kotlin.math.abs(crop.exactCenterY() - ideal.exactCenterY())
+        return ratio in (1 / CROP_SIZE_SLACK)..CROP_SIZE_SLACK &&
+            dx <= side * CROP_CENTER_SLACK && dy <= side * CROP_CENTER_SLACK
     }
 
     /** Quanto de [box] cabe dentro de [crop]. */

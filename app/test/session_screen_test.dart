@@ -174,7 +174,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Salvar alterações'));
     await tester.pump();
-    expect(find.text('Informe o nome da sessão.'), findsOneWidget);
+    expect(find.text('Dê um nome para a sessão.'), findsOneWidget);
 
     // Nome e local válidos atualizam a tela da sessão.
     await tester.ensureVisible(find.byType(TextField).first);

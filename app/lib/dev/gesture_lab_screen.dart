@@ -39,9 +39,19 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
 
   _CameraState _state = _CameraState.checking;
   String? _error;
-  bool _accurate = false;
   bool _restarting = false;
+  // O que a Gravação vai deixar o usuário escolher: a duração do highlight (R1) e os avisos de
+  // highlight salvo, cada um com liga/desliga (padrão: bip e flash ligados; vibração desligada).
+  Duration _length = HighlightLength.standard;
+  bool _sound = true;
+  bool _flash = true;
+  bool _vibration = false;
+  // Se o buffer está gravando o som, e se o microfone foi liberado (opcional).
+  bool _withSound = false;
+  bool _microphoneAllowed = true;
   bool _showLimits = false;
+  // Os controles da gravação ficam escondidos: abertos, cobririam a câmera e os esqueletos.
+  bool _showRecording = false;
 
   GestureObservation? _last;
   PoseMeasurement? _measurement;
@@ -107,15 +117,34 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     _pipeline.reset();
     _subscription = widget.camera.poses.listen((frame) => _onObservation(_pipeline.observe(frame)), onError: _fail);
     try {
-      await widget.camera.start(accurate: _accurate, multiPerson: true);
-      if (mounted) setState(() => _state = _CameraState.running);
+      final withSound = await widget.camera.start(multiPerson: true);
+      final microphoneAllowed = await widget.camera.hasMicrophonePermission();
+      if (mounted) {
+        setState(() {
+          _state = _CameraState.running;
+          _withSound = withSound;
+          _microphoneAllowed = microphoneAllowed;
+        });
+      }
     } catch (e) {
       _fail(e);
     }
   }
 
-  /// Trocar de modelo exige recriar o detector no Kotlin: desliga e liga de novo.
-  Future<void> _toggleModel() => _restart(() => _accurate = !_accurate);
+  /// Próxima duração da lista (15 → 30 → 45 → 60 → 15 s). Vale no próximo disparo.
+  void _nextLength() {
+    final options = HighlightLength.options;
+    setState(() => _length = options[(options.indexOf(_length) + 1) % options.length]);
+  }
+
+  /// O microfone só entra quando a câmera liga: liberou, religa.
+  Future<void> _requestMicrophone() async {
+    try {
+      if (await widget.camera.requestMicrophonePermission()) await _restart(() {});
+    } catch (e) {
+      _fail(e);
+    }
+  }
 
 
   /// Enquanto a câmera religa, novos toques são ignorados: dois religamentos ao mesmo tempo
@@ -202,13 +231,18 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
     final clock = Stopwatch()..start();
     String result;
     try {
-      final clip = await widget.camera.saveHighlight(until: until);
-      result = 'Salvo em ${clock.elapsedMilliseconds} ms: ${clip.duration.inSeconds} s em ${clip.path}';
+      final clip = await widget.camera.saveHighlight(until: until, length: _length);
+      result = 'Salvo em ${clock.elapsedMilliseconds} ms: ${clip.duration.inSeconds} s '
+          '${clip.withSound ? 'com' : 'sem'} som · ${clip.path.split('/').last}';
+      // Depois de salvo, e sem esperar: o aviso não entra no tempo do R2.
+      widget.camera
+          .signalSaved(sound: _sound, flash: _flash, vibration: _vibration)
+          .catchError((Object e) => debugPrint('LAB aviso de salvo falhou: $e'));
       // Depois de medir: a cópia para a galeria não entra no tempo do R2.
       if (copyHighlightsToGallery) {
         try {
           await widget.camera.copyToGallery(clip);
-          result += ' · na galeria (álbum Clippo)';
+          result += ' · na galeria';
         } on CameraFailure catch (e) {
           result += ' · ${e.message}';
         }
@@ -336,7 +370,8 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   // O detector leva uns segundos para abrir; até lá, os quadros vêm do modo de uma pessoa.
                   '${last?.frame.detectTime == null ? 'Abrindo o detector de pessoas (alguns segundos)…\n' : ''}'
                   '${last == null ? '' : '${_peopleText(last)}\n'}'
-                  'Disparos: $_triggers · modelo ${_accurate ? 'accurate' : 'base'}'
+                  'Disparos: $_triggers · modelo base · '
+                  '${_withSound ? 'gravando com som' : _microphoneAllowed ? 'sem som (o microfone não abriu)' : 'sem som (microfone não liberado)'}'
                   '${_lastSave == null ? '' : '\nÚltimo salvamento: $_lastSave'}',
                   style: ClippoText.label.copyWith(
                     color: ClippoBrand.captureTextMuted,
@@ -348,13 +383,30 @@ class _GestureLabScreenState extends State<GestureLabScreen> {
                   spacing: ClippoSpace.gutter,
                   children: [
                     ClippoTextButton(
-                      label: _accurate ? 'Usar modelo base' : 'Usar modelo accurate',
-                      onPressed: _toggleModel,
-                    ),
-                    ClippoTextButton(
                       label: _showLimits ? 'Fechar limites' : 'Ajustar limites',
                       onPressed: () => setState(() => _showLimits = !_showLimits),
                     ),
+                    ClippoTextButton(
+                      label: _showRecording ? 'Fechar gravação' : 'Ajustar gravação',
+                      onPressed: () => setState(() => _showRecording = !_showRecording),
+                    ),
+                    if (_showRecording) ...[
+                      ClippoTextButton(label: 'Duração: ${_length.inSeconds} s', onPressed: _nextLength),
+                      ClippoTextButton(
+                        label: 'Bip: ${_sound ? 'ligado' : 'desligado'}',
+                        onPressed: () => setState(() => _sound = !_sound),
+                      ),
+                      ClippoTextButton(
+                        label: 'Flash: ${_flash ? 'ligado' : 'desligado'}',
+                        onPressed: () => setState(() => _flash = !_flash),
+                      ),
+                      ClippoTextButton(
+                        label: 'Vibração: ${_vibration ? 'ligada' : 'desligada'}',
+                        onPressed: () => setState(() => _vibration = !_vibration),
+                      ),
+                    ],
+                    if (!_microphoneAllowed)
+                      ClippoTextButton(label: 'Permitir microfone', onPressed: _requestMicrophone),
                   ],
                 ),
               ],

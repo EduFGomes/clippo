@@ -2,86 +2,82 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/validation/input_validation.dart';
 
-// Estas regras precisam bater com backend/functions/src/users/validation.ts.
-// Mudou um caso aqui? Mude no backend/functions/test/validation.test.ts.
+// Os mesmos casos de backend/functions/test/validation.test.ts e sessions.validation.test.ts:
+// as duas regras precisam concordar (regra 0 do AGENTS.md).
 void main() {
   group('e-mail', () {
-    test('aceita e normaliza um e-mail comum', () {
-      expect(normalizeEmail('  Nome.Sobrenome+1@Aluno.Br '), 'nome.sobrenome+1@aluno.br');
-      expect(validateEmail('  Nome.Sobrenome+1@Aluno.Br '), isNull);
+    test('normaliza espaços e maiúsculas', () {
+      expect(normalizeEmail('  Voce@Email.com '), 'voce@email.com');
+      expect(validateEmail('  Voce@Email.com '), isNull);
     });
 
-    test('recusa vazio, sem domínio completo e pontos fora do lugar', () {
-      for (final bad in [
-        '',
-        '   ',
-        'sem-arroba',
-        'nome@',
-        '@dominio.com',
-        'nome@g', // o Auth aceita; a nossa regra não
-        'nome@dominio',
-        'nome@dominio.c',
-        'nome@.dominio.com',
-        'nome@dominio..com',
-        '.nome@dominio.com',
-        'nome.@dominio.com',
-        'no..me@dominio.com',
-        'nome cognome@dominio.com',
-      ]) {
-        expect(validateEmail(bad), isNotNull, reason: 'deveria recusar "$bad"');
-      }
-    });
+    for (final ok in ['rafa+jogo@gmail.com', 'a.b_c@sub.dominio.com.br', 'x@y.io']) {
+      test('aceita $ok', () => expect(validateEmail(ok), isNull));
+    }
+
+    for (final bad in [
+      '',
+      '   ',
+      'capovill@g',
+      'sem-arroba.com',
+      'nome@dominio',
+      'nome@dominio.c',
+      'nome @dominio.com',
+      '.nome@dominio.com',
+      'nome.@dominio.com',
+      'no..me@dominio.com',
+      'nome@-dominio.com',
+      'nome@dominio..com',
+      'nome@dominio.c0m',
+      '${'a' * 65}@dominio.com',
+      'nome@${'a' * 250}.com',
+    ]) {
+      test('recusa "$bad"', () => expect(validateEmail(bad), isNotNull));
+    }
   });
 
   group('senha', () {
-    test('nova senha: mínimo de 6 caracteres', () {
-      expect(validateNewPassword(''), 'Informe a senha.');
-      expect(validateNewPassword('12345'), 'Use uma senha com pelo menos 6 caracteres.');
-      expect(validateNewPassword('123456'), isNull);
+    test('nova senha: 6 a 128 caracteres', () {
+      expect(validateNewPassword(''), isNotNull);
+      expect(validateNewPassword('abc12'), isNotNull);
+      expect(validateNewPassword('abc123'), isNull);
       expect(validateNewPassword('a' * 129), isNotNull);
     });
 
-    test('confirmação precisa bater com a senha', () {
-      expect(validatePasswordConfirmation('123456', ''), 'Repita a senha.');
-      expect(validatePasswordConfirmation('123456', '123457'), 'As senhas não são iguais.');
-      expect(validatePasswordConfirmation('123456', '123456'), isNull);
+    test('confirmação precisa ser igual', () {
+      expect(validatePasswordConfirmation('abc123', ''), isNotNull);
+      expect(validatePasswordConfirmation('abc123', 'abc124'), isNotNull);
+      expect(validatePasswordConfirmation('abc123', 'abc123'), isNull);
+    });
+
+    test('ao entrar, só precisa estar preenchida', () {
+      expect(validateExistingPassword(''), isNotNull);
+      expect(validateExistingPassword('x'), isNull);
     });
   });
 
   group('nome', () {
-    test('junta espaços repetidos e recusa vazio ou longo demais', () {
-      expect(normalizeName('  Maria   Clara '), 'Maria Clara');
-      expect(validateName('  Maria   Clara '), isNull);
-      expect(validateName('   '), 'Informe seu nome.');
+    test('junta espaços repetidos', () => expect(normalizeName('  Rafael   Silva '), 'Rafael Silva'));
+    test('recusa vazio ou longo demais', () {
+      expect(validateName('   '), isNotNull);
       expect(validateName('a' * 51), isNotNull);
+      expect(validateName('Rafael Silva'), isNull);
     });
   });
 
   group('nome de usuário', () {
-    test('tira o @ da frente, põe em minúsculas e aceita pontos e _ no meio', () {
-      expect(normalizeUsername(' @Rafa.Costa_9 '), 'rafa.costa_9');
-      expect(validateUsername(' @Rafa.Costa_9 '), isNull);
+    test('tira o @, espaços e deixa minúsculo', () {
+      expect(normalizeUsername('  @Rafa_10 '), 'rafa_10');
+      expect(validateUsername('  @Rafa_10 '), isNull);
     });
-
-    test('recusa curto, longo, com caracteres fora da regra ou ponto nas pontas', () {
-      for (final bad in [
-        '',
-        'ab',
-        'a' * 21,
-        'rafa costa',
-        'rafa-costa',
-        'josé',
-        '.rafa',
-        'rafa.',
-        'ra..fa',
-      ]) {
-        expect(validateUsername(bad), isNotNull, reason: 'deveria recusar "$bad"');
-      }
-    });
+    test('aceita ponto no meio', () => expect(validateUsername('rafa.silva'), isNull));
+    for (final bad in ['', 'ra', 'a' * 21, 'rafa silva', 'rafá', '.rafa', 'rafa.', 'ra..fa']) {
+      test('recusa "$bad"', () => expect(validateUsername(bad), isNotNull));
+    }
   });
 
   group('data de nascimento', () {
-    final today = DateTime(2026, 4, 20);
+    final today = DateTime(2026, 10, 13);
     test('aceita uma data válida no passado', () {
       expect(validateBirthDate(DateTime(2001, 2, 28), today: today), isNull);
       expect(validateBirthDate(today, today: today), isNull);
@@ -93,21 +89,165 @@ void main() {
     });
   });
 
-  group('sessão', () {
-    test('nome da sessão: junta espaços e recusa vazio ou longo demais', () {
-      expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
-      expect(validateSessionName('Pelada de quinta'), isNull);
-      expect(validateSessionName('   '), 'Informe o nome da sessão.');
-      expect(validateSessionName('a' * 51), 'O nome da sessão pode ter até 50 caracteres.');
+  // --- Sessão: espelho de backend/functions/test/sessions.validation.test.ts ---
+
+  group('id vindo do aparelho', () {
+    test('aceita o que o app gera', () {
+      expect(validateEntityId('sessao_2026-10-29_AbC123'), isNull);
+      expect(validateEntityId('lance-0001'), isNull);
     });
 
-    test('local da sessão: aceita vazio, junta espaços e recusa longo demais', () {
-      expect(normalizeSessionLocation('  Arena   Society '), 'Arena Society');
-      expect(validateSessionLocation(''), isNull);
-      expect(validateSessionLocation('Arena Society'), isNull);
-      expect(validateSessionLocation('a' * 81), 'O local pode ter até 80 caracteres.');
+    test('recusa id curto, com espaço, com barra ou longo demais', () {
+      for (final raw in ['', 'abc', 'com espaco', '../outra', 'a' * 65]) {
+        expect(
+          validateEntityId(raw),
+          'Não foi possível salvar a sessão. Tente de novo.',
+        );
+      }
+    });
+  });
+
+  group('nome da sessão', () {
+    test('junta espaços e tira os das pontas', () {
+      expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
+      expect(validateSessionName('  Pelada   de quinta '), isNull);
+    });
+
+    test('recusa vazio e só espaços', () {
+      for (final raw in ['', '   ']) {
+        expect(validateSessionName(raw), 'Dê um nome para a sessão.');
+      }
+    });
+
+    test('recusa acima do limite', () {
+      expect(validateSessionName('a' * sessionNameMax), isNull);
+      expect(
+        validateSessionName('a' * (sessionNameMax + 1)),
+        'O nome da sessão pode ter até $sessionNameMax caracteres.',
+      );
+    });
+  });
+
+  group('local', () {
+    test('é opcional: sem local vira null', () {
+      for (final raw in [null, '', '   ']) {
+        expect(normalizeLocation(raw), isNull);
+        expect(validateLocation(raw), isNull);
+      }
+    });
+
+    test('normaliza e limita', () {
       expect(normalizeLocation('  Quadra   do Parque '), 'Quadra do Parque');
-      expect(validateLocation('a' * (locationMax + 1)), 'O local pode ter até $locationMax caracteres.');
+      expect(validateLocation('a' * (locationMax + 1)),
+          'O local pode ter até $locationMax caracteres.');
+    });
+  });
+
+  group('início e fim da sessão', () {
+    final inicio = DateTime.utc(2026, 10, 29, 22, 30);
+    final fim = DateTime.utc(2026, 10, 30, 0, 12);
+    final agora = DateTime.utc(2026, 10, 30, 1);
+
+    test('aceita um período normal', () {
+      expect(validateSessionPeriod(inicio, fim, now: agora), isNull);
+    });
+
+    test('recusa data faltando', () {
+      expect(validateSessionPeriod(null, fim, now: agora), 'Confira a data e a hora da sessão.');
+      expect(validateSessionPeriod(inicio, null, now: agora), 'Confira a data e a hora da sessão.');
+    });
+
+    test('recusa fim antes ou igual ao início', () {
+      expect(validateSessionPeriod(fim, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+      expect(validateSessionPeriod(inicio, inicio, now: agora),
+          'O fim da sessão precisa vir depois do início.');
+    });
+
+    test('recusa sessão de mais de 12 horas', () {
+      expect(
+        validateSessionPeriod(DateTime.utc(2026, 10, 29), DateTime.utc(2026, 10, 29, 13),
+            now: agora),
+        'Uma sessão pode durar até $sessionMaxHours horas.',
+      );
+    });
+
+    test('recusa fim no futuro, mas tolera 5 min de relógio adiantado', () {
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 2), now: agora),
+          'A sessão não pode terminar no futuro.');
+      expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 1, 4), now: agora), isNull);
+    });
+  });
+
+  group('participantes', () {
+    test('o dono entra primeiro e sem repetidos (R9)', () {
+      expect(
+        normalizeParticipantIds(['bob', 'alice', 'bob'], ownerId: 'alice'),
+        ['alice', 'bob'],
+      );
+      expect(normalizeParticipantIds(const [], ownerId: 'alice'), ['alice']);
+    });
+
+    test('recusa uid vazio', () {
+      expect(
+        validateParticipantIds(['bob', ''], ownerId: 'alice'),
+        'Confira quem jogou com você.',
+      );
+    });
+
+    test('recusa acima do limite', () {
+      final muitos = List<String>.generate(participantsMax, (i) => 'u$i');
+      expect(
+        validateParticipantIds(muitos, ownerId: 'alice'),
+        'Uma sessão pode ter até $participantsMax participantes.',
+      );
+      expect(
+        validateParticipantIds(muitos.take(participantsMax - 1).toList(), ownerId: 'alice'),
+        isNull,
+      );
+    });
+  });
+
+  group('highlights (título, momento e duração)', () {
+    test('título vazio vira "Lance N" pela posição', () {
+      expect(normalizeHighlightTitle(null, 1), 'Lance 1');
+      expect(normalizeHighlightTitle('', 2), 'Lance 2');
+      expect(normalizeHighlightTitle('   ', 3), 'Lance 3');
+      expect(validateHighlightTitle(null), isNull);
+      expect(validateHighlightTitle('   '), isNull);
+    });
+
+    test('mantém e normaliza o título que a pessoa escreveu', () {
+      expect(normalizeHighlightTitle('  Voleio  do Rafa ', 1), 'Voleio do Rafa');
+      expect(validateHighlightTitle('  Voleio  do Rafa '), isNull);
+    });
+
+    test('recusa título do lance acima do limite', () {
+      expect(validateHighlightTitle('a' * highlightTitleMax), isNull);
+      expect(
+        validateHighlightTitle('a' * (highlightTitleMax + 1)),
+        'O nome do lance pode ter até $highlightTitleMax caracteres.',
+      );
+    });
+
+    test('recusa lance fora da sessão, com 1 min de folga', () {
+      expect(
+        validateHighlightOffset(-1, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(
+        validateHighlightOffset(6200, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(validateHighlightOffset(6150, sessionDurationSeconds: 6120), isNull);
+    });
+
+    test('recusa duração zerada, negativa ou absurda', () {
+      for (final d in [0, -1, highlightSecondsMax + 1]) {
+        expect(validateHighlightDuration(d), 'Confira a duração dos lances.');
+      }
+      expect(validateHighlightDuration(30), isNull);
+      expect(validateHighlightDuration(highlightSecondsMax), isNull);
     });
   });
 }

@@ -397,7 +397,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   void _saveSession() {
     final nameError = validateSessionName(_nameController.text);
-    final locationError = validateSessionLocation(_locationController.text);
+    final locationError = validateLocation(_locationController.text);
     if (nameError != null || locationError != null) {
       setState(() {
         _nameError = nameError;
@@ -406,9 +406,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       return;
     }
     final normalizedName = normalizeSessionName(_nameController.text);
-    final normalizedLocation = normalizeSessionLocation(_locationController.text);
+    final normalizedLocation = normalizeLocation(_locationController.text);
     _nameController.text = normalizedName;
-    _locationController.text = normalizedLocation;
+    _locationController.text = normalizedLocation ?? '';
 
     final start = _recordingStartTime ?? DateTime.now();
     final end = _recordingEndTime ?? start;
@@ -431,7 +431,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       startedAt: start,
       endedAt: end,
       duration: duration,
-      location: normalizedLocation.isEmpty ? null : SessionLocation(label: normalizedLocation),
+      location: normalizedLocation == null ? null : SessionLocation(label: normalizedLocation),
       highlightCount: _highlights.isEmpty ? 3 : _highlights.length,
       isClosed: _isClosedSession,
     );

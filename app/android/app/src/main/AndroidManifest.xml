@@ -2,6 +2,12 @@
     <!-- Câmera para a detecção do gesto e a gravação (produto.md › 4.5 Gravação).
          Pedida em tempo de execução pela ClippoCameraSession. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Som do highlight. Opcional: negado, o highlight sai só com imagem. Pedido junto com a
+         câmera pela ClippoCameraSession. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Vibração leve quando o highlight é salvo (produto.md › 4.5 Gravação). Não pergunta nada
+         ao usuário: é uma permissão "normal" do Android. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="@string/app_name"

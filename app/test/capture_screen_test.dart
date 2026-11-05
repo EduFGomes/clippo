@@ -28,13 +28,13 @@ class _FakeCamera extends ClippoCamera {
   Future<bool> requestPermission() async => false;
 
   @override
-  Future<void> start({bool accurate = false, bool multiPerson = false}) async {}
+  Future<bool> start({bool multiPerson = false}) async => true;
 
   @override
   Future<void> stop() async => stopped = true;
 
   @override
-  Future<SavedClip> saveHighlight({required Duration until}) async {
+  Future<SavedClip> saveHighlight({required Duration until, Duration length = HighlightLength.standard}) async {
     saves.add(until);
     if (failSave) throw const CameraFailure('Não foi possível salvar o lance.');
     return const SavedClip(path: '/highlights/1.mp4', duration: Duration(seconds: 30));
@@ -252,7 +252,7 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.byType(TextField).first);
     await tester.pumpAndSettle();
-    expect(find.text('Informe o nome da sessão.'), findsOneWidget);
+    expect(find.text('Dê um nome para a sessão.'), findsOneWidget);
     expect(saved, isFalse);
 
     // Escolhe "Sessão fechada", preenche um nome válido e salva.
@@ -269,7 +269,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Pelada de quarta');
     await tester.pump();
-    expect(find.text('Informe o nome da sessão.'), findsNothing);
+    expect(find.text('Dê um nome para a sessão.'), findsNothing);
     await tester.ensureVisible(find.text('Salvar sessão'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Salvar sessão'));
