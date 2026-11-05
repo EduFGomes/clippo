@@ -31,7 +31,7 @@ Celular de quem grava                      Firebase (us-east1)                  
 | D7 | **O app não grava dados validados**; só Functions gravam | Ninguém pula a validação mexendo no app | Toda escrita nova precisa de uma Function |
 | D8 | **Fontes embutidas no app** (Anton e Archivo em `app/assets/fonts/`, sem o pacote `google_fonts`) | Funciona sem internet na quadra; nada é baixado na primeira abertura | ~1 MB a mais no app |
 | D9 | **Valores visuais só em `clippo_tokens.dart`** (sem JSON paralelo) | Uma fonte só evita divergência entre docs e código | Quem não usa Flutter lê os valores pelo [design.md](design.md) |
-| D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/users/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
+| D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/{users,sessions}/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
 | D11 | **Navegação de nível superior em roda** (protótipo v2), e não em barra | Combina com "o lance é o herói": nada de barra fixa ocupando o rodapé em cima do vídeo; o gesto de segurar-e-arrastar chega em qualquer seção com uma mão só | Menos convencional que uma barra; exige explicar na primeira vez. 🟡 Decidido pelo back-end em 20/10/2026; o grupo aprova em 28/10/2026, mas fica em aberto caso precise mudar |
 | D12 | **`flutter_svg`** para desenhar os ícones da marca | Os 19 SVGs de `app/assets/icons/` já existiam sem um jeito de usar; redesenhá-los em código duplicaria o traço | Uma dependência a mais (~200 KB). Os ícones dos controles continuam desenhados em código no `ClippoIcon` |
 | D13 | **Câmera e pose em código nativo (Kotlin: CameraX + ML Kit Pose); regra do gesto em Dart** (`app/android/.../camera/` e `app/lib/core/gesture/`) | O Android entrega a câmera a um cliente por vez: o CameraX abre uma vez e alimenta a imagem na tela, a análise de pose e o buffer de 30 s. O ML Kit roda no Kotlin, sem copiar cada quadro para o Dart; o Dart recebe só os 33 pontos do corpo (~25 vezes por segundo). A regra e o disparo em Dart são testáveis sem câmera | Código Kotlin sem teste automático (só no celular); só Android (iOS precisaria do equivalente); o ML Kit Pose só tem versões beta desde 2020 (usamos a 18.0.0-beta5). Decidido pela visão computacional em 23/10/2026, confirmado pelo grupo em 28/10/2026 |
@@ -46,11 +46,11 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 
 | Coleção / documento | Campos | Quem lê | Quem grava |
 |---|---|---|---|
-| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
+| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`; `stats` atualizado em `saveSession`) |
 | `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
 | `userPrivate/{uid}` — dados privados | `birthDate` string `AAAA-MM-DD` · `createdAt` timestamp | Só o dono | Só Functions (`completeProfile`) |
 | `sessions/{sessionId}` — um jogo gravado | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, D15) |
-| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`; um gatilho marca `uploaded`, D15) |
+| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`; `onVideoUploaded` marca `uploaded`, D15) |
 
 Regras de modelagem:
 - O **e-mail fica só no Firebase Auth**, nunca no Firestore.
@@ -64,9 +64,9 @@ Regras de modelagem:
 
 🟡 **Ainda não modelado:** `Friendship`. A tela Amigos e a validação de R10 ("participantes são amigos do dono") dependem dele.
 
-### Proposta 🟡 — sessões e highlights
+### Sessões e highlights
 
-Rascunho do back-end para o grupo aprovar. As **leituras** abaixo já estão implementadas
+As **leituras** abaixo já estão implementadas
 nas regras e testadas; as **escritas** continuam fechadas para o app: só Functions gravam
 (D15, próxima seção).
 

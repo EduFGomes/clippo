@@ -192,6 +192,15 @@ describe("saveSession — o que foi gravado", () => {
     expect(texto(h1?.status)).toBe("pending");
     expect(texto(h1?.videoPath)).toBe(`sessions/${SESSAO_ID}/highlights/lance-0001/video.mp4`);
   });
+
+  it("atualiza os contadores de sessões e highlights no perfil dos participantes", async () => {
+    const perfilAlice = await ler(`users/${alice.uid}`, alice);
+    const perfilBob = await ler(`users/${bob.uid}`, bob);
+    expect(numero(perfilAlice?.stats?.mapValue?.fields?.sessions)).toBe("1");
+    expect(numero(perfilAlice?.stats?.mapValue?.fields?.highlights)).toBe("2");
+    expect(numero(perfilBob?.stats?.mapValue?.fields?.sessions)).toBe("1");
+    expect(numero(perfilBob?.stats?.mapValue?.fields?.highlights)).toBe("2");
+  });
 });
 
 describe("saveSession — reenvio da fila offline (R13)", () => {
@@ -202,6 +211,33 @@ describe("saveSession — reenvio da fila offline (R13)", () => {
 
     const s = await ler(`sessions/${SESSAO_ID}`, alice);
     expect(numero(s?.highlightCount)).toBe("2");
+  });
+
+  it("grava lance novo se o reenvio trouxer um lance que faltou antes", async () => {
+    const comLanceNovo = await chamar(
+      "saveSession",
+      alice,
+      sessao({
+        participantIds: [bob.uid],
+        highlights: [
+          { highlightId: "lance-0001", offsetSeconds: 760.4, durationSeconds: 30 },
+          { highlightId: "lance-0002", title: "Voleio do Rafa", offsetSeconds: 2100, durationSeconds: 28 },
+          { highlightId: "lance-0003", title: "Bloqueio final", offsetSeconds: 3200, durationSeconds: 30 },
+        ],
+      }),
+    );
+    expect(comLanceNovo.status).toBe(200);
+    expect(comLanceNovo.result?.created).toBe(false);
+
+    const s = await ler(`sessions/${SESSAO_ID}`, alice);
+    expect(numero(s?.highlightCount)).toBe("3");
+
+    const h3 = await ler(`sessions/${SESSAO_ID}/highlights/lance-0003`, alice);
+    expect(texto(h3?.title)).toBe("Bloqueio final");
+
+    const perfilAlice = await ler(`users/${alice.uid}`, alice);
+    expect(numero(perfilAlice?.stats?.mapValue?.fields?.sessions)).toBe("1");
+    expect(numero(perfilAlice?.stats?.mapValue?.fields?.highlights)).toBe("3");
   });
 });
 

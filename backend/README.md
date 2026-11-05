@@ -92,12 +92,12 @@ Será ajustado quando o modelo de dados estiver definido.
 | `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
 | `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo, grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R14 |
 | `onHighlightCreated` | Highlight criado no Firestore | Atualiza contadores e avisa os participantes por push | R16, Perfil |
-| `onVideoUploaded` | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
+| `onVideoUploaded` ✅ | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
 | `acceptFriendInvite` | Chamada pelo app | Grava a amizade nos dois perfis de uma vez | R15 🟡 |
 | `deleteMyAccount` | Chamada pelo app | Apaga ou anonimiza os dados da pessoa | LGPD |
 | `cleanupOldVideos` | Agendada (todo dia) | Apaga vídeos antigos, se a retenção for ligada | Custo |
 
-Em aberto: validar R10 (participantes são amigos do dono) nas regras ou numa função `createSession`.
+Em aberto: validar R10 (participantes são amigos do dono) em `participantsAreFriends` no `saveSession` quando `Friendship` existir.
 
 ## Projeto real e deploy (depois)
 

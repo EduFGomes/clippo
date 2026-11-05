@@ -2,7 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/validation/input_validation.dart';
 
-// Os mesmos casos de backend/functions/test/validation.test.ts: as duas regras precisam concordar.
+// Os mesmos casos de backend/functions/test/validation.test.ts e sessions.validation.test.ts:
+// as duas regras precisam concordar (regra 0 do AGENTS.md).
 void main() {
   group('e-mail', () {
     test('normaliza espaços e maiúsculas', () {
@@ -90,6 +91,22 @@ void main() {
 
   // --- Sessão: espelho de backend/functions/test/sessions.validation.test.ts ---
 
+  group('id vindo do aparelho', () {
+    test('aceita o que o app gera', () {
+      expect(validateEntityId('sessao_2026-10-29_AbC123'), isNull);
+      expect(validateEntityId('lance-0001'), isNull);
+    });
+
+    test('recusa id curto, com espaço, com barra ou longo demais', () {
+      for (final raw in ['', 'abc', 'com espaco', '../outra', 'a' * 65]) {
+        expect(
+          validateEntityId(raw),
+          'Não foi possível salvar a sessão. Tente de novo.',
+        );
+      }
+    });
+  });
+
   group('nome da sessão', () {
     test('junta espaços e tira os das pontas', () {
       expect(normalizeSessionName('  Pelada   de quinta '), 'Pelada de quinta');
@@ -161,5 +178,76 @@ void main() {
       expect(validateSessionPeriod(inicio, DateTime.utc(2026, 10, 30, 1, 4), now: agora), isNull);
     });
   });
-}
 
+  group('participantes', () {
+    test('o dono entra primeiro e sem repetidos (R9)', () {
+      expect(
+        normalizeParticipantIds(['bob', 'alice', 'bob'], ownerId: 'alice'),
+        ['alice', 'bob'],
+      );
+      expect(normalizeParticipantIds(const [], ownerId: 'alice'), ['alice']);
+    });
+
+    test('recusa uid vazio', () {
+      expect(
+        validateParticipantIds(['bob', ''], ownerId: 'alice'),
+        'Confira quem jogou com você.',
+      );
+    });
+
+    test('recusa acima do limite', () {
+      final muitos = List<String>.generate(participantsMax, (i) => 'u$i');
+      expect(
+        validateParticipantIds(muitos, ownerId: 'alice'),
+        'Uma sessão pode ter até $participantsMax participantes.',
+      );
+      expect(
+        validateParticipantIds(muitos.take(participantsMax - 1).toList(), ownerId: 'alice'),
+        isNull,
+      );
+    });
+  });
+
+  group('highlights (título, momento e duração)', () {
+    test('título vazio vira "Lance N" pela posição', () {
+      expect(normalizeHighlightTitle(null, 1), 'Lance 1');
+      expect(normalizeHighlightTitle('', 2), 'Lance 2');
+      expect(normalizeHighlightTitle('   ', 3), 'Lance 3');
+      expect(validateHighlightTitle(null), isNull);
+      expect(validateHighlightTitle('   '), isNull);
+    });
+
+    test('mantém e normaliza o título que a pessoa escreveu', () {
+      expect(normalizeHighlightTitle('  Voleio  do Rafa ', 1), 'Voleio do Rafa');
+      expect(validateHighlightTitle('  Voleio  do Rafa '), isNull);
+    });
+
+    test('recusa título do lance acima do limite', () {
+      expect(validateHighlightTitle('a' * highlightTitleMax), isNull);
+      expect(
+        validateHighlightTitle('a' * (highlightTitleMax + 1)),
+        'O nome do lance pode ter até $highlightTitleMax caracteres.',
+      );
+    });
+
+    test('recusa lance fora da sessão, com 1 min de folga', () {
+      expect(
+        validateHighlightOffset(-1, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(
+        validateHighlightOffset(6200, sessionDurationSeconds: 6120),
+        'Confira o momento dos lances.',
+      );
+      expect(validateHighlightOffset(6150, sessionDurationSeconds: 6120), isNull);
+    });
+
+    test('recusa duração zerada, negativa ou absurda', () {
+      for (final d in [0, -1, highlightSecondsMax + 1]) {
+        expect(validateHighlightDuration(d), 'Confira a duração dos lances.');
+      }
+      expect(validateHighlightDuration(30), isNull);
+      expect(validateHighlightDuration(highlightSecondsMax), isNull);
+    });
+  });
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  HIGHLIGHTS_MAX,
+  HIGHLIGHT_TITLE_MAX,
   PARTICIPANTS_MAX,
   SESSION_NAME_MAX,
   SessionValidationError,
@@ -133,6 +135,24 @@ describe("highlights", () => {
   it("mantém o título que a pessoa escreveu", () => {
     expect(normalizeHighlights([lance({ title: "  Voleio  do Rafa " })], 6120)[0].title).toBe(
       "Voleio do Rafa",
+    );
+  });
+
+  it("recusa título do lance acima do limite", () => {
+    expect(() =>
+      normalizeHighlights([lance({ title: "a".repeat(HIGHLIGHT_TITLE_MAX + 1) })], 6120),
+    ).toThrow(`O nome do lance pode ter até ${HIGHLIGHT_TITLE_MAX} caracteres.`);
+    expect(
+      normalizeHighlights([lance({ title: "a".repeat(HIGHLIGHT_TITLE_MAX) })], 6120)[0].title,
+    ).toHaveLength(HIGHLIGHT_TITLE_MAX);
+  });
+
+  it("recusa mais de 200 lances", () => {
+    const muitos = Array.from({ length: HIGHLIGHTS_MAX + 1 }, (_, i) =>
+      lance({ highlightId: `lance-${String(i).padStart(4, "0")}` }),
+    );
+    expect(() => normalizeHighlights(muitos, 6120)).toThrow(
+      `Uma sessão pode ter até ${HIGHLIGHTS_MAX} lances.`,
     );
   });
 

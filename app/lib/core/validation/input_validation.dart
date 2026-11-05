@@ -2,7 +2,7 @@
 ///
 /// Regra do projeto (AGENTS.md): nada vai para o Auth, o Firestore, o Storage ou uma
 /// Cloud Function sem ser validado no app E no servidor. Estas são as regras do app; as do
-/// servidor estão em backend/functions/src/users/validation.ts, com as MESMAS mensagens.
+/// servidor estão em backend/functions/src/{users,sessions}/validation.ts, com as MESMAS mensagens.
 /// Mudou uma? Mude a outra no mesmo PR.
 ///
 /// Cada `validate…` devolve a mensagem de erro pronta para a tela, ou null se está tudo certo.
@@ -98,9 +98,29 @@ String? validateBirthDate(DateTime? date, {DateTime? today}) {
 
 const int sessionNameMax = 50;
 const int locationMax = 60;
+const int highlightTitleMax = 50;
 
 /// Uma sessão não pode durar mais que isso: acima disso é erro de relógio, não jogo.
 const int sessionMaxHours = 12;
+
+/// Participantes por sessão, contando o dono (R9).
+const int participantsMax = 30;
+
+/// Teto por sessão, para uma chamada não gravar o dia inteiro de uma vez.
+const int highlightsMax = 200;
+
+/// Um highlight tem ~30 s (R1); 120 s é folga para mudanças futuras do buffer.
+const int highlightSecondsMax = 120;
+
+final RegExp _entityIdPattern = RegExp(r'^[A-Za-z0-9_-]{6,64}$');
+
+/// Ids gerados pelo app (o mesmo id chegando duas vezes é a mesma sessão ou lance).
+String? validateEntityId(String raw) {
+  if (!_entityIdPattern.hasMatch(raw)) {
+    return 'Não foi possível salvar a sessão. Tente de novo.';
+  }
+  return null;
+}
 
 /// Tira espaços das pontas e junta espaços repetidos.
 String normalizeSessionName(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -137,5 +157,55 @@ String? validateSessionPeriod(DateTime? startedAt, DateTime? endedAt, {DateTime?
   }
   final limit = (now ?? DateTime.now()).add(const Duration(minutes: 5));
   if (endedAt.isAfter(limit)) return 'A sessão não pode terminar no futuro.';
+  return null;
+}
+
+/// Participantes: o dono entra sempre (R9), sem repetidos.
+List<String> normalizeParticipantIds(List<String> raw, {String? ownerId}) {
+  final unique = <String>{
+    if (ownerId != null && ownerId.isNotEmpty) ownerId,
+    ...raw,
+  };
+  return unique.toList(growable: false);
+}
+
+String? validateParticipantIds(List<String> raw, {String? ownerId}) {
+  for (final uid in raw) {
+    if (uid.isEmpty) return 'Confira quem jogou com você.';
+  }
+  final unique = normalizeParticipantIds(raw, ownerId: ownerId);
+  if (unique.length > participantsMax) {
+    return 'Uma sessão pode ter até $participantsMax participantes.';
+  }
+  return null;
+}
+
+/// Título do lance. Vazio vira "Lance N" — ninguém precisa digitar na quadra.
+String normalizeHighlightTitle(String? raw, int position) {
+  final title = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  return title.isEmpty ? 'Lance $position' : title;
+}
+
+String? validateHighlightTitle(String? raw) {
+  final title = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (title.length > highlightTitleMax) {
+    return 'O nome do lance pode ter até $highlightTitleMax caracteres.';
+  }
+  return null;
+}
+
+/// Momento do lance dentro da sessão, com 1 min de folga para o arredondamento do corte.
+String? validateHighlightOffset(int offsetSeconds, {required int sessionDurationSeconds}) {
+  if (offsetSeconds < 0 || offsetSeconds > sessionDurationSeconds + 60) {
+    return 'Confira o momento dos lances.';
+  }
+  return null;
+}
+
+/// Duração do trecho salvo pelo gesto (1 a [highlightSecondsMax] s).
+String? validateHighlightDuration(int durationSeconds) {
+  if (durationSeconds <= 0 || durationSeconds > highlightSecondsMax) {
+    return 'Confira a duração dos lances.';
+  }
   return null;
 }

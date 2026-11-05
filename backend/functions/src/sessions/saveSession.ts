@@ -5,14 +5,17 @@
  * continuam fechadas para escrita. A gravação em si não depende desta função (R8): o
  * gesto salva o MP4 na pasta interna do app, e sem internet o app guarda a sessão e
  * tenta de novo sozinho (WorkManager). Por isso ela é **idempotente**: o id da sessão e
- * o de cada highlight nascem no aparelho, e chamar duas vezes não duplica nada.
+ * o de cada highlight nascem no aparelho, e chamar duas vezes não duplica nada (se um
+ * reenvio trouxer um lance que faltou na primeira tentativa, apenas o lance faltante
+ * é gravado).
  *
  * O que grava, numa transação (ou tudo, ou nada):
  *   sessions/{sessionId}                      → a sessão e seus participantes
  *   sessions/{sessionId}/highlights/{id}      → um documento por lance, `status: pending`
+ *   users/{uid}.stats                         → atualiza contadores de sessões e lances
  *
- * O vídeo NÃO passa por aqui: ele sobe do app direto para o Storage, e um gatilho marca
- * o highlight como `uploaded` (R13).
+ * O vídeo NÃO passa por aqui: ele sobe do app direto para o Storage, e o gatilho
+ * `onVideoUploaded` marca o highlight como `uploaded` (R13).
  */
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
@@ -59,7 +62,7 @@ export interface SaveSessionResponse {
   sessionId: string;
   /** Onde cada vídeo deve ser enviado no Storage, na ordem em que chegaram. */
   videoPaths: Record<string, string>;
-  /** false quando a sessão já existia: a chamada repetiu e nada foi gravado de novo. */
+  /** false quando a sessão já existia: a chamada repetiu e a sessão não foi recriada. */
   created: boolean;
 }
 
@@ -131,17 +134,65 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
 
     // 4. Grava tudo de uma vez.
     const sessionRef = db().doc(`sessions/${sessionId}`);
+    const highlightRefs = highlights.map((h) =>
+      sessionRef.collection("highlights").doc(h.highlightId),
+    );
+    const userRefs = participantIds.map((id) => db().doc(`users/${id}`));
+
     const created = await db().runTransaction(async (tx) => {
+      // Todas as leituras da transação precisam vir antes de qualquer escrita.
       const snap = await tx.get(sessionRef);
+      const existingHighlightSnaps = highlightRefs.length === 0
+        ? []
+        : await tx.getAll(...highlightRefs);
+      const userSnaps = await tx.getAll(...userRefs);
+
+      const now = FieldValue.serverTimestamp();
+
       if (snap.exists) {
         // Idempotente: a mesma sessão chegando de novo (o app repetiu o envio).
         if (snap.get("ownerId") !== uid) {
           throw new HttpsError("permission-denied", "Essa sessão é de outra pessoa.");
         }
+
+        // Se o reenvio trouxe algum lance que ainda não tinha sido gravado,
+        // grava só os que faltam sem duplicar os existentes.
+        const missingHighlights = highlights.filter(
+          (_, index) => !existingHighlightSnaps[index]?.exists,
+        );
+        if (missingHighlights.length > 0) {
+          for (const highlight of missingHighlights) {
+            tx.set(sessionRef.collection("highlights").doc(highlight.highlightId), {
+              title: highlight.title,
+              offsetSeconds: highlight.offsetSeconds,
+              durationSeconds: highlight.durationSeconds,
+              savedAt: new Date(period.startedAt.getTime() + highlight.offsetSeconds * 1000),
+              createdBy: uid,
+              videoPath: highlightVideoPath(sessionId, highlight.highlightId),
+              thumbnailPath: highlightThumbnailPath(sessionId, highlight.highlightId),
+              status: "pending",
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+          tx.update(sessionRef, {
+            highlightCount: FieldValue.increment(missingHighlights.length),
+            updatedAt: now,
+          });
+          const savedParticipants = new Set<string>(
+            (snap.get("participantIds") as string[] | undefined) ?? participantIds,
+          );
+          for (const userSnap of userSnaps) {
+            if (userSnap.exists && savedParticipants.has(userSnap.id)) {
+              tx.update(userSnap.ref, {
+                "stats.highlights": FieldValue.increment(missingHighlights.length),
+              });
+            }
+          }
+        }
         return false;
       }
 
-      const now = FieldValue.serverTimestamp();
       tx.set(sessionRef, {
         name,
         ownerId: uid,
@@ -172,6 +223,19 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
           updatedAt: now,
         });
       }
+
+      // Atualiza os contadores de perfil (sessões e highlights) de cada participante.
+      for (const userSnap of userSnaps) {
+        if (!userSnap.exists) continue;
+        const updates: Record<string, unknown> = {
+          "stats.sessions": FieldValue.increment(1),
+        };
+        if (highlights.length > 0) {
+          updates["stats.highlights"] = FieldValue.increment(highlights.length);
+        }
+        tx.update(userSnap.ref, updates);
+      }
+
       return true;
     });
 
