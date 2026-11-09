@@ -6,12 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 
-/// Navegação de nível superior em roda (protótipo v2, adotado em 20/10/2026).
+/// Navegação de nível superior em roda (protótipo v2, adotado em 20/10/2026;
+/// ímã, lupa e balão acima do dedo em 09/11/2026).
 ///
 /// Um botão vinho no centro inferior com o ícone da seção atual.
 ///   • Toque: abre a roda; toque numa seção para ir; toque fora fecha.
-///   • Segurar e arrastar: a seção sob o dedo acende (a fatia inteira) e soltar
-///     confirma. Soltar perto do botão, ou abaixo dele, cancela.
+///   • Segurar e arrastar (a partir do botão ou de uma seção): as seções reagem
+///     ao dedo como um ímã com lupa — crescem conforme ele se aproxima, e a seção
+///     acesa é puxada um pouco na direção dele. Tudo vem direto da posição do
+///     dedo, sem atraso. Soltar confirma. Soltar perto do botão, ou abaixo dele,
+///     cancela.
+///   • Enquanto o dedo está em cima do ícone de uma seção, um balão pequeno
+///     aparece logo acima dela com o ícone e o nome — como a tecla que aparece
+///     no teclado. Saiu do ícone, o balão some.
 ///   • "Voltar" do Android fecha a roda.
 ///
 /// Fica por cima do conteúdo, no mesmo Stack. A tela embaixo precisa terminar com
@@ -34,6 +41,9 @@ class ClippoRadialNav extends StatefulWidget {
   /// Chave da seção na posição [index] da roda.
   static Key itemKey(int index) => ValueKey('clippoRadialNavItem$index');
 
+  /// Chave do balão que aparece acima da seção sob o dedo.
+  static const Key previewKey = ValueKey('clippoRadialNavPreview');
+
   @override
   State<ClippoRadialNav> createState() => _ClippoRadialNavState();
 }
@@ -47,24 +57,65 @@ class ClippoRadialNavItem {
   final String icon;
 }
 
-class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProviderStateMixin {
+/// De onde veio o dedo que está arrastando: muda o que acontece ao soltar.
+enum _DragOrigin { button, item }
+
+class _ClippoRadialNavState extends State<ClippoRadialNav> with TickerProviderStateMixin {
   /// Perto demais do botão, ou abaixo dele: nenhuma seção selecionada.
   static const double _deadZone = 44;
 
-  /// Meia-abertura da fatia acesa, em graus.
-  static const double _wedgeHalf = 26;
+  /// Abaixo do centro do botão, a partir daqui, também cancela.
+  static const double _belowCancel = 30;
+
+  /// Andou mais que isso desde que encostou: deixou de ser um toque.
+  static const double _tapSlop = 14;
+
+  /// Lupa: quanto uma seção cresce com o dedo em cima dela (+16 %).
+  static const double _magnifyMax = 0.16;
 
   late final AnimationController _wheel = AnimationController(
     vsync: this,
     duration: ClippoMotion.wheelOpen,
     reverseDuration: ClippoMotion.wheelClose,
   );
+
+  /// Força do ímã: 1 enquanto o dedo arrasta (na hora, sem animação); ao soltar,
+  /// desce até 0 e as seções voltam ao lugar.
+  late final AnimationController _magnet = AnimationController(
+    vsync: this,
+    duration: ClippoMotion.focus,
+  );
+
+  /// Última posição do dedo usada pelo ímã (fica enquanto ele solta).
+  Offset? _magnetAt;
+
+  /// Balão acima da seção surgindo (0 → 1) e sumindo.
+  late final AnimationController _preview = AnimationController(
+    vsync: this,
+    duration: ClippoMotion.navPreview,
+  );
+
   late List<Animation<double>> _itemAnimations;
+
+  final GlobalKey _stackKey = GlobalKey();
 
   bool _open = false;
   bool _dragging = false;
   bool _moved = false;
+  _DragOrigin _origin = _DragOrigin.button;
+  Offset? _downAt;
   int _highlighted = -1;
+
+  /// Seção com o dedo em cima do ícone (-1: nenhuma). É ela que mostra o balão.
+  int _onIcon = -1;
+
+  /// Última seção do balão, para ele sumir sem trocar de conteúdo.
+  int _previewIndex = -1;
+
+  /// Centro do botão, calculado no último build.
+  Offset _center = Offset.zero;
+
+  bool _reduced = false;
 
   /// Ângulos em graus (0 = direita, 90 = em cima), espalhados num arco de 144°.
   List<double> get _angles {
@@ -99,8 +150,75 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
   @override
   void dispose() {
     _wheel.dispose();
+    _magnet.dispose();
+    _preview.dispose();
     super.dispose();
   }
+
+  // ─── Ímã ──────────────────────────────────────────────────────────────────
+
+  /// Liga o ímã na hora, no dedo em [at].
+  void _magnetOn(Offset at) {
+    _magnetAt = at;
+    _magnet.value = 1;
+  }
+
+  /// Solta o ímã: as seções voltam ao tamanho e ao lugar.
+  void _magnetOff() {
+    if (_reduced) {
+      _magnet.value = 0;
+    } else {
+      _magnet.reverse();
+    }
+  }
+
+  /// Centro da seção [i] com a roda aberta, sem o ímã.
+  Offset _itemTarget(int i) {
+    final radians = _angles[i] * math.pi / 180;
+    return _center +
+        Offset(ClippoSize.navRadius * math.cos(radians), -ClippoSize.navRadius * math.sin(radians));
+  }
+
+  /// Ímã + lupa da seção [i], calculados direto da posição do dedo.
+  ({double magnify, Offset pull}) _magnetEffect(int i) {
+    final at = _magnetAt;
+    if (at == null || _magnet.value <= 0) return (magnify: 0, pull: Offset.zero);
+    final toFinger = at - _itemTarget(i);
+    final distance = toFinger.distance;
+    final proximity = (1 - distance / ClippoSize.navMagnetRange).clamp(0.0, 1.0);
+    // Curva suave: cresce devagar longe e rápido perto, como o Dock do Mac.
+    final magnify = _magnifyMax * Curves.easeOut.transform(proximity) * _magnet.value;
+    var pull = Offset.zero;
+    if (_highlighted == i && distance > 0) {
+      final reach = math.min(distance * 0.25, ClippoSize.navMagnetPull);
+      pull = toFinger / distance * reach * _magnet.value;
+    }
+    return (magnify: magnify, pull: pull);
+  }
+
+  /// A seção cujo ícone (já ampliado) está sob o dedo, ou -1.
+  int _iconUnder(Offset local) {
+    const reach = ClippoSize.navItem / 2 * (1 + _magnifyMax);
+    for (var i = 0; i < widget.items.length; i++) {
+      if ((local - _itemTarget(i)).distance <= reach) return i;
+    }
+    return -1;
+  }
+
+  void _setOnIcon(int i) {
+    if (i == _onIcon) return;
+    setState(() {
+      _onIcon = i;
+      if (i >= 0) _previewIndex = i;
+    });
+    if (i >= 0) {
+      _preview.forward();
+    } else {
+      _preview.reverse();
+    }
+  }
+
+  // ─── Abrir, fechar, escolher ──────────────────────────────────────────────
 
   void _openWheel() {
     HapticFeedback.lightImpact();
@@ -116,7 +234,10 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
       _open = false;
       _dragging = false;
       _highlighted = -1;
+      _onIcon = -1;
     });
+    _preview.reverse();
+    _magnetOff();
     _wheel.reverse();
   }
 
@@ -132,17 +253,29 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
     setState(() => _highlighted = i);
   }
 
-  /// Onde o dedo está em relação ao centro do botão → seção mais próxima pelo ângulo.
-  void _track(Offset local) {
-    const half = ClippoSize.navButton / 2 + ClippoSize.navRing;
-    final dx = local.dx - half;
-    final dy = half - local.dy; // para cima é positivo
+  // ─── Dedo ─────────────────────────────────────────────────────────────────
+
+  Offset _toLocal(Offset global) {
+    final box = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    return box == null ? global : box.globalToLocal(global);
+  }
+
+  /// Onde o dedo está em relação ao centro do botão → seção mais próxima pelo
+  /// ângulo; o ímã acompanha o dedo.
+  void _track(Offset global) {
+    final local = _toLocal(global);
+    if (_downAt != null && (local - _downAt!).distance > _tapSlop) _moved = true;
+    if (_moved || _origin == _DragOrigin.item) _magnetOn(local);
+    _setOnIcon(_iconUnder(local));
+
+    final dx = local.dx - _center.dx;
+    final dy = _center.dy - local.dy; // para cima é positivo
     final distance = math.sqrt(dx * dx + dy * dy);
-    if (distance > 14) _moved = true;
-    if (distance < _deadZone || dy < -30) {
+    if (distance < _deadZone || dy < -_belowCancel) {
       _highlight(-1);
       return;
     }
+
     final angle = math.atan2(math.max(dy, 0), dx) * 180 / math.pi;
     final angles = _angles;
     var best = 0;
@@ -157,44 +290,83 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
     _highlight(best);
   }
 
-  void _onDown(PointerDownEvent event) {
+  void _startDrag(PointerDownEvent event, _DragOrigin origin) {
+    _dragging = true;
+    _moved = false;
+    _origin = origin;
+    _downAt = _toLocal(event.position);
+  }
+
+  void _onButtonDown(PointerDownEvent event) {
     if (_open) {
       _close();
       return;
     }
     _openWheel();
-    _dragging = true;
-    _moved = false;
+    _startDrag(event, _DragOrigin.button);
+  }
+
+  void _onItemDown(int i, PointerDownEvent event) {
+    if (!_open) return;
+    _startDrag(event, _DragOrigin.item);
+    _magnetOn(_downAt!);
+    _highlight(i);
+    _setOnIcon(i);
   }
 
   void _onMove(PointerMoveEvent event) {
-    if (_dragging) _track(event.localPosition);
+    if (_dragging) _track(event.position);
   }
 
   void _onUp(PointerUpEvent event) {
     if (!_dragging) return;
     _dragging = false;
-    if (!_moved) {
-      setState(() => _highlighted = -1); // foi um toque: a roda fica aberta
+    final tapOnButton = _origin == _DragOrigin.button && !_moved;
+    if (_highlighted >= 0 && !tapOnButton) {
+      _select(_highlighted);
       return;
     }
-    if (_highlighted >= 0) {
-      _select(_highlighted);
-    } else {
+    if (_origin == _DragOrigin.button && _moved) {
       _close();
+      return;
     }
+    // Foi um toque no botão, ou o dedo saiu da seção e voltou ao centro:
+    // a roda fica aberta, esperando a escolha.
+    setState(() {
+      _highlighted = -1;
+      _onIcon = -1;
+    });
+    _preview.reverse();
+    _magnetOff();
   }
 
   void _onCancel(PointerCancelEvent event) {
-    if (_dragging && _moved) _close();
+    if (!_dragging) return;
     _dragging = false;
+    if (_origin == _DragOrigin.button && _moved) {
+      _close();
+      return;
+    }
+    setState(() {
+      _highlighted = -1;
+      _onIcon = -1;
+    });
+    _preview.reverse();
+    _magnetOff();
   }
+
+  // ─── Desenho ──────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    if (ClippoMotion.reduced(context)) {
+    _reduced = ClippoMotion.reduced(context);
+    if (_reduced) {
       _wheel.duration = ClippoMotion.focus;
+      _preview.duration = Duration.zero;
+    } else {
+      _wheel.duration = ClippoMotion.wheelOpen;
+      _preview.duration = ClippoMotion.navPreview;
     }
     final safeBottom = MediaQuery.of(context).padding.bottom;
 
@@ -205,26 +377,24 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
       },
       child: LayoutBuilder(
         builder: (context, box) {
-          final center = Offset(
+          _center = Offset(
             box.maxWidth / 2,
             box.maxHeight - safeBottom - ClippoSize.navBottom - ClippoSize.navButton / 2,
           );
-          final angles = _angles;
           final current = widget.items[widget.currentIndex];
-          final shown = _highlighted >= 0 ? widget.items[_highlighted] : current;
 
           // SizedBox.expand é obrigatório: todos os filhos do Stack são Positioned,
           // então sem ele o Stack se mede como 0×0 — a roda apareceria na tela
           // mas nenhum toque chegaria nela.
           return SizedBox.expand(
+            key: _stackKey,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 _scrim(colors),
-                _wheelGuide(center, angles, colors),
-                _hint(center, shown, colors),
-                for (var i = 0; i < widget.items.length; i++) _item(i, center, angles[i], colors),
-                _button(center, current, colors),
+                for (var i = 0; i < widget.items.length; i++) _item(i, _center, colors),
+                _button(_center, current, colors),
+                _previewBubble(box.maxWidth),
               ],
             ),
           );
@@ -253,60 +423,8 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
     );
   }
 
-  Widget _wheelGuide(Offset center, List<double> angles, ClippoColors colors) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: AnimatedBuilder(
-          animation: _wheel,
-          builder: (context, _) => CustomPaint(
-            painter: _WheelPainter(
-              center: center,
-              radius: ClippoSize.navRadius,
-              angles: angles,
-              highlighted: _highlighted,
-              progress: _wheel.value.clamp(0, 1).toDouble(),
-              guide: colors.line,
-              wedge: colors.accentSoft,
-              wedgeHalf: _wedgeHalf,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Nome da seção e o que fazer, acima do arco.
-  Widget _hint(Offset center, ClippoRadialNavItem shown, ClippoColors colors) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: center.dy - ClippoSize.navRadius - ClippoSize.navItem / 2 - 96,
-      child: IgnorePointer(
-        child: FadeTransition(
-          opacity: _wheel,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(shown.label, style: ClippoText.titleS.copyWith(color: colors.text)),
-              const SizedBox(height: ClippoSpace.spaceXs),
-              Text(
-                _highlighted >= 0
-                    ? (_dragging ? 'Solte para abrir' : 'Toque para abrir')
-                    : 'Toque ou arraste até uma seção',
-                style: ClippoText.label.copyWith(color: colors.textMuted),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _item(int i, Offset center, double angleDeg, ClippoColors colors) {
-    final radians = angleDeg * math.pi / 180;
-    final target =
-        center +
-        Offset(ClippoSize.navRadius * math.cos(radians), -ClippoSize.navRadius * math.sin(radians));
+  Widget _item(int i, Offset center, ClippoColors colors) {
+    final target = _itemTarget(i);
     final item = widget.items[i];
     final isHighlighted = _highlighted == i;
     final isCurrent = widget.currentIndex == i;
@@ -315,11 +433,15 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
         : (isCurrent ? colors.accent : colors.text);
 
     return AnimatedBuilder(
-      animation: _itemAnimations[i],
+      animation: Listenable.merge([_itemAnimations[i], _magnet]),
       builder: (context, child) {
         final t = _itemAnimations[i].value; // passa de 1 no impulso da mola
         final position = Offset.lerp(center, target, t)!;
-        final scale = (0.4 + 0.6 * t) * (isHighlighted ? 1.14 : 1);
+
+        // Ímã + lupa: calculados direto da posição do dedo, a cada quadro.
+        final effect = _magnetEffect(i);
+        final pull = effect.pull;
+        final scale = (0.4 + 0.6 * t) * (1 + effect.magnify);
         return Positioned(
           key: ClippoRadialNav.itemKey(i),
           left: position.dx - ClippoSize.navItem / 2,
@@ -328,7 +450,10 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
             ignoring: !_open,
             child: Opacity(
               opacity: t.clamp(0, 1).toDouble(),
-              child: Transform.scale(scale: scale, child: child),
+              child: Transform.translate(
+                offset: pull,
+                child: Transform.scale(scale: scale, child: child),
+              ),
             ),
           ),
         );
@@ -337,8 +462,13 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
         button: true,
         selected: isCurrent,
         label: isCurrent ? '${item.label}, seção atual' : item.label,
-        child: GestureDetector(
-          onTap: () => _select(i),
+        onTap: () => _select(i),
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) => _onItemDown(i, event),
+          onPointerMove: _onMove,
+          onPointerUp: _onUp,
+          onPointerCancel: _onCancel,
           child: SizedBox(
             width: ClippoSize.navItem,
             height: ClippoSize.navItem,
@@ -379,6 +509,63 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
     );
   }
 
+  /// O balão logo acima da seção sob o dedo, como a tecla do teclado: ícone e
+  /// nome. Fica preso à seção (acompanha só a lupa e o ímã dela) e não sai da tela.
+  Widget _previewBubble(double width) {
+    final index = _previewIndex;
+    if (index < 0 || index >= widget.items.length) {
+      return const Positioned(left: 0, top: 0, child: SizedBox.shrink());
+    }
+    final item = widget.items[index];
+    const w = ClippoSize.navPreviewWidth;
+    const h = ClippoSize.navPreviewHeight;
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_magnet, _preview]),
+      builder: (context, child) {
+        final effect = _magnetEffect(index);
+        final at = _itemTarget(index) + effect.pull;
+        final itemTop = at.dy - ClippoSize.navItem / 2 * (1 + effect.magnify);
+        return Positioned(
+          key: ClippoRadialNav.previewKey,
+          left: (at.dx - w / 2).clamp(ClippoSpace.spaceM, width - w - ClippoSpace.spaceM),
+          top: itemTop - ClippoSpace.spaceS - h,
+          child: child!,
+        );
+      },
+      child: IgnorePointer(
+        child: ScaleTransition(
+          scale: CurvedAnimation(parent: _preview, curve: ClippoMotion.pop),
+          alignment: Alignment.bottomCenter,
+          child: FadeTransition(
+            opacity: _preview,
+            child: Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                color: ClippoBrand.wine,
+                borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ClippoSvgIcon(item.icon, color: ClippoBrand.onWine),
+                  const SizedBox(height: ClippoSpace.spaceXs),
+                  Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _button(Offset center, ClippoRadialNavItem current, ClippoColors colors) {
     const outer = ClippoSize.navButton + ClippoSize.navRing * 2;
     return Positioned(
@@ -391,7 +578,7 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
         label: 'Navegação. Seção atual: ${current.label}',
         onTap: () => _open ? _close() : _openWheel(),
         child: Listener(
-          onPointerDown: _onDown,
+          onPointerDown: _onButtonDown,
           onPointerMove: _onMove,
           onPointerUp: _onUp,
           onPointerCancel: _onCancel,
@@ -434,79 +621,4 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with SingleTickerProv
       ),
     );
   }
-}
-
-class _WheelPainter extends CustomPainter {
-  _WheelPainter({
-    required this.center,
-    required this.radius,
-    required this.angles,
-    required this.highlighted,
-    required this.progress,
-    required this.guide,
-    required this.wedge,
-    required this.wedgeHalf,
-  });
-
-  final Offset center;
-  final double radius;
-  final List<double> angles;
-  final int highlighted;
-  final double progress;
-  final Color guide;
-  final Color wedge;
-  final double wedgeHalf;
-
-  static double _rad(double degrees) => degrees * math.pi / 180;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-    canvas.saveLayer(Offset.zero & size, Paint()..color = Color.fromRGBO(0, 0, 0, progress));
-
-    // Fatia acesa: anel em volta da seção sob o dedo.
-    if (highlighted >= 0 && highlighted < angles.length) {
-      final a = angles[highlighted];
-      const inner = 44.0;
-      const outer = 162.0;
-      canvas.drawPath(
-        Path()
-          ..arcTo(
-            Rect.fromCircle(center: center, radius: outer),
-            _rad(-(a + wedgeHalf)),
-            _rad(wedgeHalf * 2),
-            true,
-          )
-          ..arcTo(
-            Rect.fromCircle(center: center, radius: inner),
-            _rad(-(a - wedgeHalf)),
-            _rad(-wedgeHalf * 2),
-            false,
-          )
-          ..close(),
-        Paint()..color = wedge,
-      );
-    }
-
-    // Arco-guia de 180°, fio de 1 dp.
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      math.pi,
-      math.pi,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = guide,
-    );
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_WheelPainter old) =>
-      old.highlighted != highlighted ||
-      old.progress != progress ||
-      old.center != center ||
-      old.guide != guide;
 }

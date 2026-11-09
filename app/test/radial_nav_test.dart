@@ -22,6 +22,10 @@ Future<void> _phone(WidgetTester tester) async {
   addTearDown(tester.view.reset);
 }
 
+double _opacidadeDaSecao(WidgetTester tester, String nome) => tester
+    .widget<Opacity>(find.ancestor(of: find.text(nome), matching: find.byType(Opacity)).first)
+    .opacity;
+
 void main() {
   testWidgets('fechada, a roda não mostra as seções', (tester) async {
     await _phone(tester);
@@ -32,15 +36,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    // Os rótulos existem na árvore, mas invisíveis (opacidade 0) até abrir.
-    expect(find.text('Toque ou arraste até uma seção'), findsOneWidget);
-    final hint = tester.widget<FadeTransition>(
-      find.ancestor(
-        of: find.text('Toque ou arraste até uma seção'),
-        matching: find.byType(FadeTransition),
-      ).first,
-    );
-    expect(hint.opacity.value, 0);
+    // As seções existem na árvore, mas invisíveis (opacidade 0) até abrir.
+    expect(_opacidadeDaSecao(tester, 'Amigos'), 0);
   });
 
   testWidgets('tocar no botão abre a roda', (tester) async {
@@ -55,13 +52,7 @@ void main() {
     await tester.tap(find.byKey(ClippoRadialNav.buttonKey));
     await tester.pumpAndSettle();
 
-    final hint = tester.widget<FadeTransition>(
-      find.ancestor(
-        of: find.text('Toque ou arraste até uma seção'),
-        matching: find.byType(FadeTransition),
-      ).first,
-    );
-    expect(hint.opacity.value, 1);
+    expect(_opacidadeDaSecao(tester, 'Amigos'), 1);
   });
 
   testWidgets('escolher uma seção avisa quem está ouvindo', (tester) async {
@@ -99,6 +90,109 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(escolhidos, isEmpty);
+  });
+
+  testWidgets('arrastar do botão até uma seção e soltar escolhe a seção', (tester) async {
+    await _phone(tester);
+    final escolhidos = <int>[];
+    await tester.pumpWidget(_app(ClippoRadialNav(
+      items: _destinos,
+      currentIndex: 0,
+      onSelected: escolhidos.add,
+    )));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(ClippoRadialNav.buttonKey)));
+    await tester.pumpAndSettle();
+    final alvo = tester.getCenter(find.byKey(ClippoRadialNav.itemKey(3)));
+    // Vários passos, como um dedo de verdade: a lente segue o caminho.
+    final inicio = tester.getCenter(find.byKey(ClippoRadialNav.buttonKey));
+    for (var k = 1; k <= 6; k++) {
+      await gesture.moveTo(Offset.lerp(inicio, alvo, k / 6)!);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+
+    // O balão acima do dedo mostra a seção sob ele.
+    expect(find.byKey(ClippoRadialNav.previewKey), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(ClippoRadialNav.previewKey), matching: find.text('Perfil')),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(escolhidos, [3]);
+  });
+
+  testWidgets('arrastar e voltar para o botão cancela sem navegar', (tester) async {
+    await _phone(tester);
+    final escolhidos = <int>[];
+    await tester.pumpWidget(_app(ClippoRadialNav(
+      items: _destinos,
+      currentIndex: 0,
+      onSelected: escolhidos.add,
+    )));
+    await tester.pumpAndSettle();
+
+    final inicio = tester.getCenter(find.byKey(ClippoRadialNav.buttonKey));
+    final gesture = await tester.startGesture(inicio);
+    await tester.pumpAndSettle();
+    await gesture.moveTo(tester.getCenter(find.byKey(ClippoRadialNav.itemKey(2))));
+    await tester.pump();
+    await gesture.moveTo(inicio);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(escolhidos, isEmpty);
+  });
+
+  testWidgets('segurar uma seção mostra o balão; deslizar para outra troca o balão', (tester) async {
+    await _phone(tester);
+    final escolhidos = <int>[];
+    await tester.pumpWidget(_app(ClippoRadialNav(
+      items: _destinos,
+      currentIndex: 0,
+      onSelected: escolhidos.add,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ClippoRadialNav.buttonKey));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(ClippoRadialNav.itemKey(1))));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byKey(ClippoRadialNav.previewKey), matching: find.text('Gravar')),
+      findsOneWidget,
+    );
+
+    // Entre dois ícones o dedo não está em cima de nenhum: o balão some.
+    final entre = Offset.lerp(
+      tester.getCenter(find.byKey(ClippoRadialNav.itemKey(1))),
+      tester.getCenter(find.byKey(ClippoRadialNav.itemKey(2))),
+      0.5,
+    )!;
+    await gesture.moveTo(entre);
+    await tester.pumpAndSettle();
+    final balao = tester.widget<FadeTransition>(
+      find.descendant(
+        of: find.byKey(ClippoRadialNav.previewKey),
+        matching: find.byType(FadeTransition),
+      ),
+    );
+    expect(balao.opacity.value, 0);
+
+    await gesture.moveTo(tester.getCenter(find.byKey(ClippoRadialNav.itemKey(2))));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byKey(ClippoRadialNav.previewKey), matching: find.text('Amigos')),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(escolhidos, [2]);
   });
 
   for (final brightness in Brightness.values) {

@@ -218,7 +218,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `textLabel` | `#FFF1E8` a 55 % | `#241014` a 58 % | Rótulo dentro do campo, ícone do olho |
 | `placeholder` | `#FFF1E8` a 32 % | `#241014` a 36 % | Texto de exemplo no campo |
 | `accent` | `#FFC6A8` | `#741A2F` | 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓ |
-| `accentSoft` | `accent` a 18 % | `accent` a 14 % | Fatia acesa da roda de navegação, atrás do ícone |
+| `accentSoft` | `accent` a 18 % | `accent` a 14 % | Sem uso no momento (era a fatia acesa da roda de navegação) |
 | `primary` | `#FFC6A8` | `#741A2F` | Fundo do botão primário |
 | `primaryPressed` | `peachPressed` | `wineDeep` | Botão primário pressionado |
 | `onPrimary` | `#241014` | `#FFF1E8` | Texto sobre `primary` / `accent` preenchido |
@@ -293,6 +293,8 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel da cor do fundo em volta dele |
 | `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
 | `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
+| `navMagnetRange` · `navMagnetPull` | 110 · 10 | Roda: até onde o dedo atrai e amplia as seções (até +16 %) · quanto a seção acesa é puxada na direção do dedo |
+| `navPreviewWidth` · `navPreviewHeight` | 64 · 60 | Balão acima da seção sob o dedo na roda (ícone `icon` + nome, raio `radiusField`, `spaceS` acima do ícone) |
 | `skeletonCard` | 80 | Esqueleto no formato do card de sessão fechado |
 | `recordButton` · `recordRing` · `recordIcon` | 80 · 4 · 34 | Gravação: botão de gravar · anel em volta · câmera dentro |
 | `captureChip` · `pulseDot` | 40 · 14 | Gravação: altura do chip (toque continua 48) · ponto pulsante do standby |
@@ -319,6 +321,7 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `focus` | 160 ms | Borda de foco do campo, traço do medidor |
 | `enable` | 200 ms | Botão desabilitado → habilitado |
 | `wheelOpen` · `wheelClose` | 360 ms · 180 ms | Roda de navegação abrindo · fechando |
+| `navPreview` | 90 ms | Balão acima da seção surgindo na roda (com a curva `pop`) |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
@@ -359,7 +362,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
 - **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
 - **`ClippoHighlightTile(title, timing, onTap, thumbnailUrl?, uploading)`** — uma linha de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura `thumbnailWidth` × `thumbnailHeight` à esquerda com botão de play circular (`playBadge`) sobreposto; à direita, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`).
-- **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar acende a fatia da seção sob o dedo e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
+- **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
 

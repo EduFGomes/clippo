@@ -313,6 +313,10 @@ class ClippoSize {
   static const double navRadius = 118; // raio do arco onde as seções pousam
   static const double navBottom = 28; // do botão até a base (+ área segura)
   static const double navClearance = 130; // folga no fim da lista, para a roda não cobrir
+  static const double navMagnetRange = 110; // até onde o dedo atrai e amplia as seções da roda
+  static const double navMagnetPull = 10; // quanto a seção acesa é puxada na direção do dedo
+  static const double navPreviewWidth = 64; // balão acima da seção, como a tecla do teclado
+  static const double navPreviewHeight = 60; // altura do balão
   static const double skeletonCard = 80; // esqueleto no formato do card de sessão fechado
   static const double recordButton = 80; // botão de gravar, sem o anel
   static const double recordRing = 4; // anel em volta do botão de gravar
@@ -366,6 +370,7 @@ class ClippoMotion {
 
   static const Duration wheelOpen = Duration(milliseconds: 360); // roda abrindo
   static const Duration wheelClose = Duration(milliseconds: 180); // roda fechando
+  static const Duration navPreview = Duration(milliseconds: 90); // balão acima da seção surgindo
 
   /// Sem animação quando o sistema pede "reduzir movimento".
   static bool reduced(BuildContext context) => MediaQuery.of(context).disableAnimations;
