@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "demo-clippo"
-  }
+    "default": "demo-clippo",
+    "dev": "clippo-dev"
+  },
+  "targets": {},
+  "etags": {}
 }

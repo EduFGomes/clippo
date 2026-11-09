@@ -3,12 +3,14 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'package:clippo/firebase_options.dart';
+
 /// Região das Cloud Functions chamáveis. Precisa ser a mesma de REGION em backend/functions/src/config.ts
 /// (só o Storage fica em us-east1, e o app não chama nenhuma função de lá).
 const String functionsRegion = 'southamerica-east1';
 
-/// true = conecta no Emulator local (projeto demo-clippo, sem custo).
-/// Para usar o projeto real no futuro: flutter run --dart-define=USE_EMULATOR=false
+/// true = conecta no Emulator local (projeto demo-clippo, sem custo). É o padrão.
+/// Projeto real (clippo-dev): flutter run --dart-define=USE_EMULATOR=false
 const bool useEmulator = bool.fromEnvironment('USE_EMULATOR', defaultValue: true);
 
 /// Endereço do computador que roda o Emulator.
@@ -19,8 +21,10 @@ const String emulatorHost = String.fromEnvironment('EMULATOR_HOST', defaultValue
 /// Inicia o Firebase e, no modo local, aponta Auth, Firestore e Functions para o Emulator.
 Future<void> setupFirebase() async {
   if (!useEmulator) {
-    // Projeto real: será configurado com `flutterfire configure` quando o clippo-dev existir.
-    throw UnimplementedError('Projeto real ainda não configurado. Use o Emulator.');
+    // Projeto real clippo-dev. As chaves vêm de lib/firebase_options.dart, gerado por
+    // `flutterfire configure --project=clippo-dev --platforms=android` (rode de novo se o app mudar).
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    return;
   }
 
   // Projetos "demo-*" só existem no Emulator, então as chaves abaixo são de mentira de propósito.

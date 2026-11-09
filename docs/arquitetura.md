@@ -154,8 +154,9 @@ O catálogo de funções planejadas está no [`backend/README.md`](../backend/RE
 |---|---|---|
 | Para quê | Todo o desenvolvimento e os testes | Testes em quadra, upload por 4G, demo |
 | Custo | Zero | Plano Blaze com alerta de orçamento |
-| Status | Em uso | 🟡 ainda não criado |
-| Como o app escolhe | Padrão | `--dart-define=USE_EMULATOR=false` (depois de `flutterfire configure`) |
+| Status | Em uso | Criado em 09/11/2026: Firestore em `southamerica-east1`, Storage em `us-east1`, Auth com Identity Platform, regras e Functions publicadas (`validateNewAccount` ligado ao cadastro). Apps Android: `com.clippoapp.clippo` e `com.clippoapp.clippo.lab` |
+| Como o app escolhe | Padrão | `flutter run --dart-define=USE_EMULATOR=false` (chaves em `app/lib/firebase_options.dart`) |
+| Como publicar | — | Em `backend/`: `firebase deploy --only firestore:rules,firestore:indexes,storage --project dev` e `firebase deploy --only functions --project dev`. Sem `--project dev`, o CLI usa o `demo-clippo` |
 
 Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](../AGENTS.md#ambiente-local).
 
@@ -167,7 +168,6 @@ Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](..
 | Modelo de Amizade (`Friendship`) | Back-end + grupo |
 | Como autorizar o download dos vídeos, já que as regras do Storage não leem o Firestore — [opções acima](#acesso-aos-vídeos-no-storage-) | Back-end + grupo |
 | Login com Google (precisa do projeto real) | Back-end |
-| Função de bloqueio `validateNewAccount` no projeto real: exige o Firebase Authentication com Identity Platform (no Emulator funciona sem nada a mais). Sem ela, a validação do e-mail no servidor fica só no app | Back-end |
 | Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
 | Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
