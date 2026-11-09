@@ -155,11 +155,115 @@ O catálogo de funções planejadas está no [`backend/README.md`](../backend/RE
 | Para quê | Todo o desenvolvimento e os testes | Testes em quadra, upload por 4G, demo |
 | Custo | Zero | Plano Blaze com alerta de orçamento |
 | Status | Em uso | Criado em 09/11/2026: Firestore em `southamerica-east1`, Storage em `us-east1`, Auth com Identity Platform, regras e Functions publicadas (`validateNewAccount` ligado ao cadastro). Apps Android: `com.clippoapp.clippo` e `com.clippoapp.clippo.lab` |
-| Como o app escolhe | Padrão | `flutter run --dart-define=USE_EMULATOR=false` (chaves em `app/lib/firebase_options.dart`) |
-| Como publicar | — | Em `backend/`: `firebase deploy --only firestore:rules,firestore:indexes,storage --project dev` e `firebase deploy --only functions --project dev`. Sem `--project dev`, o CLI usa o `demo-clippo` |
-| App Check | Não confere | Debug: provedor de depuração com o token de cada pessoa cadastrado no console (`--dart-define=APP_CHECK_DEBUG_TOKEN=...`, nunca no repositório). Release: Play Integrity (precisa do app no Google Play Console). As Functions chamáveis exigem (`CALLABLE_OPTIONS`); Firestore, Storage e Auth são ligados no console › App Check |
+| Como o app escolhe | Padrão | `flutter run --dart-define=USE_EMULATOR=false` |
+| App Check | Não confere | **Obrigatório** em Firestore, Storage, Auth e Functions chamáveis (desde 09/11/2026). Cada celular precisa de um token cadastrado: [primeiro uso](#primeiro-uso-token-do-app-check) |
 
 Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](../AGENTS.md#ambiente-local).
+
+### Projeto real (`clippo-dev`)
+
+O que está configurado (09/11/2026):
+
+| Peça | Configuração |
+|---|---|
+| Plano | Blaze, com alerta de orçamento no Google Cloud (Faturamento › Orçamentos). O alerta só avisa; o que limita o gasto é `MAX_INSTANCES` em `backend/functions/src/config.ts` |
+| Firestore | Banco `(default)`, edição Standard, `southamerica-east1` (não muda mais) |
+| Storage | `clippo-dev.firebasestorage.app`, `us-east1`, região única (cota gratuita) |
+| Authentication | E-mail/senha, com Identity Platform (exigido pela função de bloqueio) |
+| Functions | `completeProfile`, `saveSession`, `validateNewAccount` em `southamerica-east1`; `onVideoUploaded` em `us-east1` (junto do bucket). Limpeza das imagens antigas: 1 dia, nas duas regiões |
+| Apps Android | `com.clippoapp.clippo` (com SHA-1/SHA-256 da chave de debug) e `com.clippoapp.clippo.lab` (só para o build do sabor `lab` não quebrar) |
+| App Check | Play Integrity registrado no app; Aplicação ligada em Firestore, Storage e Authentication; Functions chamáveis com `CALLABLE_OPTIONS` |
+| Arquivos no repositório | `app/lib/firebase_options.dart`, `app/android/app/google-services.json`, `app/firebase.json` e o alias `dev` em `backend/.firebaserc`. Não são segredo: identificam o app, e quem protege os dados são as regras e o App Check |
+
+#### Primeiro uso: token do App Check
+
+Com o App Check obrigatório, um celular sem token cadastrado **não consegue nada** no projeto real
+(login, leituras e Functions são recusados). Uma vez por celular (e de novo se reinstalar o app):
+
+1. Peça a alguém com acesso ao console para te adicionar em **Configurações do projeto › Usuários e permissões**.
+2. Rode o app no projeto real (`flutter run --dart-define=USE_EMULATOR=false`) e procure no terminal a linha
+   `Firebase App Check debug token: xxxxxxxx-xxxx-...`. Se o log correr rápido demais, filtre:
+   `adb logcat | Select-String "App Check debug token"`.
+3. Cadastre o código no app **clippo (android)** (não no Clippo Lab):
+   - console: **App Check › Apps › ⋮ › Gerenciar tokens de depuração › Adicionar** e **Salvar**; ou
+   - CLI, em `backend/`: `firebase appcheck:debugtokens:create <código> --display-name "Celular do Fulano" --project dev --app 1:17675379807:android:7ec6ed5ab1efae63b167ea`
+4. Feche e abra o app. Em **App Check › APIs**, as chamadas devem aparecer como **verificadas**.
+
+O código é **segredo** (libera qualquer aparelho que o use): nunca no repositório, no grupo ou em print.
+Para fixar um token (ex.: depois de reinstalar), passe `--dart-define=APP_CHECK_DEBUG_TOKEN=<código>`.
+Quem sair do projeto ou trocar de celular: apague o token dele no console.
+
+#### Rodar o app no projeto real
+
+```bash
+cd app
+flutter run --dart-define=USE_EMULATOR=false
+```
+
+Sem `--dart-define`, o app usa o Emulator (o padrão). O sabor `lab` não usa o Firebase.
+Se der erro, a ordem para investigar: token do App Check (acima) → **App Check › APIs** (chamadas
+"inválidas"?) → **Functions › Registros** no console.
+
+#### Publicar o backend
+
+Sempre de `backend/`, sempre com `--project dev` (sem ele o CLI usa o `demo-clippo`). Antes: `npm run build`
+e `npm test` em `functions/`, e `npm test` em `tests/` se mexeu em regras.
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes,storage --project dev   # regras e índices
+firebase deploy --only functions --project dev                                  # todas as funções
+firebase deploy --only functions:saveSession --project dev                      # uma só
+```
+
+- Função nova chamável: use `onCall(CALLABLE_OPTIONS, ...)`; sem isso ela fica sem App Check.
+- Mudou a região de uma função: o deploy cria a nova e pergunta se apaga a antiga.
+- Primeiro deploy de uma função de gatilho novo pode falhar com "Permission denied while using the Eventarc
+  Service Agent": espere ~5 minutos e rode de novo.
+- `validateNewAccount` é ligado ao cadastro pelo próprio deploy (confira em **Authentication › Configurações ›
+  Funções de bloqueio**).
+
+#### Refazer a configuração do app
+
+Só se mudar o pacote, entrar uma plataforma nova ou o `google-services.json` se perder:
+
+```bash
+dart pub global run flutterfire_cli:flutterfire configure --project=clippo-dev --platforms=android --android-package-name=com.clippoapp.clippo
+```
+
+Depois, baixe o `google-services.json` com os **dois** apps (o `flutterfire` grava só um, e o build do `lab`
+quebra): `firebase apps:sdkconfig ANDROID 1:17675379807:android:7ec6ed5ab1efae63b167ea --project dev --out app/android/app/google-services.json`.
+
+#### Rumo à Play Store
+
+Hoje o App Check em builds de **release** usa o **Play Integrity**, que só aprova apps que o Google Play
+conhece. Um APK de release instalado direto no celular é **recusado** (e com a Aplicação ligada, o app não
+funciona). Até publicar, use builds de debug com token, inclusive na demo.
+
+Para publicar:
+
+1. **Conta de desenvolvedor** no [Google Play Console](https://play.google.com/console) (taxa única de US$ 25).
+2. **Chave de upload própria** (hoje o release é assinado com a chave de debug, ver `TODO` em
+   `app/android/app/build.gradle.kts`):
+   - gerar: `keytool -genkey -v -keystore clippo-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`;
+   - guardar o `.jks` e as senhas **fora do repositório** (num cofre do grupo) e ler por um `key.properties`
+     ignorado pelo Git ([guia do Flutter](https://docs.flutter.dev/deployment/android#sign-the-app));
+   - perder essa chave = não conseguir mais atualizar o app (dá para pedir troca ao Google, mas demora).
+3. **Gerar o pacote**: `flutter build appbundle --release` (a Play Store pede `.aab`, não `.apk`).
+4. **Subir numa faixa de teste interno** primeiro (até 100 testadores por e-mail, sem revisão pública). A
+   Play Store exige também política de privacidade (cite que os vídeos ficam nos EUA, decisão D4), ficha da
+   loja e a declaração de segurança de dados.
+5. **Ativar o Play App Signing** (padrão): o Google re-assina o app com a chave dele. Copie o **SHA-256 da
+   chave de assinatura do app** (Play Console › Configuração › Integridade do app) e cadastre no Firebase:
+   `firebase apps:android:sha:create 1:17675379807:android:7ec6ed5ab1efae63b167ea <SHA-256> --project dev`.
+   Cadastre também o SHA-256 da chave de upload, para testar builds locais de release.
+6. **Ligar o Play Integrity ao projeto**: Play Console › Configuração › **Integridade do app** › Play Integrity
+   API › vincular ao projeto do Google Cloud `clippo-dev`.
+7. Instalar pela faixa de teste e conferir em **App Check › APIs** que as chamadas do release chegam
+   verificadas. Os tokens de depuração podem ser apagados quando ninguém mais usar builds de debug no
+   projeto real.
+
+Antes de abrir para o público, avaliar também: o sabor `lab` não vai para a loja; `MAX_INSTANCES` e o
+alerta de orçamento; e o que está 🟡 abaixo (retenção de vídeos, idade mínima, acesso aos vídeos).
 
 ## Decisões em aberto 🟡
 

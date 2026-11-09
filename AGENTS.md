@@ -42,6 +42,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - Portas: Auth 9099 · Firestore **8180** · Storage 9199 · Functions 5001 · interface 4000. Se mudar uma, mude em `backend/firebase.json`, `backend/tests/firestore.rules.test.ts` e `app/lib/core/firebase/firebase_setup.dart`.
 - App → Emulator: `10.0.2.2` no emulador do Android; IP do computador num celular real (`--dart-define=EMULATOR_HOST=...`).
 - Regiões: Firestore e Functions em `southamerica-east1`; **só o Storage** (e o gatilho `onVideoUploaded`, que precisa ficar junto do bucket) em `us-east1`, pela cota gratuita. Constantes em `backend/functions/src/config.ts` e `functionsRegion` em `app/lib/core/firebase/firebase_setup.dart`.
+- **Projeto real `clippo-dev`** (App Check obrigatório): só com `--dart-define=USE_EMULATOR=false` no app e `--project dev` no CLI. Nunca faça deploy nem mude nada nele sem o pedido explícito de alguém do grupo. Guia: `docs/arquitetura.md` › Projeto real.
 
 ## Antes de dizer que terminou
 - `app/`: `flutter analyze` sem avisos e `flutter test` passando.

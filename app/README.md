@@ -19,6 +19,19 @@ flutter run --flavor lab -t lib/dev/gesture_lab_main.dart
 
 Sem `--flavor`, o `flutter run` usa o sabor `app` (o Clippo normal).
 
+### No projeto real (`clippo-dev`)
+
+O padrão é o Emulator. Para usar o Firebase de verdade:
+
+```bash
+flutter run --dart-define=USE_EMULATOR=false
+```
+
+Na primeira vez em cada celular, cadastre o token do App Check, senão tudo é recusado:
+[`docs/arquitetura.md` › Primeiro uso](../docs/arquitetura.md#primeiro-uso-token-do-app-check).
+Build de release (`flutter build apk --release`) **não funciona** no projeto real até o app estar no
+Google Play: [Rumo à Play Store](../docs/arquitetura.md#rumo-à-play-store).
+
 ## Estrutura (por funcionalidade)
 
 ```

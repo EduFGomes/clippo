@@ -99,21 +99,23 @@ Será ajustado quando o modelo de dados estiver definido.
 
 Em aberto: validar R10 (participantes são amigos do dono) em `participantsAreFriends` no `saveSession` quando `Friendship` existir.
 
-## Projeto real e deploy (depois)
+## Projeto real e deploy
 
-Quando o projeto `clippo-dev` existir no console do Firebase:
+O projeto `clippo-dev` existe desde 09/11/2026 (alias `dev` no `.firebaserc`). Sempre com `--project dev`;
+sem ele, o CLI usa o `demo-clippo`:
 
 ```bash
 cd backend
-firebase use --add          # escolha clippo-dev e dê o apelido "dev"
-firebase deploy --only firestore:rules,storage   # regras
-firebase deploy --only functions                 # funções
+firebase deploy --only firestore:rules,firestore:indexes,storage --project dev   # regras e índices
+firebase deploy --only functions --project dev                                  # funções
 ```
 
-Antes do primeiro deploy: plano **Blaze** ativo e **alerta de orçamento** configurado no Google Cloud.
+Configuração, App Check, problemas comuns no deploy e o caminho até a Play Store:
+[`docs/arquitetura.md` › Projeto real](../docs/arquitetura.md#projeto-real-clippo-dev).
 
 ## Segurança
 
 - Nunca versione chaves de conta de serviço (`*-adminsdk-*.json`): o `.gitignore` da raiz já bloqueia.
 - O `google-services.json` do app **não é segredo**; a proteção vem das regras e do App Check.
+- **Tokens de depuração do App Check são segredo**: nunca no repositório (passe por `--dart-define`).
 - Segredos de funções (se um dia houver) vão no Secret Manager: `firebase functions:secrets:set NOME`.
