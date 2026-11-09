@@ -20,6 +20,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
+import { CALLABLE_OPTIONS } from "../config";
 import { db } from "../shared/admin";
 import {
   SessionValidationError,
@@ -76,6 +77,7 @@ export function highlightThumbnailPath(sessionId: string, highlightId: string): 
 }
 
 export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionResponse>>(
+  CALLABLE_OPTIONS,
   async (request) => {
     // 1. Quem chamou?
     const uid = request.auth?.uid;

@@ -14,3 +14,14 @@ export const STORAGE_REGION = "us-east1";
 
 /** Limite de instâncias simultâneas por função: protege contra gasto inesperado. */
 export const MAX_INSTANCES = 10;
+
+/**
+ * Opções de toda Function chamável pelo app (onCall).
+ *
+ * enforceAppCheck: recusa chamadas sem um token válido do App Check, ou seja, que não
+ * vieram do app de verdade (ex.: um script usando as chaves de firebase_options.dart).
+ * Desligado no Emulator (FUNCTIONS_EMULATOR="true"), que não emite tokens do App Check.
+ */
+export const CALLABLE_OPTIONS = {
+  enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== "true",
+};

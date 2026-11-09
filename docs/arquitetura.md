@@ -157,6 +157,7 @@ O catálogo de funções planejadas está no [`backend/README.md`](../backend/RE
 | Status | Em uso | Criado em 09/11/2026: Firestore em `southamerica-east1`, Storage em `us-east1`, Auth com Identity Platform, regras e Functions publicadas (`validateNewAccount` ligado ao cadastro). Apps Android: `com.clippoapp.clippo` e `com.clippoapp.clippo.lab` |
 | Como o app escolhe | Padrão | `flutter run --dart-define=USE_EMULATOR=false` (chaves em `app/lib/firebase_options.dart`) |
 | Como publicar | — | Em `backend/`: `firebase deploy --only firestore:rules,firestore:indexes,storage --project dev` e `firebase deploy --only functions --project dev`. Sem `--project dev`, o CLI usa o `demo-clippo` |
+| App Check | Não confere | Debug: provedor de depuração com o token de cada pessoa cadastrado no console (`--dart-define=APP_CHECK_DEBUG_TOKEN=...`, nunca no repositório). Release: Play Integrity (precisa do app no Google Play Console). As Functions chamáveis exigem (`CALLABLE_OPTIONS`); Firestore, Storage e Auth são ligados no console › App Check |
 
 Portas, IP do Emulator no celular e região: [`AGENTS.md` › Ambiente local](../AGENTS.md#ambiente-local).
 

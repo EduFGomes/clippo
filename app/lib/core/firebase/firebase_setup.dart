@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 
 import 'package:clippo/firebase_options.dart';
 
@@ -18,12 +20,33 @@ const bool useEmulator = bool.fromEnvironment('USE_EMULATOR', defaultValue: true
 /// - Celular de verdade na mesma rede: o IP do computador, ex. --dart-define=EMULATOR_HOST=192.168.0.10
 const String emulatorHost = String.fromEnvironment('EMULATOR_HOST', defaultValue: '10.0.2.2');
 
+/// Token de depuração do App Check deste computador/celular (só em builds de debug).
+/// Cada pessoa gera o seu e cadastra no console (App Check › Apps › Gerenciar tokens de
+/// depuração). É segredo: passe por --dart-define=APP_CHECK_DEBUG_TOKEN=..., nunca no código.
+/// Vazio = o SDK gera um e mostra no log ("Enter this debug secret into the allow list...").
+const String appCheckDebugToken = String.fromEnvironment('APP_CHECK_DEBUG_TOKEN');
+
+/// App Check prova para o Firebase que a chamada veio do app de verdade, e não de um script
+/// usando as chaves de firebase_options.dart. Só no projeto real: o Emulator não confere.
+/// - Release: Play Integrity (precisa do app no Google Play Console e do SHA-256 no Firebase).
+/// - Debug: provedor de depuração, liberado pelo token cadastrado no console.
+Future<void> _activateAppCheck() async {
+  await FirebaseAppCheck.instance.activate(
+    providerAndroid: kReleaseMode
+        ? const AndroidPlayIntegrityProvider()
+        : AndroidDebugProvider(
+            debugToken: appCheckDebugToken.isEmpty ? null : appCheckDebugToken,
+          ),
+  );
+}
+
 /// Inicia o Firebase e, no modo local, aponta Auth, Firestore e Functions para o Emulator.
 Future<void> setupFirebase() async {
   if (!useEmulator) {
     // Projeto real clippo-dev. As chaves vêm de lib/firebase_options.dart, gerado por
     // `flutterfire configure --project=clippo-dev --platforms=android` (rode de novo se o app mudar).
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await _activateAppCheck();
     return;
   }
 
