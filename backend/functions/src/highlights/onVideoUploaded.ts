@@ -13,10 +13,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 
+import { STORAGE_REGION } from "../config";
 import { bucket, db } from "../shared/admin";
 import { parseHighlightVideoPath, validateUploadedVideo } from "./validation";
 
-export const onVideoUploaded = onObjectFinalized(async (event) => {
+// Gatilho do Storage: roda na região do bucket, não na das outras funções (config.ts).
+export const onVideoUploaded = onObjectFinalized({ region: STORAGE_REGION }, async (event) => {
   const objectName = event.data.name;
   const location = parseHighlightVideoPath(objectName);
   if (!location) return;

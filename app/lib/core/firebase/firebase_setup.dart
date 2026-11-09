@@ -3,8 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-/// Região das Cloud Functions. Precisa ser a mesma de backend/functions/src/config.ts.
-const String functionsRegion = 'us-east1';
+/// Região das Cloud Functions chamáveis. Precisa ser a mesma de REGION em backend/functions/src/config.ts
+/// (só o Storage fica em us-east1, e o app não chama nenhuma função de lá).
+const String functionsRegion = 'southamerica-east1';
 
 /// true = conecta no Emulator local (projeto demo-clippo, sem custo).
 /// Para usar o projeto real no futuro: flutter run --dart-define=USE_EMULATOR=false

@@ -41,7 +41,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - Tudo roda contra o **Firebase Emulator** com o projeto `demo-clippo` (sem custo, sem conta).
 - Portas: Auth 9099 · Firestore **8180** · Storage 9199 · Functions 5001 · interface 4000. Se mudar uma, mude em `backend/firebase.json`, `backend/tests/firestore.rules.test.ts` e `app/lib/core/firebase/firebase_setup.dart`.
 - App → Emulator: `10.0.2.2` no emulador do Android; IP do computador num celular real (`--dart-define=EMULATOR_HOST=...`).
-- Região de tudo: `us-east1`.
+- Regiões: Firestore e Functions em `southamerica-east1`; **só o Storage** (e o gatilho `onVideoUploaded`, que precisa ficar junto do bucket) em `us-east1`, pela cota gratuita. Constantes em `backend/functions/src/config.ts` e `functionsRegion` em `app/lib/core/firebase/firebase_setup.dart`.
 
 ## Antes de dizer que terminou
 - `app/`: `flutter analyze` sem avisos e `flutter test` passando.

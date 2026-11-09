@@ -9,7 +9,7 @@ Este documento registra **as decisões técnicas já tomadas**, o porquê de cad
 App Flutter que detecta o gesto **no próprio celular** + Firebase (Auth, Firestore, Storage, Cloud Functions) **sem API própria**. As regras de acesso ficam nas Security Rules; o que precisa de validação ou lógica de servidor fica em Cloud Functions.
 
 ```
-Celular de quem grava                      Firebase (us-east1)                     Outros participantes
+Celular de quem grava              Firebase (São Paulo; Storage nos EUA)           Outros participantes
 ┌───────────────────────┐   upload    ┌──────────────────────────────┐   leem   ┌──────────────────┐
 │ Câmera → buffer 30 s  │ ──────────► │ Security Rules + App Check   │ ───────► │ app (Início,     │
 │ → detector de pose    │             │ Auth · Firestore · Storage   │          │ Sessão, Player)  │
@@ -25,7 +25,7 @@ Celular de quem grava                      Firebase (us-east1)                  
 | D1 | **Detecção do gesto no celular** (modelo de pose pronto + regra geométrica) | R6 e R8 (o buffer não sai do aparelho; não depende de internet); internet ruim na quadra; dados, bateria e privacidade (LGPD) | Modelos pesados de servidor; mudar a regra exige nova versão do app (mitigação: limites ajustáveis remotamente) |
 | D2 | **Firebase sem API própria** | 5 pessoas × ~6 h/semana; login, upload offline e sincronização prontos; custo ~zero no MVP | Dependência do Google; regras viram código crítico; Firestore sem JOIN |
 | D3 | **Cloud Functions em TypeScript** | Mesmo ambiente das Functions e dos testes de regras; todos os gatilhos disponíveis; mais exemplos | Curva inicial para quem não conhece TS |
-| D4 | **Região `us-east1`** para Firestore, Storage e Functions | Cota gratuita do Storage só existe em regiões dos EUA; a região do Firestore **não muda depois** | ~100 ms a mais de latência; dados fora do Brasil (citar na política de privacidade) |
+| D4 | **Firestore e Functions em `southamerica-east1`; só o Storage em `us-east1`** (o gatilho `onVideoUploaded` fica junto do bucket, como o Google exige) | Leituras e chamadas do app ficam rápidas (~20 ms em vez de ~130 ms); a cota gratuita do Storage só existe em regiões dos EUA. A região do Firestore **não muda depois**. Decidido pelo grupo em 09/11/2026 (antes: tudo em `us-east1`) | Envio e download de vídeo continuam indo aos EUA; Functions em SP têm preço "Tier 2" (cota gratuita um pouco menor); vídeos fora do Brasil (citar na política de privacidade) |
 | D5 | **App organizado por funcionalidade** (`lib/features/`) | Cada pessoa trabalha na sua pasta; menos conflito | Exige combinar o que vai em `lib/core/` |
 | D6 | **Desenvolvimento no Emulator** (`demo-clippo`) | Sem custo, sem conta, sem risco de mexer em dados reais | Dados de cada um ficam só na máquina de cada um |
 | D7 | **O app não grava dados validados**; só Functions gravam | Ninguém pula a validação mexendo no app | Toda escrita nova precisa de uma Function |

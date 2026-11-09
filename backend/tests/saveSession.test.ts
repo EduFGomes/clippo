@@ -13,7 +13,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 const PROJECT = "demo-clippo";
-const REGION = "us-east1";
+const REGION = "southamerica-east1";
 const AUTH = `http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1`;
 const FUNCTIONS = `http://127.0.0.1:5001/${PROJECT}/${REGION}`;
 const FIRESTORE = `http://127.0.0.1:8180/v1/projects/${PROJECT}/databases/(default)/documents`;
