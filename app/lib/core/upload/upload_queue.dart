@@ -358,6 +358,7 @@ class UploadQueue {
     Future<void> Function(String path)? deleteLocalFile,
     Future<bool> Function(String path)? localFileExists,
     this.retryDelays = defaultRetryDelays,
+    this.submitWait = defaultSubmitWait,
   })  : _api = backend,
         _storage = store,
         _deleteLocalFile = deleteLocalFile ?? _deleteFile,
@@ -376,6 +377,10 @@ class UploadQueue {
   final Future<void> Function(String path) _deleteLocalFile;
   final Future<bool> Function(String path) _localFileExists;
   final List<Duration> retryDelays;
+
+  /// Quanto o "Salvar sessão" espera o servidor criar a sessão antes de seguir sem ele.
+  static const Duration defaultSubmitWait = Duration(seconds: 5);
+  final Duration submitWait;
 
   final ValueNotifier<UploadQueueState> _state = ValueNotifier(const UploadQueueState());
 
@@ -418,24 +423,57 @@ class UploadQueue {
         _publish();
       });
 
-  /// Guarda a sessão no aparelho e tenta salvar agora.
+  /// Guarda a sessão no aparelho e tenta criá-la no servidor, esperando no máximo
+  /// [submitWait]. Os vídeos sobem sempre por trás: a tela nunca espera por eles.
   ///
-  /// Se o servidor recusar um campo (ex.: `participantIds`), a sessão sai da fila e o
-  /// [SessionsFailure] sobe para a tela mostrar no campo certo. Falha de rede: fica na fila
-  /// e devolve [SubmitOutcome.queued].
+  /// Se o servidor recusar um campo (ex.: `participantIds`) dentro da espera, a sessão sai da
+  /// fila e o [SessionsFailure] sobe para a tela mostrar no campo certo. Sem internet, internet
+  /// lenta ou recusa depois da espera: a sessão fica na fila e devolve [SubmitOutcome.queued]
+  /// (uma recusa tardia deixa a sessão `blocked`, com a mensagem em `lastError`).
   Future<SubmitOutcome> submit(QueuedSession session) async {
     await _load();
-    final outcome = await _serial(() async {
+    final id = session.sessionId;
+    final saving = _serial(() async {
       _sessions = [
         for (final s in _sessions)
-          if (s.sessionId != session.sessionId) s,
+          if (s.sessionId != id) s,
         session,
       ];
       await _persist();
-      return _process(session.sessionId, fromSubmit: true);
+      return _saveOnServer(id);
     });
-    if (outcome == _Step.retryLater) _scheduleRetry();
-    return outcome == _Step.retryLater ? SubmitOutcome.queued : SubmitOutcome.saved;
+
+    final ({_Step step, SessionsFailure? refused}) result;
+    try {
+      result = await saving.timeout(submitWait);
+    } on TimeoutException {
+      // Internet lenta: a chamada segue por trás; quando terminar, a fila continua sozinha.
+      unawaited(saving.then((late) {
+        if (late.step == _Step.retryLater) {
+          _scheduleRetry();
+        } else {
+          unawaited(drain().catchError((Object _) {}));
+        }
+      }, onError: (Object _) => _scheduleRetry()));
+      return SubmitOutcome.queued;
+    }
+
+    final refused = result.refused;
+    if (refused != null) {
+      await _serial(() async {
+        _sessions = [for (final s in _sessions) if (s.sessionId != id) s];
+        await _persist();
+      });
+      throw refused;
+    }
+    if (result.step == _Step.retryLater) {
+      // Sem internet: a fila tenta de novo com espera crescente.
+      _scheduleRetry();
+      return SubmitOutcome.queued;
+    }
+    // Sessão criada: os vídeos sobem por trás.
+    unawaited(drain().catchError((Object _) {}));
+    return SubmitOutcome.saved;
   }
 
   /// Tenta agora tudo o que está na fila (zera a espera).
@@ -473,52 +511,61 @@ class UploadQueue {
     _retryTimer = Timer(delay, () => unawaited(drain()));
   }
 
-  Future<_Step> _process(String sessionId, {bool fromSubmit = false}) async {
+  /// Cria a sessão no servidor (o `saveSession`), se ainda não foi. Uma recusa de campo deixa a
+  /// sessão `blocked` e volta em `refused`, para o [submit] mostrar no campo certo.
+  Future<({_Step step, SessionsFailure? refused})> _saveOnServer(String sessionId) async {
+    final session = _find(sessionId);
+    if (session == null || session.saved) return (step: _Step.done, refused: null);
+    final uid = _api.currentUid;
+    if (uid == null || uid != session.ownerUid) return (step: _Step.done, refused: null);
+    try {
+      final paths = await _api.saveSession(session);
+      // Relido: os lances podem ter mudado enquanto a chamada estava fora.
+      final now = _find(sessionId) ?? session;
+      await _replace(now.copyWith(
+        saved: true,
+        attempts: 0,
+        clearError: true,
+        blocked: false,
+        highlights: [
+          for (final h in now.highlights)
+            h.copyWith(
+              videoPath: paths[h.highlightId] ??
+                  'sessions/${now.sessionId}/highlights/${h.highlightId}/video.mp4',
+            ),
+        ],
+      ));
+      return (step: _Step.done, refused: null);
+    } on SessionsFailure catch (e) {
+      if (e.code != null) {
+        // O servidor recusou um campo: tentar de novo sozinho não vai resolver.
+        await _replace(session.copyWith(lastError: e.message, blocked: true));
+        return (step: _Step.done, refused: e);
+      }
+      await _replace(session.copyWith(attempts: session.attempts + 1, lastError: e.message));
+      return (step: _Step.retryLater, refused: null);
+    } catch (_) {
+      await _replace(session.copyWith(
+        attempts: session.attempts + 1,
+        lastError: 'Sem internet. A sessão sobe quando a conexão voltar.',
+      ));
+      return (step: _Step.retryLater, refused: null);
+    }
+  }
+
+  Future<_Step> _process(String sessionId) async {
     final found = _find(sessionId);
     if (found == null) return _Step.done;
-    var session = found;
     final uid = _api.currentUid;
-    if (uid == null || uid != session.ownerUid) return _Step.done;
-    if (session.blocked && !fromSubmit) return _Step.done;
+    if (uid == null || uid != found.ownerUid) return _Step.done;
+    if (found.blocked) return _Step.done;
 
-    if (!session.saved) {
-      try {
-        final paths = await _api.saveSession(session);
-        session = session.copyWith(
-          saved: true,
-          attempts: 0,
-          clearError: true,
-          blocked: false,
-          highlights: [
-            for (final h in session.highlights)
-              h.copyWith(
-                videoPath: paths[h.highlightId] ??
-                    'sessions/${session.sessionId}/highlights/${h.highlightId}/video.mp4',
-              ),
-          ],
-        );
-        await _replace(session);
-      } on SessionsFailure catch (e) {
-        if (e.code != null) {
-          // O servidor recusou um campo: tentar de novo sozinho não vai resolver.
-          if (fromSubmit) {
-            _sessions = [for (final s in _sessions) if (s.sessionId != sessionId) s];
-            await _persist();
-            rethrow;
-          }
-          await _replace(session.copyWith(lastError: e.message, blocked: true));
-          return _Step.done;
-        }
-        await _replace(session.copyWith(attempts: session.attempts + 1, lastError: e.message));
-        return _Step.retryLater;
-      } catch (_) {
-        await _replace(session.copyWith(
-          attempts: session.attempts + 1,
-          lastError: 'Sem internet. A sessão sobe quando a conexão voltar.',
-        ));
-        return _Step.retryLater;
-      }
+    if (!found.saved) {
+      final saved = await _saveOnServer(sessionId);
+      if (saved.step == _Step.retryLater) return _Step.retryLater;
     }
+    final session = _find(sessionId);
+    if (session == null || !session.saved) return _Step.done;
 
     _watch(session.sessionId);
 

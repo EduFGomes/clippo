@@ -15,6 +15,9 @@ class FakeUploadBackend implements UploadBackend {
   bool failSave = false;
   bool failUpload = false;
   SessionsFailure? saveError;
+
+  /// Internet lenta: o `saveSession` só responde quando o teste completar.
+  Completer<void>? saveGate;
   final List<String> savedSessions = [];
   final List<String> uploads = [];
   final Map<String, StreamController<Map<String, HighlightStatus>>> statuses = {};
@@ -25,6 +28,7 @@ class FakeUploadBackend implements UploadBackend {
   @override
   Future<Map<String, String>> saveSession(QueuedSession session) async {
     savedSessions.add(session.sessionId);
+    await saveGate?.future;
     if (saveError != null) throw saveError!;
     if (failSave) {
       throw const SessionsFailure('Sem internet. Suas sessões aparecem assim que você conectar.');
@@ -74,12 +78,18 @@ void main() {
   late MemoryUploadQueueStore store;
   late List<String> deleted;
 
-  UploadQueue queue({List<Duration> retryDelays = const [], Set<String>? existing}) => UploadQueue(
+  UploadQueue queue({
+    List<Duration> retryDelays = const [],
+    Set<String>? existing,
+    Duration submitWait = UploadQueue.defaultSubmitWait,
+  }) =>
+      UploadQueue(
         backend: backend,
         store: store,
         deleteLocalFile: (path) async => deleted.add(path),
         localFileExists: (path) async => existing?.contains(path) ?? true,
         retryDelays: retryDelays,
+        submitWait: submitWait,
       );
 
   setUp(() {
@@ -113,7 +123,9 @@ void main() {
     final q = queue(retryDelays: const [Duration(milliseconds: 1)]);
     backend.failUpload = true;
 
-    expect(await q.submit(_session()), SubmitOutcome.queued);
+    // A sessão foi criada: o "Salvar" termina, e o vídeo falha depois, por trás.
+    expect(await q.submit(_session()), SubmitOutcome.saved);
+    await _settle();
     expect(store.saved.single.saved, isTrue);
     expect(store.saved.single.highlights.single.videoSent, isFalse);
     expect(q.nextRetryAt, isNotNull);
@@ -128,6 +140,7 @@ void main() {
   test('o vídeo local só é apagado depois que o Firestore marca uploaded', () async {
     final q = queue();
     await q.submit(_session(highlights: 2));
+    await _settle();
     expect(backend.uploads, hasLength(2));
     expect(deleted, isEmpty);
 
@@ -160,8 +173,8 @@ void main() {
   test('upload terminou mas o Firestore ainda não confirmou: nada é apagado', () async {
     final q = queue();
     await q.submit(_session());
-    expect(store.saved.single.highlights.single.videoSent, isTrue);
     await _settle();
+    expect(store.saved.single.highlights.single.videoSent, isTrue);
     expect(deleted, isEmpty);
     expect(q.state.value.isPending('sessao-123456'), isTrue);
     q.dispose();
@@ -170,6 +183,7 @@ void main() {
   test('lance marcado failed depois do envio é enviado de novo', () async {
     final q = queue(retryDelays: const [Duration(milliseconds: 1)]);
     await q.submit(_session());
+    await _settle();
     expect(backend.uploads, hasLength(1));
 
     backend.emit('sessao-123456', {'highlight_1': HighlightStatus.failed});
@@ -189,6 +203,35 @@ void main() {
     );
     expect(store.saved, isEmpty);
     expect(q.state.value.isEmpty, isTrue);
+    q.dispose();
+  });
+
+  test('internet lenta: o Salvar não espera; a sessão e o vídeo sobem por trás', () async {
+    final q = queue(submitWait: const Duration(milliseconds: 10));
+    backend.saveGate = Completer<void>();
+
+    expect(await q.submit(_session()), SubmitOutcome.queued);
+    expect(store.saved.single.saved, isFalse);
+    expect(backend.uploads, isEmpty);
+
+    backend.saveGate!.complete();
+    await _settle();
+    expect(store.saved.single.saved, isTrue);
+    expect(backend.uploads, ['sessions/sessao-123456/highlights/highlight_1/video.mp4']);
+    q.dispose();
+  });
+
+  test('recusa do servidor depois da espera: a sessão fica guardada e para de tentar', () async {
+    final q = queue(submitWait: const Duration(milliseconds: 10));
+    backend.saveGate = Completer<void>();
+    backend.saveError = const SessionsFailure('Só dá para gravar com os seus amigos.', code: 'participantIds');
+
+    expect(await q.submit(_session()), SubmitOutcome.queued);
+    backend.saveGate!.complete();
+    await _settle();
+    expect(store.saved.single.blocked, isTrue);
+    expect(store.saved.single.lastError, 'Só dá para gravar com os seus amigos.');
+    expect(deleted, isEmpty);
     q.dispose();
   });
 
@@ -219,6 +262,7 @@ void main() {
   test('sessão sem lances sai da fila assim que é salva', () async {
     final q = queue();
     expect(await q.submit(_session(highlights: 0)), SubmitOutcome.saved);
+    await _settle();
     expect(q.state.value.isEmpty, isTrue);
     q.dispose();
   });
