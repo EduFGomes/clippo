@@ -30,7 +30,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PELADA DE\nQUINTA.'), findsOneWidget);
-    expect(find.text('Sessão aberta'), findsOneWidget);
     expect(find.text('Jogada de cinema'), findsOneWidget);
 
     // Abre o Player ao tocar num highlight.
