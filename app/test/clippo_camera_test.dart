@@ -142,6 +142,24 @@ void main() {
 
       await camera.start(multiPerson: true, fullHd: true, recordAudio: false);
       expect(calls.last.arguments, {'multiPerson': true, 'fullHd': true, 'recordAudio': false});
+
+      await camera.start(multiPerson: true, withPreview: false);
+      expect(calls.last.arguments, {'multiPerson': true, 'withPreview': false});
+    });
+
+    test('startPreview liga só a imagem e devolve a previsão do som', () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        calls.add(call);
+        return {'withSound': true};
+      });
+
+      expect(await camera.startPreview(), isTrue);
+      expect(calls.single.method, 'startPreview');
+      expect(calls.single.arguments, <String, Object?>{});
+
+      await camera.startPreview(recordAudio: false);
+      expect(calls.last.arguments, {'recordAudio': false});
     });
 
     test('saveHighlight manda a hora do disparo em microssegundos e lê o trecho salvo', () async {

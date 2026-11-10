@@ -134,16 +134,38 @@ class ClippoCamera {
   Future<bool> requestMicrophonePermission() =>
       _call<bool>('requestMicrophonePermission').then((granted) => granted ?? false);
 
-  /// Liga a câmera traseira e a análise (modelo padrão `base` do ML Kit).
+  /// Liga só a imagem da câmera na tela, sem análise nem buffer: a fase de enquadramento.
+  ///
+  /// Câmeras de nível LIMITED (ex.: Galaxy A50) não abrem a imagem, a análise e o buffer juntos.
+  /// Por isso a tela de gravação mostra a imagem só aqui e, ao gravar, troca para
+  /// [start] com `withPreview: false`.
+  ///
+  /// Devolve se o buffer vai gravar o som quando [start] ligar (previsão: o microfone liberado).
+  Future<bool> startPreview({bool recordAudio = true}) async {
+    final data = await _call<Map<Object?, Object?>>('startPreview', {
+      if (!recordAudio) 'recordAudio': false,
+    });
+    return data?['withSound'] as bool? ?? false;
+  }
+
+  /// Liga a câmera traseira, a análise (modelo padrão `base` do ML Kit) e o buffer.
   /// [multiPerson] acha cada pessoa do quadro
   /// com um detector antes do ML Kit (o modo escolhido); sem ele, o ML Kit segue uma pessoa só.
+  /// [withPreview] liga também a imagem na tela (o laboratório). São três fluxos, que câmeras
+  /// LIMITED recusam: a tela de gravação passa false (a tela fica preta durante a partida, R7).
   ///
   /// Devolve se o buffer está gravando o som (o microfone liberado e aberto).
-  Future<bool> start({bool multiPerson = false, bool fullHd = false, bool recordAudio = true}) async {
+  Future<bool> start({
+    bool multiPerson = false,
+    bool fullHd = false,
+    bool recordAudio = true,
+    bool withPreview = true,
+  }) async {
     final data = await _call<Map<Object?, Object?>>('start', {
       'multiPerson': multiPerson,
       if (fullHd) 'fullHd': true,
       if (!recordAudio) 'recordAudio': false,
+      if (!withPreview) 'withPreview': false,
     });
     return data?['withSound'] as bool? ?? false;
   }

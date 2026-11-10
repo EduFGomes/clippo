@@ -59,7 +59,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Ponte com o Dart:
  * - MethodChannel "clippo/camera": hasPermission, requestPermission, hasMicrophonePermission,
- *   requestMicrophonePermission, start, stop, saveHighlight, signalSaved, copyToGallery;
+ *   requestMicrophonePermission, startPreview, start, stop, saveHighlight, signalSaved, copyToGallery;
  * - EventChannel "clippo/camera/poses": um mapa por quadro analisado (formato em sendPose).
  */
 class ClippoCameraSession(private val activity: FlutterActivity) :
@@ -190,10 +190,15 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
+            "startPreview" -> startPreview(
+                recordAudio = call.argument<Boolean>("recordAudio") ?: true,
+                result = result,
+            )
             "start" -> start(
                 manyPeople = call.argument<Boolean>("multiPerson") ?: false,
                 fullHd = call.argument<Boolean>("fullHd") ?: false,
                 recordAudio = call.argument<Boolean>("recordAudio") ?: true,
+                withPreview = call.argument<Boolean>("withPreview") ?: true,
                 result = result,
             )
             "saveHighlight" -> {
@@ -292,10 +297,46 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         return true
     }
 
+    /**
+     * Só a imagem na tela, sem análise nem buffer: a fase de enquadramento da tela de gravação.
+     * Um fluxo só, que qualquer câmera aceita. Os celulares de câmera LIMITED (ex.: Galaxy A50)
+     * não abrem os três fluxos do [start] com imagem juntos; separando as fases, nunca passam de dois.
+     *
+     * Responde {withSound}: se o buffer vai gravar o som quando o [start] ligar (o microfone
+     * liberado). É uma previsão: o microfone ocupado por outro app só aparece no [start].
+     */
+    private fun startPreview(recordAudio: Boolean, result: MethodChannel.Result) {
+        if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
+        stop()
+        val myGeneration = generation
+        val providerFuture = ProcessCameraProvider.getInstance(activity)
+        providerFuture.addListener({
+            // Um stop ou start chegou enquanto o CameraX abria: esta câmera já não é a pedida.
+            if (generation != myGeneration) return@addListener result.success(mapOf("withSound" to false))
+            try {
+                val provider = providerFuture.get()
+                cameraProvider = provider
+                provider.unbindAll()
+                boundCamera = provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                result.success(mapOf("withSound" to (recordAudio && hasMicrophonePermission())))
+            } catch (e: Exception) {
+                Log.e("ClippoCamera", "imagem da câmera não abriu", e)
+                result.error("camera-unavailable", "Não foi possível abrir a câmera: ${e.message}", null)
+            }
+        }, ContextCompat.getMainExecutor(activity))
+    }
+
+    /**
+     * Liga a análise do gesto e o buffer. Com [withPreview] (o laboratório), liga também a imagem
+     * na tela: são três fluxos, que câmeras LIMITED recusam. A tela de gravação passa false, porque
+     * durante a partida a tela fica preta (R7); a imagem só aparece antes, no [startPreview].
+     */
     private fun start(
         manyPeople: Boolean,
         fullHd: Boolean = false,
         recordAudio: Boolean = true,
+        withPreview: Boolean = true,
         result: MethodChannel.Result,
     ) {
         if (!hasPermission()) return result.error("no-permission", "Sem permissão de câmera.", null)
@@ -349,13 +390,19 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         // Pegar o CameraX é assíncrono: a resposta para o Dart só sai quando a câmera abriu.
         val providerFuture = ProcessCameraProvider.getInstance(activity)
         providerFuture.addListener({
+            // Um stop ou start chegou enquanto o CameraX abria: o stop já desligou o encoder deste.
+            if (generation != myGeneration) return@addListener result.success(mapOf("withSound" to false))
             try {
                 val provider = providerFuture.get()
                 cameraProvider = provider
                 provider.unbindAll()
                 // Presa ao ciclo de vida da tela: o CameraX desliga a câmera sozinho quando o
                 // app vai para segundo plano e liga de novo quando ele volta.
-                val camera = provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
+                val camera = if (withPreview) {
+                    provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, bufferPreview)
+                } else {
+                    provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, analysis, bufferPreview)
+                }
                 boundCamera = camera
                 sensorRotation = camera.cameraInfo.sensorRotationDegrees
                 if (orientationListener.canDetectOrientation()) orientationListener.enable()
@@ -364,6 +411,7 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 result.success(mapOf("withSound" to (audio != null)))
             } catch (e: Exception) {
+                Log.e("ClippoCamera", "câmera não abriu (withPreview=$withPreview)", e)
                 stopEncoder()
                 result.error("camera-unavailable", "Não foi possível abrir a câmera: ${e.message}", null)
             }

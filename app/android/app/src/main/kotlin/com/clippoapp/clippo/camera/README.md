@@ -5,7 +5,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 
 | Arquivo | O que faz |
 |---|---|
-| `ClippoCameraSession.kt` | Abre a câmera traseira, liga os três fluxos (imagem, análise e buffer de vídeo), roda o ML Kit, manda os pontos para o Dart e salva os highlights. |
+| `ClippoCameraSession.kt` | Abre a câmera traseira, liga os fluxos (imagem, análise e buffer de vídeo; ver "Fases" abaixo), roda o ML Kit, manda os pontos para o Dart e salva os highlights. |
 | `AudioBuffer.kt` | O som do buffer: microfone em AAC numa fila em memória, ao lado da do vídeo. Opcional. |
 | `SaveSignal.kt` | O aviso de highlight salvo: bip, flash curto da lanterna e vibração leve, cada um com liga/desliga. |
 | `MultiPersonAnalyzer.kt` | Modo várias pessoas (o escolhido; 🟡 falta medir com 3–6 pessoas): o detector do MediaPipe (EfficientDet-Lite0, em `src/main/assets/`) acha cada pessoa (numa thread só dele, com a imagem pela metade; na GPU, ou no processador se ela falhar, como no S24), e cada pessoa tem um ML Kit só dela, em modo stream, lendo o recorte em volta dela, com as outras pessoas pintadas de cinza (senão o ML Kit seguia a vizinha); pose com os ombros fora da caixa da pessoa é descartada. Com o celular deitado, a cópia do detector é girada pela posição do celular, para ele ver as pessoas em pé. Sem ele, o ML Kit (modo stream) segue só a primeira pessoa que achou e pula para quem passar na frente dela. |
@@ -16,9 +16,24 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 
 | Canal | Tipo | O quê |
 |---|---|---|
-| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `start({multiPerson})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `deleteHighlight({path})` · `signalSaved({sound, flash, vibrate})` · `copyToGallery({path})` (só nos testes) |
+| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `startPreview({recordAudio})` → `{withSound}` (previsão) · `start({multiPerson, fullHd, recordAudio, withPreview})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `deleteHighlight({path})` · `signalSaved({sound, flash, vibrate})` · `copyToGallery({path})` (só nos testes) |
 | `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `people` (uma entrada por pessoa: `points` = null ou 33 × x, y, z, confiança, com z a profundidade, menor = mais perto; no modo várias pessoas, também `box`), e só no modo várias pessoas `prepMs`, `detectMs`, `poseMs` e `detectorGpu` |
 | `clippo/camera-preview` | Platform view | A imagem da câmera, para um `AndroidView` |
+
+## Fases
+
+Câmeras de nível **LIMITED** (ex.: Galaxy A50) não abrem imagem + análise + buffer juntos: o
+CameraX recusa a combinação e o `start` responde `camera-unavailable`. Por isso a tela de gravação
+nunca pede os três:
+
+| Fase | Chamada | Fluxos |
+|---|---|---|
+| Enquadrar | `startPreview` | só a imagem na tela |
+| Gravar (tela preta, R7) | `start(withPreview: false)` | análise + buffer |
+
+O laboratório usa `start()` com a imagem (`withPreview` padrão `true`): três fluxos, então só abre
+em câmeras FULL ou melhores (ex.: S24). Cada `start`/`startPreview` desliga a fase anterior antes
+(o buffer começa no "Gravar"), e um `stop` que chega enquanto o CameraX abre cancela a abertura.
 
 ## Buffer
 

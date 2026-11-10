@@ -282,11 +282,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _subscription?.cancel();
     _subscription = _pipeline.watch(widget.camera.poses).listen(_onObservation, onError: _fail);
     try {
-      final withSound = await widget.camera.start(
-        multiPerson: true,
-        fullHd: _resolution.fullHd,
-        recordAudio: _recordAudio,
-      );
+      // Só a imagem, para enquadrar: a análise e o buffer ligam no "Gravar" (_startRecording).
+      // Câmeras LIMITED (ex.: Galaxy A50) não abrem os três fluxos juntos.
+      final withSound = await widget.camera.startPreview(recordAudio: _recordAudio);
       if (mounted) {
         setState(() {
           _camera = _CameraState.running;
@@ -313,7 +311,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
   }
 
-  void _startRecording() {
+  Future<void> _startRecording() async {
     // Reinicia a janela da pose para ignorar gestos feitos durante o posicionamento do celular.
     _pipeline.reset();
     setState(() {
@@ -323,6 +321,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _showControls = false;
       _micWarned = true;
     });
+    // A tela já ficou preta (R7): troca a imagem pela análise do gesto e pelo buffer.
+    try {
+      final withSound = await widget.camera.start(
+        multiPerson: true,
+        fullHd: _resolution.fullHd,
+        recordAudio: _recordAudio,
+        withPreview: false,
+      );
+      if (mounted) setState(() => _withSound = withSound);
+    } catch (e) {
+      if (!mounted || _step == CaptureStep.finishing) return;
+      setState(() => _step = CaptureStep.preparing);
+      _fail(e);
+    }
   }
 
   void _onObservation(GestureObservation observation) {
@@ -627,6 +639,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (confirmed) {
       _toastTimer?.cancel();
       _discardHighlights();
+      // De volta ao enquadramento: desliga a análise e o buffer e mostra a imagem de novo.
+      _startCamera();
       setState(() {
         _step = CaptureStep.preparing;
         _showControls = false;

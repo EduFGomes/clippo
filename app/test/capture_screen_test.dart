@@ -46,10 +46,28 @@ class _FakeCamera extends ClippoCamera {
   @override
   Future<bool> requestMicrophonePermission() async => true;
 
+  /// Ordem das fases pedidas: 'preview' (só a imagem) ou 'start' (análise e buffer, sem imagem).
+  final List<String> phases = [];
+  bool? lastWithPreview;
+
   @override
-  Future<bool> start({bool multiPerson = false, bool fullHd = false, bool recordAudio = true}) async {
+  Future<bool> startPreview({bool recordAudio = true}) async {
+    phases.add('preview');
+    lastRecordAudio = recordAudio;
+    return recordAudio && withSound;
+  }
+
+  @override
+  Future<bool> start({
+    bool multiPerson = false,
+    bool fullHd = false,
+    bool recordAudio = true,
+    bool withPreview = true,
+  }) async {
+    phases.add('start');
     lastFullHd = fullHd;
     lastRecordAudio = recordAudio;
+    lastWithPreview = withPreview;
     return recordAudio && withSound;
   }
 
@@ -278,7 +296,8 @@ void main() {
 
     await tester.tap(find.text('1080p (Full HD)'));
     await tester.pump();
-    expect(camera.lastFullHd, isTrue);
+    // A resolução vale para o buffer, que só liga no "Gravar".
+    expect(camera.lastFullHd, isFalse);
 
     // Liga a vibração (4º Switch: Microfone, Som, Flash, Vibração).
     final switches = find.byType(Switch);
@@ -292,6 +311,7 @@ void main() {
 
     await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
     await tester.pump();
+    expect(camera.lastFullHd, isTrue);
     pipeline.frame(const Duration(seconds: 10));
     pipeline.frame(const Duration(seconds: 60), triggered: true);
     await tester.pump();
@@ -303,6 +323,27 @@ void main() {
     expect(camera.settings.vibrationOnSave, isTrue);
     expect(find.text(r'últimos 45s · gesto \ o / detectado'), findsOneWidget);
     await tester.pump(ClippoMotion.savedBanner);
+  });
+
+  testWidgets('enquadrar liga só a imagem; gravar troca pela análise e pelo buffer, sem imagem', (tester) async {
+    final camera = _FakeCamera();
+    await open(tester, camera: camera);
+    expect(camera.phases, ['preview']);
+
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
+    await tester.pump();
+    expect(camera.phases, ['preview', 'start']);
+    expect(camera.lastWithPreview, isFalse);
+
+    // Cancelar volta ao enquadramento, com a imagem de novo.
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Cancelar gravação'));
+    await tester.pump();
+    await tester.tap(find.text('Sim, cancelar'));
+    await tester.pump();
+    expect(camera.phases, ['preview', 'start', 'preview']);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('gravando: tela preta, e um toque mostra os controles por um tempo', (tester) async {
