@@ -206,9 +206,10 @@ URL assinada por Function (latência e mais código).
 | Baixar e compartilhar | O SDK baixa o arquivo inteiro para o cache do app (que também serve para tocar de novo na hora) |
 | Quem gravou, antes de subir | O MP4 da pasta do app (`Highlight.localPath`, vindo da fila de envio), sem internet |
 
-O MP4 do buffer sai com o índice (`moov`) no fim do arquivo, como o `MediaMuxer` grava: o player
-busca o fim antes de começar, uma ida e volta a mais. 🟡 Se o início ficar lento, mover o índice
-para o começo ao salvar o highlight.
+O `MediaMuxer` grava o índice (`moov`) no fim do MP4; ao salvar o highlight, o app o move para o
+começo ("faststart", `Mp4FastStart.kt`), para o streaming tocar com o primeiro pedaço. Lances
+gravados antes dessa mudança continuam com o índice no fim e demoram mais para abrir (medido no
+S24: 6–9 s).
 
 **No projeto real:** no primeiro
 `firebase deploy --only storage`, o CLI pede para dar ao agente de serviço do Storage o papel de

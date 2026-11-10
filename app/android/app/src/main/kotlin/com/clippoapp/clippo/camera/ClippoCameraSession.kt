@@ -680,6 +680,16 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             muxer.release()
         }
 
+        // Índice no começo, para o Player tocar por streaming com o primeiro pedaço. Se falhar,
+        // o highlight continua bom (só abre um pouco mais devagar pela nuvem).
+        val fastStartAt = SystemClock.elapsedRealtime()
+        try {
+            val moved = Mp4FastStart.apply(outputFile)
+            Log.d("ClippoBuffer", "faststart=$moved em ${SystemClock.elapsedRealtime() - fastStartAt} ms")
+        } catch (e: Exception) {
+            Log.w("ClippoBuffer", "faststart falhou; o MP4 segue com o índice no fim", e)
+        }
+
         return mapOf("path" to outputFile.absolutePath, "durationMs" to durationMs, "withSound" to soundSlice.isNotEmpty())
     }
 

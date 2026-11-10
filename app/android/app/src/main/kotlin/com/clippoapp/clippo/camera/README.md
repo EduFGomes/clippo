@@ -63,6 +63,9 @@ em câmeras FULL ou melhores (ex.: S24). Cada `start`/`startPreview` desliga a f
    - `durationMs` é menor que a duração pedida se a sessão começou há pouco (R5);
    - a rotação do MP4 vem da posição do celular na hora do disparo (acelerômetro), porque o
      encoder grava sempre na posição do sensor;
+   - depois do `MediaMuxer`, o `Mp4FastStart.kt` move o índice (`moov`) para o começo do arquivo e
+     corrige as posições dos quadros (`stco`/`co64`): o Player toca por streaming com o primeiro
+     pedaço. Se não der, o MP4 fica como saiu do muxer (o log `ClippoBuffer` mostra `faststart=` e o tempo);
    - erro: `save-failed` com a mensagem; o laboratório mostra o tempo de cada salvamento (R2: até 3 s).
    - Se o encoder morrer, o erro vai para o log (`ClippoBuffer`) e para o fluxo de poses como
      `buffer-failed`, e o laço do encoder para.
