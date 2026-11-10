@@ -102,6 +102,7 @@ class Highlight {
     this.videoPath,
     this.thumbnailPath,
     this.status = HighlightStatus.uploaded,
+    this.localPath,
   });
 
   factory Highlight.fromMap(String id, Map<String, dynamic> data, {int index = 0}) {
@@ -156,6 +157,14 @@ class Highlight {
   /// Estado do upload do vídeo (R13).
   final HighlightStatus status;
 
+  /// O MP4 ainda guardado no celular (a fila de envio só apaga depois do `uploaded`, R13).
+  /// Só existe no aparelho de quem gravou; nunca vem do Firestore. Com ele, o Player toca e
+  /// baixa o lance sem internet.
+  final String? localPath;
+
+  /// true quando o vídeo pode tocar direto do celular, sem baixar da nuvem.
+  bool get hasLocalVideo => (localPath ?? '').isNotEmpty;
+
   /// true enquanto o vídeo ainda está subindo para o banco ("enviando…").
   bool get isUploading => status == HighlightStatus.pending;
 
@@ -168,6 +177,7 @@ class Highlight {
     String? videoPath,
     String? thumbnailPath,
     HighlightStatus? status,
+    String? localPath,
   }) {
     return Highlight(
       id: id,
@@ -179,6 +189,7 @@ class Highlight {
       videoPath: videoPath ?? this.videoPath,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       status: status ?? this.status,
+      localPath: localPath ?? this.localPath,
     );
   }
 

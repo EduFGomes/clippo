@@ -267,6 +267,39 @@ void main() {
     q.dispose();
   });
 
+  test('withLocalVideos: põe o MP4 do celular nos lances do servidor e acrescenta os só locais', () {
+    final state = UploadQueueState(sessions: [_session(highlights: 2)]);
+    final remote = [
+      Highlight(
+        id: 'highlight_2',
+        title: 'Ponto antológico',
+        offset: const Duration(minutes: 2),
+        duration: const Duration(seconds: 30),
+        savedAt: DateTime.utc(2026, 11, 4, 20, 2),
+        createdBy: 'dono',
+        status: HighlightStatus.pending,
+      ),
+      Highlight(
+        id: 'outro',
+        title: 'De outro celular',
+        offset: const Duration(minutes: 5),
+        duration: const Duration(seconds: 30),
+        savedAt: DateTime.utc(2026, 11, 4, 20, 5),
+        createdBy: 'rafa',
+      ),
+    ];
+
+    final merged = state.withLocalVideos('sessao-123456', remote);
+    expect(merged.map((h) => h.id), ['highlight_1', 'highlight_2', 'outro']);
+    expect(merged[0].localPath, '/data/highlights/highlight_1.mp4');
+    expect(merged[0].status, HighlightStatus.pending);
+    expect(merged[1].localPath, '/data/highlights/highlight_2.mp4');
+    expect(merged[1].title, 'Ponto antológico');
+    expect(merged[2].hasLocalVideo, isFalse);
+
+    expect(state.withLocalVideos('outra-sessao', remote), same(remote));
+  });
+
   test('a fila guardada em arquivo sobrevive a fechar o app', () async {
     final dir = await Directory.systemTemp.createTemp('clippo-fila');
     addTearDown(() => dir.delete(recursive: true));

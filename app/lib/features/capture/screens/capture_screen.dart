@@ -25,10 +25,10 @@ import 'package:clippo/core/widgets/clippo_screen_title.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 
-/// 🟡 TEMPORÁRIO (FASE DE TESTES): copia cada highlight salvo na Gravação para a galeria do celular
-/// (álbum Clippo), para assistir aos vídeos enquanto o Player real e o upload (R13) não estão ligados.
-/// Para desligar sem mexer no código: `--dart-define=COPY_TO_GALLERY=false`.
-const bool copyCapturedHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', defaultValue: true);
+/// Copia cada highlight salvo na Gravação para a galeria do celular (álbum Clippo). Desligado:
+/// a Sessão toca o MP4 do celular antes de subir, e o "Baixar" do Player copia para a galeria
+/// quando a pessoa quiser. Para ligar de novo nos testes: `--dart-define=COPY_TO_GALLERY=true`.
+const bool copyCapturedHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', defaultValue: false);
 
 /// Os amigos aceitos (R10, R15) a partir das amizades de `friendsRepository.watchFriendships()`:
 /// é o que alimenta os chips "Gravar com" e o "+ adicionar".
@@ -353,8 +353,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           .signalSaved(sound: _soundOnSave, flash: _flashOnSave, vibration: _vibrationOnSave)
           .catchError((Object _) {});
       _highlights.add(CapturedHighlight(clip: clip, offset: offset));
-      // 🟡 TEMPORÁRIO (FASE DE TESTES): copia o MP4 para a galeria do celular depois de salvar (R2).
-      // Remover quando o Player reproduzir o arquivo/URL real e o envio para o Storage (R13) estiver ativo.
+      // Só com COPY_TO_GALLERY=true (ver copyCapturedHighlightsToGallery).
       if (copyCapturedHighlightsToGallery) {
         widget.camera.copyToGallery(clip).catchError((Object _) {});
       }

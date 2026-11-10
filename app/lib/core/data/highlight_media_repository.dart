@@ -104,8 +104,11 @@ class HighlightMediaRepository {
   }
 
   /// "Baixar": salva o vídeo do lance na galeria do celular (R11: todo participante baixa).
-  Future<void> saveToGallery(String storagePath) async {
-    final file = await videoFile(storagePath);
+  Future<void> saveToGallery(String storagePath) async => saveFileToGallery(await videoFile(storagePath));
+
+  /// "Baixar" de um vídeo que já está no celular (o MP4 da pasta do app, antes de subir):
+  /// só copia para a galeria, sem passar pela nuvem.
+  Future<void> saveFileToGallery(File file) async {
     try {
       if (!await Gal.hasAccess()) await Gal.requestAccess();
       await Gal.putVideo(file.path, album: 'Clippo');

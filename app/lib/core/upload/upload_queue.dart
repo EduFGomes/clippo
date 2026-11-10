@@ -215,6 +215,37 @@ class UploadQueueState {
 
   /// Sessões que ainda não chegaram ao servidor (a Início pode listá-las a partir daqui).
   List<QueuedSession> get unsavedSessions => [for (final s in sessions) if (!s.saved) s];
+
+  /// Os lances da sessão com o MP4 do celular de quem gravou, para assistir antes de subir.
+  ///
+  /// Os lances do Firestore ([remote]) que ainda estão na fila ganham o `localPath`. Os que
+  /// só existem na fila (a sessão ainda não chegou ao servidor) entram como `pending`.
+  /// Sem nada na fila, devolve [remote] como veio.
+  List<Highlight> withLocalVideos(String sessionId, List<Highlight> remote) {
+    final queued = sessionOf(sessionId);
+    if (queued == null || queued.highlights.isEmpty) return remote;
+    final local = {for (final h in queued.highlights) h.highlightId: h};
+    final merged = <Highlight>[
+      for (final h in remote)
+        if (local[h.id] case final q?) h.copyWith(localPath: q.localPath) else h,
+    ];
+    final known = {for (final h in remote) h.id};
+    for (final q in queued.highlights) {
+      if (known.contains(q.highlightId)) continue;
+      merged.add(Highlight(
+        id: q.highlightId,
+        title: q.title ?? '',
+        offset: q.offset,
+        duration: q.duration,
+        savedAt: queued.startedAt.add(q.offset),
+        createdBy: queued.ownerUid,
+        status: HighlightStatus.pending,
+        localPath: q.localPath,
+      ));
+    }
+    merged.sort((a, b) => a.offset.compareTo(b.offset));
+    return merged;
+  }
 }
 
 /// Resultado do [UploadQueue.submit].

@@ -18,6 +18,7 @@ Highlight _highlight(
   required Duration offset,
   String? videoPath,
   HighlightStatus status = HighlightStatus.uploaded,
+  String? localPath,
 }) =>
     Highlight(
       id: id,
@@ -28,6 +29,7 @@ Highlight _highlight(
       createdBy: 'alice',
       videoPath: videoPath,
       status: status,
+      localPath: localPath,
     );
 
 List<Highlight> _highlights() => [
@@ -119,6 +121,101 @@ void main() {
 
     expect(baixou, 0);
     expect(salvou, 0);
+  });
+
+  group('MP4 ainda no celular de quem gravou', () {
+    const local = '/data/highlights/lance01.mp4';
+    final pending = _highlight(
+      'h1',
+      title: 'Jogada de cinema',
+      offset: const Duration(minutes: 4, seconds: 15),
+      status: HighlightStatus.pending,
+      localPath: local,
+    );
+
+    testWidgets('toca direto do celular, antes de subir e sem internet', (tester) async {
+      _phone(tester);
+      final abertos = <String>[];
+      var baixou = 0;
+
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: [pending],
+        localFileExists: (path) async => true,
+        loadVideo: (path) async {
+          baixou++;
+          return File(path);
+        },
+        // O plugin de vídeo não existe nos testes: basta ver qual arquivo o player abriria.
+        controllerFactory: (file) {
+          abertos.add(file.path);
+          throw StateError('sem plugin de vídeo nos testes');
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      expect(abertos, [local]);
+      expect(baixou, 0);
+      expect(find.text('Enviando o lance…'), findsNothing);
+    });
+
+    testWidgets('Baixar só copia o arquivo da pasta do app para a galeria', (tester) async {
+      _phone(tester);
+      final copiados = <String>[];
+      var daNuvem = 0;
+
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: [pending],
+        localFileExists: (path) async => true,
+        loadVideo: _neverLoads,
+        controllerFactory: (file) => throw StateError('sem plugin de vídeo nos testes'),
+        saveFileToGallery: (file) async => copiados.add(file.path),
+        saveToGallery: (path) async => daNuvem++,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Baixar'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(copiados, [local]);
+      expect(daNuvem, 0);
+      expect(find.text('Lance salvo na galeria.'), findsOneWidget);
+    });
+
+    testWidgets('o MP4 já foi apagado (o lance subiu): toca e baixa da nuvem', (tester) async {
+      _phone(tester);
+      final pedidos = <String>[];
+      final salvos = <String>[];
+      var copiados = 0;
+
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: [
+          _highlight(
+            'h1',
+            title: 'Jogada de cinema',
+            offset: const Duration(minutes: 4, seconds: 15),
+            videoPath: _videoH1,
+            localPath: local,
+          ),
+        ],
+        localFileExists: (path) async => false,
+        loadVideo: (path) {
+          pedidos.add(path);
+          return Completer<File>().future;
+        },
+        saveFileToGallery: (file) async => copiados++,
+        saveToGallery: (path) async => salvos.add(path),
+      )));
+      await tester.pump();
+      await tester.pump();
+      expect(pedidos, [_videoH1]);
+
+      await tester.tap(find.text('Baixar'));
+      await tester.pump();
+      await tester.pump();
+      expect(salvos, [_videoH1]);
+      expect(copiados, 0);
+    });
   });
 
   testWidgets('erro ao baixar vira frase amigável e dá para tentar de novo', (tester) async {

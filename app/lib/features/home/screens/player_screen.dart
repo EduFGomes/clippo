@@ -26,9 +26,11 @@ typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highli
 /// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4).
 ///
 /// Toca o arquivo que o [HighlightMediaRepository] baixou para o cache, baixa para a
-/// galeria e compartilha o vídeo (R11: todo participante assiste e baixa). Lance
-/// ainda subindo (`pending`) mostra "enviando…" e não tenta baixar. Deslizar ou as
-/// setas levam ao lance anterior/próximo da mesma sessão.
+/// galeria e compartilha o vídeo (R11: todo participante assiste e baixa). Quem gravou e
+/// ainda tem o MP4 no celular ([Highlight.localPath]) assiste, baixa e compartilha direto
+/// dele, sem internet e antes de o lance subir. Sem o arquivo, lance ainda subindo
+/// (`pending`) mostra "enviando…" e não tenta baixar. Deslizar ou as setas levam ao lance
+/// anterior/próximo da mesma sessão.
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -41,6 +43,8 @@ class PlayerScreen extends StatefulWidget {
     this.saveToGallery,
     this.shareVideo,
     this.controllerFactory,
+    this.saveFileToGallery,
+    this.localFileExists,
   });
 
   /// Nome da sessão, discreto no topo.
@@ -70,6 +74,12 @@ class PlayerScreen extends StatefulWidget {
   /// Substitui `VideoPlayerController.file` (testes).
   final HighlightVideoControllerFactory? controllerFactory;
 
+  /// Substitui `mediaRepository.saveFileToGallery` (testes).
+  final Future<void> Function(File file)? saveFileToGallery;
+
+  /// Substitui `File.exists` do MP4 no celular (testes).
+  final Future<bool> Function(String path)? localFileExists;
+
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
@@ -97,9 +107,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<File> _fetch(String path) => widget.loadVideo != null ? widget.loadVideo!(path) : _media.videoFile(path);
 
-  /// Só dá para baixar o que já chegou ao Storage.
+  /// Só dá para baixar da nuvem o que já chegou ao Storage.
   bool _canFetch(Highlight h) =>
       !h.isUploading && h.status != HighlightStatus.failed && (h.videoPath ?? '').isNotEmpty;
+
+  /// Os lances cujo MP4 já não está no celular (a fila apagou depois do `uploaded`).
+  final Set<String> _localMissing = <String>{};
+
+  /// O vídeo está no celular: toca, baixa e compartilha sem internet.
+  bool _isLocal(Highlight h) => h.hasLocalVideo && !_localMissing.contains(h.id);
+
+  /// Dá para baixar e compartilhar: do celular ou da nuvem.
+  bool _canAct(Highlight h) => _isLocal(h) || _canFetch(h);
+
+  Future<bool> _localExists(String path) =>
+      widget.localFileExists != null ? widget.localFileExists!(path) : File(path).exists();
+
+  /// O arquivo do lance: o MP4 do celular, se ainda estiver lá; se não, o da nuvem.
+  Future<File> _videoOf(Highlight h) async {
+    if (_isLocal(h)) {
+      if (await _localExists(h.localPath!)) return File(h.localPath!);
+      _localMissing.add(h.id);
+    }
+    if (!_canFetch(h)) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
+    return _fetch(h.videoPath!);
+  }
 
   @override
   void initState() {
@@ -130,6 +162,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _releaseController();
     final highlight = _current;
 
+    // O MP4 ainda no celular de quem gravou: toca dele, sem internet (antes de subir).
+    if (_isLocal(highlight)) {
+      final exists = await _localExists(highlight.localPath!);
+      if (token != _loadToken || !mounted) return;
+      if (exists) {
+        await _play(token, () async => File(highlight.localPath!));
+        return;
+      }
+      // A fila já apagou (o lance subiu): segue pela nuvem.
+      _localMissing.add(highlight.id);
+    }
+
     if (highlight.isUploading) {
       setState(() {
         _stage = _Stage.uploading;
@@ -153,12 +197,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
+    await _play(token, () => _fetch(path));
+  }
+
+  /// Abre o player com o arquivo de [source] (do celular ou baixado da nuvem).
+  Future<void> _play(int token, Future<File> Function() source) async {
+    if (token != _loadToken || !mounted) return;
     setState(() {
       _stage = _Stage.loading;
       _message = 'Carregando o lance…';
     });
     try {
-      final file = await _fetch(path);
+      final file = await source();
       if (token != _loadToken || !mounted) return;
       final controller = (widget.controllerFactory ?? VideoPlayerController.file)(file);
       await controller.initialize();
@@ -228,11 +278,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _download() async {
     final highlight = _current;
-    if (!_canFetch(highlight) || _saving) return;
+    if (!_canAct(highlight) || _saving) return;
     setState(() => _saving = true);
     try {
-      final path = highlight.videoPath!;
-      await (widget.saveToGallery != null ? widget.saveToGallery!(path) : _media.saveToGallery(path));
+      // No celular: só copia da pasta do app para a galeria. Se não: baixa da nuvem.
+      final local = _isLocal(highlight) && await _localExists(highlight.localPath!);
+      if (local) {
+        final file = File(highlight.localPath!);
+        await (widget.saveFileToGallery != null ? widget.saveFileToGallery!(file) : _media.saveFileToGallery(file));
+      } else {
+        if (highlight.hasLocalVideo) _localMissing.add(highlight.id);
+        if (!_canFetch(highlight)) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
+        final path = highlight.videoPath!;
+        await (widget.saveToGallery != null ? widget.saveToGallery!(path) : _media.saveToGallery(path));
+      }
       if (mounted) showHomeMessage(context, 'Lance salvo na galeria.');
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
@@ -243,10 +302,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _share() async {
     final highlight = _current;
-    if (!_canFetch(highlight) || _sharing) return;
+    if (!_canAct(highlight) || _sharing) return;
     setState(() => _sharing = true);
     try {
-      final file = _file ?? await _fetch(highlight.videoPath!);
+      final file = _file ?? await _videoOf(highlight);
       await (widget.shareVideo ?? _shareWithSystem)(file, highlight, widget.sessionName);
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
@@ -355,7 +414,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final total = (value != null && value.duration > Duration.zero) ? value.duration : highlight.duration;
     final position = value?.position ?? Duration.zero;
     final progress = total.inMilliseconds <= 0 ? 0.0 : position.inMilliseconds / total.inMilliseconds;
-    final canFetch = _canFetch(highlight);
+    final canFetch = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
 
     return Column(

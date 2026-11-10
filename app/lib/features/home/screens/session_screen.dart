@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, setEquals;
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
@@ -12,6 +12,7 @@ import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
@@ -51,6 +52,7 @@ class SessionScreen extends StatefulWidget {
     this.friendships,
     this.mySessions,
     this.mergeRequests,
+    this.uploads,
   });
 
   /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
@@ -79,6 +81,10 @@ class SessionScreen extends StatefulWidget {
 
   /// Pedidos para juntar sessões em que estou (D18).
   final Stream<List<SessionMergeRequest>>? mergeRequests;
+
+  /// Lances ainda no celular de quem gravou, para assistir antes de subir (R13). No app,
+  /// `uploadQueue` (com alguém logado).
+  final ValueListenable<UploadQueueState>? uploads;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
@@ -169,6 +175,11 @@ class _SessionScreenState extends State<SessionScreen> {
   final List<StreamSubscription<Object?>> _subscriptions = [];
 
   SessionsRepository get _repository => widget.repository ?? sessionsRepository;
+
+  /// A fila de envio: sem ela (catálogo, testes sem login), nenhum lance local.
+  ValueListenable<UploadQueueState> get _uploads =>
+      widget.uploads ?? (isUserSignedIn ? uploadQueue.state : _noUploads);
+  static final ValueNotifier<UploadQueueState> _noUploads = ValueNotifier(const UploadQueueState());
   FriendsRepository get _friendsRepo => widget.friendsRepository ?? friendsRepository;
 
   String get _viewerId {
@@ -457,13 +468,25 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ],
           const SizedBox(height: ClippoSpace.section),
-          StreamBuilder<HighlightsSnapshot>(
+          ValueListenableBuilder<UploadQueueState>(
+            valueListenable: _uploads,
+            builder: (context, queue, _) => StreamBuilder<HighlightsSnapshot>(
             stream: _highlights,
             builder: (context, snapshot) {
+              final data = snapshot.data;
+              // Os lances que ainda estão no celular aparecem mesmo sem internet (R13).
+              final withLocal = queue.withLocalVideos(session.id, data?.highlights ?? const []);
+              if (withLocal.any((h) => h.hasLocalVideo)) {
+                final distinct = ensureDistinctHighlightTitles(withLocal);
+                return _HighlightList(
+                  highlights: distinct,
+                  offline: data?.fromCache ?? false,
+                  onTapHighlight: (index) => _openPlayer(distinct, index),
+                );
+              }
               if (snapshot.hasError) {
                 return _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry);
               }
-              final data = snapshot.data;
               if (snapshot.connectionState == ConnectionState.waiting || data == null) {
                 return _Loading(expectedCount: session.highlightCount);
               }
@@ -484,6 +507,7 @@ class _SessionScreenState extends State<SessionScreen> {
                 onTapHighlight: (index) => _openPlayer(distinct, index),
               );
             },
+            ),
           ),
           const SizedBox(height: ClippoSpace.section),
           if (_isOwner)

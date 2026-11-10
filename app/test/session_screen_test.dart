@@ -11,6 +11,7 @@ import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
 
 // A Sessão abre sem Firebase: repositórios e streams entram pelo construtor.
@@ -118,7 +119,60 @@ HighlightsSnapshot _fromCache(List<Highlight> items) =>
 
 Stream<HighlightsSnapshot> _noHighlights() => Stream.value(_fromServer(const <Highlight>[]));
 
+/// A fila de envio com a sessão `quinta` ainda no celular: um lance só local.
+ValueNotifier<UploadQueueState> _queued({bool alsoOnServer = false}) => ValueNotifier(UploadQueueState(sessions: [
+      QueuedSession(
+        sessionId: 'quinta',
+        ownerUid: 'alice',
+        name: 'Pelada de quinta',
+        startedAt: DateTime(2026, 9, 11, 19, 30),
+        endedAt: DateTime(2026, 9, 11, 21, 12),
+        saved: alsoOnServer,
+        highlights: const [
+          QueuedHighlight(
+            highlightId: 'h9',
+            localPath: '/data/highlights/h9.mp4',
+            offset: Duration(minutes: 20),
+            duration: Duration(seconds: 30),
+            title: 'Golaço',
+          ),
+        ],
+      ),
+    ]));
+
 void main() {
+  testWidgets('sem internet, os lances ainda no celular aparecem para assistir antes de subir',
+      (tester) async {
+    _phone(tester);
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(highlightCount: 1),
+      highlights: Stream.value(_fromCache(const [])),
+      uploads: _queued(),
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sem internet. Os highlights aparecem assim que você conectar.'), findsNothing);
+    expect(find.text('Golaço'), findsOneWidget);
+    expect(find.text('00:20:00 · enviando…'), findsOneWidget);
+  });
+
+  testWidgets('lances do servidor e os que só estão no celular aparecem juntos, em ordem',
+      (tester) async {
+    _phone(tester);
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      highlights: Stream.value(_fromServer([
+        _highlight('h1', title: 'Jogada de cinema', offset: const Duration(minutes: 4, seconds: 15)),
+      ])),
+      uploads: _queued(alsoOnServer: true),
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Jogada de cinema'), findsOneWidget);
+    expect(find.text('Golaço'), findsOneWidget);
+    expect(find.text('2 lances salvos'), findsOneWidget);
+  });
+
   testWidgets('mostra cabeçalho da sessão e lista de highlights em ordem cronológica',
       (tester) async {
     _phone(tester);

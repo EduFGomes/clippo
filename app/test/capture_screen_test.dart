@@ -379,7 +379,8 @@ void main() {
     await tester.pump();
     expect(camera.saves, [const Duration(seconds: 50)]);
     expect(camera.signals, 1);
-    expect(camera.copiedToGallery, ['/highlights/1.mp4']);
+    // A galeria só recebe o lance pelo "Baixar" do Player.
+    expect(camera.copiedToGallery, isEmpty);
     expect(find.text('Highlight salvo'), findsOneWidget);
     expect(find.text(r'últimos 30s · gesto \ o / detectado'), findsOneWidget);
 
