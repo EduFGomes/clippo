@@ -1162,14 +1162,23 @@ class _SessionParticipantsScreenState extends State<_SessionParticipantsScreen> 
   late List<SessionParticipant> _participants = widget.participantsOf(_session);
   late final Set<String> _sent = {...widget.sentFriendRequests};
 
+  /// Pedidos de amizade a caminho do servidor: o botão mostra que está enviando.
+  final Set<String> _sending = <String>{};
+
   bool _isFriend(SessionParticipant p) => widget.friendUids.contains(p.uid);
   bool _isSelf(SessionParticipant p) => p.uid == widget.viewerId;
   bool _canAsk(SessionParticipant p) => (p.username ?? '').trim().isNotEmpty;
 
   Future<bool> _sendFriendRequest(SessionParticipant participant) async {
-    final ok = await widget.onSendFriendRequest(participant);
-    if (ok && mounted) setState(() => _sent.add(participant.uid));
-    return ok;
+    if (_sending.contains(participant.uid)) return false;
+    setState(() => _sending.add(participant.uid));
+    try {
+      final ok = await widget.onSendFriendRequest(participant);
+      if (ok && mounted) setState(() => _sent.add(participant.uid));
+      return ok;
+    } finally {
+      if (mounted) setState(() => _sending.remove(participant.uid));
+    }
   }
 
   Future<void> _openProfile(SessionParticipant participant) async {
@@ -1230,6 +1239,7 @@ class _SessionParticipantsScreenState extends State<_SessionParticipantsScreen> 
               isFriend: _isFriend(_participants[i]),
               canAsk: _canAsk(_participants[i]),
               isRequestSent: _sent.contains(_participants[i].uid),
+              isSending: _sending.contains(_participants[i].uid),
               onTapProfile: () => _openProfile(_participants[i]),
               onAddFriend: () => _sendFriendRequest(_participants[i]),
             ),
@@ -1257,6 +1267,7 @@ class _ParticipantRowTile extends StatelessWidget {
     required this.isRequestSent,
     required this.onTapProfile,
     required this.onAddFriend,
+    this.isSending = false,
   });
 
   final SessionParticipant participant;
@@ -1265,6 +1276,9 @@ class _ParticipantRowTile extends StatelessWidget {
   final bool isFriend;
   final bool canAsk;
   final bool isRequestSent;
+
+  /// O pedido de amizade está a caminho do servidor.
+  final bool isSending;
   final VoidCallback onTapProfile;
   final VoidCallback onAddFriend;
 
@@ -1325,7 +1339,12 @@ class _ParticipantRowTile extends StatelessWidget {
                 Text('Amigo', style: ClippoText.label.copyWith(color: colors.textMuted)),
                 const SizedBox(width: ClippoSpace.spaceS),
               ] else if (canAddFriend) ...[
-                _AddFriendChip(participantName: participant.name, sent: isRequestSent, onPressed: onAddFriend),
+                _AddFriendChip(
+                  participantName: participant.name,
+                  sent: isRequestSent,
+                  sending: isSending,
+                  onPressed: onAddFriend,
+                ),
                 const SizedBox(width: ClippoSpace.spaceS),
               ],
               ClippoSvgIcon('chevron-right', size: ClippoSize.checkIcon, color: colors.textMuted),
@@ -1338,10 +1357,18 @@ class _ParticipantRowTile extends StatelessWidget {
 }
 
 class _AddFriendChip extends StatelessWidget {
-  const _AddFriendChip({required this.participantName, required this.sent, required this.onPressed});
+  const _AddFriendChip({
+    required this.participantName,
+    required this.sent,
+    required this.onPressed,
+    this.sending = false,
+  });
 
   final String participantName;
   final bool sent;
+
+  /// Enviando o pedido: mostra que está trabalhando e não aceita outro toque.
+  final bool sending;
   final VoidCallback onPressed;
 
   @override
@@ -1371,10 +1398,12 @@ class _AddFriendChip extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: 'Adicionar amigo $participantName',
+      enabled: !sending,
+      label: sending ? 'Enviando pedido para $participantName' : 'Adicionar amigo $participantName',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
+        // Enviando: o toque fica no botão (não abre o perfil da linha) e não faz nada.
+        onTap: sending ? () {} : onPressed,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: colors.accentSoft,
@@ -1386,9 +1415,15 @@ class _AddFriendChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ClippoSvgIcon('plus', size: ClippoSize.checkIcon, color: colors.accent),
+                if (sending)
+                  SizedBox.square(
+                    dimension: ClippoSize.checkIcon,
+                    child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: colors.accent),
+                  )
+                else
+                  ClippoSvgIcon('plus', size: ClippoSize.checkIcon, color: colors.accent),
                 const SizedBox(width: ClippoSpace.spaceXs),
-                Text('Adicionar', style: ClippoText.label.copyWith(color: colors.accent)),
+                Text(sending ? 'Enviando…' : 'Adicionar', style: ClippoText.label.copyWith(color: colors.accent)),
               ],
             ),
           ),

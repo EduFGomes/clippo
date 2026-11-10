@@ -66,6 +66,32 @@ Future<void> _settlePage(WidgetTester tester) async {
 
 Future<File> _neverLoads(String path) => Completer<File>().future;
 
+/// Player já aberto, tocando, mas esperando chegar o próximo pedaço (sem o plugin de vídeo).
+class _BufferingController extends VideoPlayerController {
+  _BufferingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  @override
+  Future<void> initialize() async {
+    value = VideoPlayerValue(
+      duration: const Duration(seconds: 30),
+      size: const Size(1280, 720),
+      isInitialized: true,
+      isPlaying: true,
+      isBuffering: true,
+      buffered: [DurationRange(Duration.zero, const Duration(seconds: 6))],
+    );
+  }
+
+  @override
+  Future<void> play() async {}
+
+  @override
+  Future<void> pause() async {}
+
+  @override
+  Future<void> seekTo(Duration position) async {}
+}
+
 /// Player que nunca termina de abrir (sem o plugin de vídeo, nos testes).
 class _HangingController extends VideoPlayerController {
   _HangingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
@@ -167,6 +193,20 @@ void main() {
       expect(abertos.single.headers['Authorization'], 'Firebase token');
       expect(baixou, 0);
       expect(find.text('Carregando o lance…'), findsOneWidget);
+    });
+
+    testWidgets('esperando o próximo pedaço, mostra carregando em vez de pausar', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: _highlights(),
+        streamVideo: (path) async => source,
+        streamControllerFactory: (s) => _BufferingController(),
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.bySemanticsLabel('Carregando o vídeo'), findsWidgets);
+      expect(find.bySemanticsLabel('Pausar'), findsNothing);
     });
 
     testWidgets('se o streaming falhar, baixa o arquivo inteiro e toca', (tester) async {

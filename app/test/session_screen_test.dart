@@ -474,6 +474,41 @@ void main() {
     expect(find.text('Pedido de amizade enviado'), findsOneWidget);
   });
 
+  testWidgets('participantes: enquanto o pedido de amizade vai, o botão mostra "Enviando…"',
+      (tester) async {
+    _phone(tester);
+    final resposta = Completer<Map<String, dynamic>>();
+    var pedidos = 0;
+    final friends = FriendsRepository(callFunction: (name, payload) {
+      pedidos++;
+      return resposta.future;
+    });
+
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(participants: 2),
+      currentUserId: 'alice',
+      friendsRepository: friends,
+      highlights: _noHighlights(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2 participantes'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Adicionar'));
+    await tester.pump();
+    expect(find.text('Enviando…'), findsOneWidget);
+
+    // Um segundo toque enquanto envia não manda outro pedido.
+    await tester.tap(find.text('Enviando…'));
+    await tester.pump();
+    expect(pedidos, 1);
+
+    resposta.complete({'status': 'pending'});
+    await tester.pumpAndSettle();
+    expect(find.text('Enviando…'), findsNothing);
+    expect(find.text('Enviado'), findsOneWidget);
+  });
+
   testWidgets('sem highlights, mostra o estado vazio e o lembrete do gesto', (tester) async {
     await tester.pumpWidget(_app(SessionScreen(
       session: _session(highlightCount: 0),

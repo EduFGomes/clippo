@@ -126,6 +126,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   bool _withSound = true;
   bool _micWarned = false;
 
+  /// Entre o "Gravar" e a análise ligar (a câmera troca de fase e o detector abre): a tela
+  /// diz que está ligando, em vez de mostrar a detecção como já ligada.
+  bool _analysisStarting = false;
+
   // Configurações do modo de gravação (menu no canto superior direito).
   late Duration _length = widget.highlightLength;
   VideoResolution _resolution = VideoResolution.hd720;
@@ -320,6 +324,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStart = null;
       _showControls = false;
       _micWarned = true;
+      _analysisStarting = true;
     });
     // A tela já ficou preta (R7): troca a imagem pela análise do gesto e pelo buffer.
     try {
@@ -329,9 +334,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
         recordAudio: _recordAudio,
         withPreview: false,
       );
-      if (mounted) setState(() => _withSound = withSound);
+      if (mounted) {
+        setState(() {
+          _withSound = withSound;
+          _analysisStarting = false;
+        });
+      }
     } catch (e) {
-      if (!mounted || _step == CaptureStep.finishing) return;
+      if (!mounted) return;
+      setState(() => _analysisStarting = false);
+      if (_step == CaptureStep.finishing) return;
       setState(() => _step = CaptureStep.preparing);
       _fail(e);
     }
@@ -1156,7 +1168,28 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           : null,
                       success: _saveError == null,
                     )
-                  : const ClippoPulseDot(),
+                  : _analysisStarting
+                      ? Semantics(
+                          liveRegion: true,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox.square(
+                                dimension: ClippoSize.spinner,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: ClippoSize.border,
+                                  color: ClippoBrand.peach,
+                                ),
+                              ),
+                              const SizedBox(height: ClippoSpace.spaceM),
+                              Text(
+                                'Ligando a detecção…',
+                                style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const ClippoPulseDot(),
             ),
             if (_showControls)
               Align(

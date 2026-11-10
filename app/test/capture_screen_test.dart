@@ -68,8 +68,12 @@ class _FakeCamera extends ClippoCamera {
     lastFullHd = fullHd;
     lastRecordAudio = recordAudio;
     lastWithPreview = withPreview;
+    await startGate?.future;
     return recordAudio && withSound;
   }
+
+  /// Câmera lenta para ligar a análise: o `start` só responde quando o teste completar.
+  Completer<void>? startGate;
 
   @override
   Future<void> stop() async => stopped = true;
@@ -344,6 +348,21 @@ void main() {
     await tester.pump();
     expect(camera.phases, ['preview', 'start', 'preview']);
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('enquanto a análise liga, a gravação diz que está ligando, não que já detecta', (tester) async {
+    final camera = _FakeCamera()..startGate = Completer<void>();
+    await open(tester, camera: camera);
+    await tester.tap(find.bySemanticsLabel('Iniciar gravação'));
+    await tester.pump();
+
+    expect(find.text('Ligando a detecção…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Detecção do gesto ligada'), findsNothing);
+
+    camera.startGate!.complete();
+    await tester.pump();
+    expect(find.text('Ligando a detecção…'), findsNothing);
+    expect(find.bySemanticsLabel('Detecção do gesto ligada'), findsOneWidget);
   });
 
   testWidgets('gravando: tela preta, e um toque mostra os controles por um tempo', (tester) async {

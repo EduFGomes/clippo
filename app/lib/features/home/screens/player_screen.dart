@@ -167,6 +167,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final old = _controller;
     _controller = null;
     _file = null;
+    _seekingTo = null;
     if (old != null) {
       old.removeListener(_onTick);
       unawaited(old.dispose());
@@ -295,8 +296,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onTick() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final value = _controller?.value;
+    final target = _seekingTo;
+    // O pulo terminou: o vídeo chegou perto de onde a pessoa tocou e já não está carregando.
+    if (target != null && value != null && !value.isBuffering && (value.position - target).abs() < _seekTolerance) {
+      _seekingTo = null;
+    }
+    setState(() {});
   }
+
+  /// Para onde a pessoa pulou na barra, até o vídeo chegar lá (nulo: sem pulo em andamento).
+  Duration? _seekingTo;
+  static const Duration _seekTolerance = Duration(seconds: 1);
+
+  /// O vídeo está esperando chegar mais um pedaço (streaming) ou pulando para outro ponto.
+  bool get _buffering => (_controller?.value.isBuffering ?? false) || _seekingTo != null;
 
   bool get _playing => _controller?.value.isPlaying ?? false;
 
@@ -334,7 +349,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final controller = _controller;
     if (controller == null) return;
     final total = controller.value.duration;
-    controller.seekTo(total * fraction.clamp(0.0, 1.0));
+    final target = total * fraction.clamp(0.0, 1.0);
+    // A barra vai na hora para onde a pessoa tocou, mesmo antes de o vídeo chegar lá.
+    setState(() => _seekingTo = target);
+    controller.seekTo(target).whenComplete(() {
+      // Rede de segurança: o pulo acabou e nada está carregando, mesmo que a posição não bata.
+      if (!mounted || _seekingTo != target || !identical(controller, _controller)) return;
+      if (!controller.value.isBuffering) setState(() => _seekingTo = null);
+    });
   }
 
   Future<void> _download() async {
@@ -473,7 +495,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final controller = _controller;
     final value = controller?.value;
     final total = (value != null && value.duration > Duration.zero) ? value.duration : highlight.duration;
-    final position = value?.position ?? Duration.zero;
+    final position = _seekingTo ?? value?.position ?? Duration.zero;
+    final buffered = _bufferedFraction(value, total);
     final progress = total.inMilliseconds <= 0 ? 0.0 : position.inMilliseconds / total.inMilliseconds;
     final canFetch = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
@@ -503,7 +526,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           alignment: Alignment.center,
                           children: [
                             VideoPlayer(controller),
-                            if (!_playing) const _PlayBadge(),
+                            if (_buffering)
+                              const _BufferingBadge()
+                            else if (!_playing)
+                              const _PlayBadge(),
                           ],
                         ),
                       ),
@@ -580,6 +606,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               const SizedBox(height: ClippoSpace.spaceM),
               _ProgressBar(
                 progress: progress,
+                buffered: buffered,
                 elapsedLabel: clippoPlayerProgress(position),
                 totalLabel: clippoPlayerProgress(total),
                 onSeek: ready ? _seekToFraction : null,
@@ -595,7 +622,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onPressed: () => _goToIndex(_currentIndex - 1),
                   ),
                   const SizedBox(width: ClippoSpace.gutter),
-                  _PlayPauseButton(playing: _playing, enabled: ready, onPressed: _togglePlay),
+                  _PlayPauseButton(
+                    playing: _playing,
+                    loading: _stage == _Stage.loading || (ready && _buffering),
+                    enabled: ready,
+                    onPressed: _togglePlay,
+                  ),
                   const SizedBox(width: ClippoSpace.gutter),
                   _CircleAction(
                     icon: 'chevron-right',
@@ -662,18 +694,26 @@ class _CircleAction extends StatelessWidget {
 }
 
 class _PlayPauseButton extends StatelessWidget {
-  const _PlayPauseButton({required this.playing, required this.enabled, required this.onPressed});
+  const _PlayPauseButton({
+    required this.playing,
+    required this.enabled,
+    required this.onPressed,
+    this.loading = false,
+  });
 
   final bool playing;
   final bool enabled;
   final VoidCallback onPressed;
+
+  /// O vídeo está carregando: o botão mostra que está trabalhando, em vez de "pausar".
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: playing ? 'Pausar' : 'Reproduzir',
+      label: loading ? 'Carregando o vídeo' : (playing ? 'Pausar' : 'Reproduzir'),
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
@@ -685,7 +725,12 @@ class _PlayPauseButton extends StatelessWidget {
               height: ClippoSize.playerPlayButton,
               decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
               alignment: Alignment.center,
-              child: ClippoSvgIcon(playing ? 'pause' : 'play', size: ClippoSize.icon, color: ClippoBrand.onWine),
+              child: loading
+                  ? const SizedBox.square(
+                      dimension: ClippoSize.spinner,
+                      child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.onWine),
+                    )
+                  : ClippoSvgIcon(playing ? 'pause' : 'play', size: ClippoSize.icon, color: ClippoBrand.onWine),
             ),
           ),
         ),
@@ -697,12 +742,16 @@ class _PlayPauseButton extends StatelessWidget {
 class _ProgressBar extends StatelessWidget {
   const _ProgressBar({
     required this.progress,
+    this.buffered = 0,
     required this.elapsedLabel,
     required this.totalLabel,
     required this.onSeek,
   });
 
   final double progress;
+
+  /// Até onde o vídeo já chegou do Storage (0 a 1), desenhado atrás do progresso.
+  final double buffered;
   final String elapsedLabel;
   final String totalLabel;
   final ValueChanged<double>? onSeek;
@@ -732,6 +781,14 @@ class _ProgressBar extends StatelessWidget {
                         const ColoredBox(color: ClippoBrand.captureChipBorder),
                         FractionallySizedBox(
                           alignment: Alignment.centerLeft,
+                          widthFactor: buffered.clamp(0.0, 1.0),
+                          child: const Opacity(
+                            opacity: ClippoOpacity.disabled,
+                            child: ColoredBox(color: ClippoBrand.captureTextMuted),
+                          ),
+                        ),
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
                           widthFactor: progress.clamp(0.0, 1.0),
                           child: const ColoredBox(color: ClippoBrand.peach),
                         ),
@@ -757,6 +814,39 @@ class _ProgressBar extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Até onde o vídeo já chegou, de 0 a 1: o fim do trecho baixado que contém a posição atual.
+double _bufferedFraction(VideoPlayerValue? value, Duration total) {
+  if (value == null || total <= Duration.zero) return 0;
+  var end = Duration.zero;
+  for (final range in value.buffered) {
+    if (range.start <= value.position && range.end > end) end = range.end;
+  }
+  return end.inMilliseconds / total.inMilliseconds;
+}
+
+/// Sobre o vídeo enquanto ele espera chegar mais um pedaço ou pula para outro ponto.
+class _BufferingBadge extends StatelessWidget {
+  const _BufferingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Carregando o vídeo',
+      child: Container(
+        width: ClippoSize.navButton,
+        height: ClippoSize.navButton,
+        decoration: const BoxDecoration(color: ClippoBrand.captureOverlay, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: const SizedBox.square(
+          dimension: ClippoSize.spinner,
+          child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.peach),
+        ),
+      ),
     );
   }
 }
