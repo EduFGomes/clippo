@@ -89,6 +89,7 @@ Será ajustado quando o modelo de dados estiver definido.
 | Função | Gatilho | O que faz | Requisito |
 |---|---|---|---|
 | `completeProfile` ✅ | Chamada pelo app | Cria `users/{uid}`, reserva `usernames/{username}` e guarda a data de nascimento em `userPrivate/{uid}`, numa transação | Conta e perfil |
+| `updateProfile` ✅ | Chamada pelo app (tela Perfil) | Muda nome e/ou @usuário: troca a trava `usernames/` numa transação ("Esse nome de usuário já está em uso.") e depois atualiza as cópias em `friendships.profiles` e `sessions.participantsPreview` (idempotente) | Perfil, D16 |
 | `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
 | `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo (inclusive R10: participantes são amigos do dono), grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R10, R14 |
 | `updateSession` ✅ | Chamada pelo app | O dono muda nome, local e participantes; acerta avatares, contadores e as sessões juntadas | R12, R10 |
