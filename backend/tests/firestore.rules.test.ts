@@ -54,6 +54,27 @@ beforeEach(async () => {
     await setDoc(doc(db, "usernames/alice"), { uid: "alice" });
     await setDoc(doc(db, "userPrivate/alice"), { birthDate: "2001-02-28" });
 
+    // alice e bob são amigos; carol pediu amizade à alice e ainda espera.
+    await setDoc(doc(db, "friendships/alice_bob"), {
+      uids: ["alice", "bob"],
+      status: "accepted",
+      requestedBy: "alice",
+      requestedTo: "bob",
+    });
+    await setDoc(doc(db, "friendships/alice_carol"), {
+      uids: ["alice", "carol"],
+      status: "pending",
+      requestedBy: "carol",
+      requestedTo: "alice",
+    });
+
+    // carol pediu para trazer a sessão de quinta (da alice) para a de sábado (D18).
+    await setDoc(doc(db, "sessionMergeRequests/sabado__quinta"), {
+      uids: ["carol", "alice"],
+      requestedBy: "carol",
+      requestedTo: "alice",
+    });
+
     // Sessão de quinta: alice (dona) e bob jogaram. A carol não.
     await setDoc(doc(db, "sessions/quinta"), {
       name: "Pelada de quinta",
@@ -94,12 +115,23 @@ describe("users/{uid} — perfil público", () => {
     const db = env.authenticatedContext("alice").firestore();
     await assertFails(setDoc(doc(db, "users/alice"), { name: "Outro nome" }));
   });
+
+  it("ninguém lista todos os perfis (um script não baixa a base inteira)", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    await assertFails(getDocs(collection(db, "users")));
+    await assertFails(getDocs(query(collection(db, "users"), where("name", "==", "Alice"))));
+  });
 });
 
 describe("usernames/{username} — trava do @", () => {
   it("usuário logado consulta se um @ existe", async () => {
     const db = env.authenticatedContext("bob").firestore();
     await assertSucceeds(getDoc(doc(db, "usernames/alice")));
+  });
+
+  it("ninguém lista todos os @ (a busca é por @ exato, D16)", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    await assertFails(getDocs(collection(db, "usernames")));
   });
 
   it("ninguém reserva um @ direto pelo app", async () => {
@@ -192,14 +224,83 @@ describe("sessions/{id}/highlights — a permissão vem da sessão", () => {
   });
 });
 
+describe("friendships/{par} — só as duas pessoas veem a amizade (D16)", () => {
+  it("cada um dos dois lê a amizade", async () => {
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("alice").firestore(), "friendships/alice_bob")));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("bob").firestore(), "friendships/alice_bob")));
+  });
+
+  it("uma terceira pessoa NÃO lê a amizade dos outros", async () => {
+    const db = env.authenticatedContext("carol").firestore();
+    await assertFails(getDoc(doc(db, "friendships/alice_bob")));
+  });
+
+  it("a lista de amigos (uids contém eu, aceitas) devolve só as minhas", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    const amigos = query(
+      collection(db, "friendships"),
+      where("uids", "array-contains", "alice"),
+      where("status", "==", "accepted"),
+    );
+    const snap = await assertSucceeds(getDocs(amigos));
+    expect(snap.docs.map((d) => d.id)).toEqual(["alice_bob"]);
+  });
+
+  it("os pedidos recebidos aparecem para quem recebeu", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    const pedidos = query(
+      collection(db, "friendships"),
+      where("uids", "array-contains", "alice"),
+      where("requestedTo", "==", "alice"),
+      where("status", "==", "pending"),
+    );
+    const snap = await assertSucceeds(getDocs(pedidos));
+    expect(snap.docs.map((d) => d.id)).toEqual(["alice_carol"]);
+  });
+
+  it("listar amizades SEM filtrar por uids falha", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(getDocs(collection(db, "friendships")));
+  });
+
+  it("ninguém aceita amizade gravando direto pelo app (só a Function)", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(setDoc(doc(db, "friendships/alice_carol"), {
+      uids: ["alice", "carol"],
+      status: "accepted",
+    }));
+    await assertFails(setDoc(doc(db, "friendships/alice_dave"), {
+      uids: ["alice", "dave"],
+      status: "accepted",
+    }));
+  });
+});
+
+describe("sessionMergeRequests — pedido para juntar sessões (D18)", () => {
+  it("quem pediu e quem recebeu leem o pedido", async () => {
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("carol").firestore(), "sessionMergeRequests/sabado__quinta")));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("alice").firestore(), "sessionMergeRequests/sabado__quinta")));
+  });
+
+  it("outra pessoa NÃO lê o pedido", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    await assertFails(getDoc(doc(db, "sessionMergeRequests/sabado__quinta")));
+  });
+
+  it("ninguém cria pedido direto pelo app (só a Function)", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(setDoc(doc(db, "sessionMergeRequests/quinta__sabado"), { uids: ["alice", "carol"] }));
+  });
+});
+
 describe("o resto continua bloqueado", () => {
   it("usuário logado não grava em coleções sem regra", async () => {
     const db = env.authenticatedContext("alice").firestore();
-    await assertFails(setDoc(doc(db, "friendships/qualquer"), { uids: ["alice", "bob"] }));
+    await assertFails(setDoc(doc(db, "qualquerColecao/qualquer"), { a: 1 }));
   });
 
   it("usuário logado não lê coleções sem regra", async () => {
     const db = env.authenticatedContext("alice").firestore();
-    await assertFails(getDoc(doc(db, "friendships/qualquer")));
+    await assertFails(getDoc(doc(db, "qualquerColecao/qualquer")));
   });
 });

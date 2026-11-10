@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "17675379807",
+    "project_id": "clippo-dev",
+    "storage_bucket": "clippo-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:17675379807:android:7ec6ed5ab1efae63b167ea",
+        "android_client_info": {
+          "package_name": "com.clippoapp.clippo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDwzMO8lIlqze4rYso27hvw37BvnMCbcg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:17675379807:android:64204fd6ca03239fb167ea",
+        "android_client_info": {
+          "package_name": "com.clippoapp.clippo.lab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDwzMO8lIlqze4rYso27hvw37BvnMCbcg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

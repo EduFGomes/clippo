@@ -5,6 +5,9 @@ import {
   normalizeBirthDate,
   normalizeEmail,
   normalizeName,
+  normalizeProfileUpdate,
+  normalizeSessionLocation,
+  normalizeSessionName,
   normalizeUsername,
 } from "../src/users/validation";
 
@@ -77,5 +80,66 @@ describe("normalizeEmail", () => {
     42,
   ])("recusa %s", (value) => {
     expect(() => normalizeEmail(value)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeSessionName", () => {
+  it("junta espaços repetidos", () => {
+    expect(normalizeSessionName("  Pelada   de quinta ")).toBe("Pelada de quinta");
+  });
+
+  it("recusa nome vazio ou longo demais", () => {
+    expect(() => normalizeSessionName("   ")).toThrow(ValidationError);
+    expect(() => normalizeSessionName("a".repeat(51))).toThrow(ValidationError);
+    expect(() => normalizeSessionName(42)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeSessionLocation", () => {
+  it("aceita vazio devolvendo null e junta espaços repetidos", () => {
+    expect(normalizeSessionLocation("")).toBeNull();
+    expect(normalizeSessionLocation("   ")).toBeNull();
+    expect(normalizeSessionLocation(null)).toBeNull();
+    expect(normalizeSessionLocation("  Arena   Society ")).toBe("Arena Society");
+  });
+
+  it("recusa local longo demais", () => {
+    expect(() => normalizeSessionLocation("a".repeat(81))).toThrow(ValidationError);
+    expect(() => normalizeSessionLocation(42)).toThrow(ValidationError);
+  });
+});
+
+describe("normalizeProfileUpdate", () => {
+  it("normaliza só os campos que vieram", () => {
+    expect(normalizeProfileUpdate({ name: "  Laura   Suzuki " })).toEqual({ name: "Laura Suzuki" });
+    expect(normalizeProfileUpdate({ username: " @Laura.S " })).toEqual({ username: "laura.s" });
+    expect(normalizeProfileUpdate({ name: "Laura", username: "laura_s", extra: 1 })).toEqual({
+      name: "Laura",
+      username: "laura_s",
+    });
+  });
+
+  it("null conta como não mudar", () => {
+    expect(normalizeProfileUpdate({ name: null, username: "laura" })).toEqual({ username: "laura" });
+  });
+
+  it.each([undefined, null, {}, { name: null }, "laura"])("recusa pedido sem nada (%s)", (value) => {
+    expect(() => normalizeProfileUpdate(value)).toThrow("Informe o nome ou o nome de usuário.");
+  });
+
+  it("usa as mesmas mensagens do cadastro", () => {
+    expect(() => normalizeProfileUpdate({ name: "   " })).toThrow("Informe seu nome.");
+    expect(() => normalizeProfileUpdate({ username: "ra..fa" })).toThrow(
+      "O ponto não pode ficar no começo, no fim ou repetido.",
+    );
+    const error = (() => {
+      try {
+        normalizeProfileUpdate({ name: "Laura", username: "a b" });
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).field).toBe("username");
   });
 });

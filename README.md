@@ -56,6 +56,10 @@ flutter pub get
 flutter run
 ```
 
+Para rodar contra o **projeto real** (`clippo-dev`) em vez do Emulator: `flutter run --dart-define=USE_EMULATOR=false`,
+depois de cadastrar o token do App Check do seu celular — passo a passo em
+[`docs/arquitetura.md` › Projeto real](docs/arquitetura.md#projeto-real-clippo-dev).
+
 Fluxo para conferir que está tudo certo: **Começar → Criar conta → Complete seu perfil → Salvar**. Em <http://localhost:4000> devem aparecer a conta (Authentication) e os documentos `users/`, `usernames/` e `userPrivate/` (Firestore).
 
 ## Problemas conhecidos

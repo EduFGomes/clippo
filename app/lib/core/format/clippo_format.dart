@@ -41,9 +41,53 @@ String clippoHighlightCount(int count) {
   return count == 1 ? '1 highlight' : '$count highlights';
 }
 
+/// "7 lances salvos", "1 lance salvo" — cabeçalho da seção Highlights na Sessão.
+String clippoSavedPlaysCount(int count) =>
+    count == 1 ? '1 lance salvo' : '$count lances salvos';
+
+/// "00:12:40" — momento do highlight desde o início da sessão (docs/design.md › Regras de escrita).
+String clippoOffset(Duration offset) {
+  final totalSeconds = offset.inSeconds < 0 ? 0 : offset.inSeconds;
+  final hours = (totalSeconds ~/ 3600).toString().padLeft(2, '0');
+  final minutes = ((totalSeconds ~/ 60) % 60).toString().padLeft(2, '0');
+  final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+  return '$hours:$minutes:$seconds';
+}
+
+/// "30s" — duração curta de um trecho de highlight.
+String clippoShortSeconds(Duration duration) {
+  final seconds = duration.inSeconds < 0 ? 0 : duration.inSeconds;
+  return '${seconds}s';
+}
+
+/// "00:12:40 · 30s", ou "00:12:40 · enviando…" enquanto o vídeo sobe (produto.md › 4.3).
+String clippoHighlightTiming(
+  Duration offset,
+  Duration duration, {
+  bool uploading = false,
+}) =>
+    clippoDotList([
+      clippoOffset(offset),
+      uploading ? 'enviando…' : clippoShortSeconds(duration),
+    ]);
+
+/// "0:12" — tempo corrido no Player.
+String clippoPlayerProgress(Duration position) {
+  final totalSeconds = position.inSeconds < 0 ? 0 : position.inSeconds;
+  final minutes = totalSeconds ~/ 60;
+  final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
+}
+
 /// "10 participantes", "1 participante".
 String clippoParticipantCount(int count) =>
     count == 1 ? '1 participante' : '$count participantes';
+
+/// "12 sessões juntos", "1 sessão juntos", "nenhuma sessão ainda" (docs/produto.md › 4.6).
+String clippoSharedSessionsCount(int count) {
+  if (count <= 0) return 'nenhuma sessão ainda';
+  return count == 1 ? '1 sessão juntos' : '$count sessões juntos';
+}
 
 /// "Bom dia" até 11:59, "Boa tarde" até 17:59, "Boa noite" a partir das 18:00.
 String clippoGreeting(DateTime now) {

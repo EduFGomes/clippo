@@ -13,10 +13,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 
+import { STORAGE_REGION } from "../config";
 import { bucket, db } from "../shared/admin";
 import { parseHighlightVideoPath, validateUploadedVideo } from "./validation";
 
-export const onVideoUploaded = onObjectFinalized(async (event) => {
+// Gatilho do Storage: roda na região do bucket, não na das outras funções (config.ts).
+export const onVideoUploaded = onObjectFinalized({ region: STORAGE_REGION }, async (event) => {
   const objectName = event.data.name;
   const location = parseHighlightVideoPath(objectName);
   if (!location) return;
@@ -30,30 +32,31 @@ export const onVideoUploaded = onObjectFinalized(async (event) => {
     `sessions/${location.sessionId}/highlights/${location.highlightId}`,
   );
 
+  const sessionRef = db().doc(`sessions/${location.sessionId}`);
+
   await db().runTransaction(async (tx) => {
-    const snap = await tx.get(highlightRef);
+    const [snap, sessionSnap] = await tx.getAll(highlightRef, sessionRef);
     if (!snap.exists) return;
 
-    const currentStatus = snap.get("status") as string | undefined;
-    if (currentStatus === "uploaded") {
-      // Idempotente: o evento já foi processado antes.
-      return;
-    }
+    // Sessão juntada a outra (D18): o lance também existe, copiado, na principal.
+    const rootId = sessionSnap.get("mergedInto") as string | null | undefined;
+    const copyRef = rootId
+      ? db().doc(`sessions/${rootId}/highlights/${location.highlightId}`)
+      : null;
+    const copySnap = copyRef ? await tx.get(copyRef) : null;
+    const refs = [
+      { ref: highlightRef, status: snap.get("status") as string | undefined },
+      ...(copyRef && copySnap?.exists
+        ? [{ ref: copyRef, status: copySnap.get("status") as string | undefined }]
+        : []),
+    ];
 
-    if (!check.valid) {
-      if (currentStatus !== "failed") {
-        tx.update(highlightRef, {
-          status: "failed",
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-      return;
+    const next = check.valid ? "uploaded" : "failed";
+    for (const { ref, status } of refs) {
+      // Idempotente: o evento já foi processado antes (ou um envio válido já chegou).
+      if (status === "uploaded" || status === next) continue;
+      tx.update(ref, { status: next, updatedAt: FieldValue.serverTimestamp() });
     }
-
-    tx.update(highlightRef, {
-      status: "uploaded",
-      updatedAt: FieldValue.serverTimestamp(),
-    });
   });
 
   if (!check.valid && objectName) {

@@ -1,9 +1,76 @@
 rules_version = '2';
 
-// Estado inicial: TUDO BLOQUEADO.
-// Os caminhos dos vídeos e miniaturas ganham regras quando o modelo de dados for definido.
+// Regras do Storage do Clippo (D17 em docs/arquitetura.md › Acesso aos vídeos no Storage).
+//
+// Os vídeos e miniaturas dos lances ficam em
+//   sessions/{sessionId}/highlights/{highlightId}/video.mp4 e thumb.jpg
+// e a permissão sai do FIRESTORE (firestore.get), como nas regras do Firestore:
+//   - baixar: participante da sessão (R11);
+//   - enviar: só quem gravou o lance, enquanto o highlight espera o vídeo (R13).
+// Sobrescrever e apagar: só Functions (Admin SDK, que não passa por estas regras).
+//
+// No projeto real, firestore.get() exige que o Storage tenha permissão de ler o
+// Firestore: o primeiro `firebase deploy --only storage` pergunta e concede.
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function sessionDoc(sessionId) {
+      return firestore.get(/databases/(default)/documents/sessions/$(sessionId));
+    }
+
+    function highlightPath(sessionId, highlightId) {
+      return /databases/(default)/documents/sessions/$(sessionId)/highlights/$(highlightId);
+    }
+
+    function isParticipant(sessionId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/sessions/$(sessionId))
+        && request.auth.uid in sessionDoc(sessionId).data.participantIds;
+    }
+
+    // Só quem gravou o lance envia (o highlight foi criado pelo saveSession).
+    function isRecorder(sessionId, highlightId) {
+      return signedIn()
+        && firestore.exists(highlightPath(sessionId, highlightId))
+        && firestore.get(highlightPath(sessionId, highlightId)).data.createdBy == request.auth.uid;
+    }
+
+    // O vídeo só sobe enquanto ainda não chegou (pending) ou se o envio anterior foi
+    // recusado pelo gatilho (failed). Depois de uploaded, ninguém troca.
+    function waitingForVideo(sessionId, highlightId) {
+      return firestore.get(highlightPath(sessionId, highlightId)).data.status in ['pending', 'failed'];
+    }
+
+    match /sessions/{sessionId}/highlights/{highlightId} {
+
+      // O vídeo do lance. 100 MB é o mesmo teto do gatilho (highlights/validation.ts).
+      match /video.mp4 {
+        allow read: if isParticipant(sessionId);
+        allow create: if isRecorder(sessionId, highlightId)
+          && waitingForVideo(sessionId, highlightId)
+          && request.resource.contentType == 'video/mp4'
+          && request.resource.size > 0
+          && request.resource.size <= 100 * 1024 * 1024;
+        allow update, delete: if false;
+      }
+
+      // A miniatura do lance. Pode chegar depois do vídeo, então não depende do status;
+      // como ninguém sobrescreve (update), ela só é enviada uma vez.
+      match /thumb.jpg {
+        allow read: if isParticipant(sessionId);
+        allow create: if isRecorder(sessionId, highlightId)
+          && request.resource.contentType == 'image/jpeg'
+          && request.resource.size > 0
+          && request.resource.size <= 1024 * 1024;
+        allow update, delete: if false;
+      }
+    }
+
+    // Qualquer outro caminho continua bloqueado.
     match /{allPaths=**} {
       allow read, write: if false;
     }

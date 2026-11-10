@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:clippo/app_shell.dart';
 import 'package:clippo/dev/component_gallery.dart';
 import 'package:clippo/dev/gesture_lab_screen.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
@@ -8,6 +9,7 @@ import 'package:clippo/features/home/screens/home_screen.dart';
 import 'package:clippo/features/home/screens/player_screen.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/friendship.dart';
 import 'package:clippo/features/onboarding/screens/complete_profile_screen.dart';
 import 'package:clippo/features/onboarding/screens/how_it_works_screen.dart';
 import 'package:clippo/features/onboarding/screens/sign_in_screen.dart';
@@ -23,6 +25,7 @@ class ScreenCatalog extends StatelessWidget {
   const ScreenCatalog({super.key});
 
   static final List<_Entry> _entries = [
+    _Entry('App completo (Navegação)', 'app_shell', (_) => const AppShell()),
     _Entry('Componentes', 'core/widgets', (_) => const ComponentGallery()),
     _Entry('Boas-vindas', 'onboarding', (_) => const WelcomeScreen()),
     _Entry('Como funciona', 'onboarding', (_) => const HowItWorksScreen()),
@@ -32,7 +35,7 @@ class ScreenCatalog extends StatelessWidget {
     _Entry('Início', 'home', (_) => const HomeScreen()),
     _Entry('Sessão', 'home', (_) => const SessionScreen()),
     _Entry('Player', 'home', (_) => const PlayerScreen()),
-    _Entry('Gravar', 'capture', (_) => const CaptureScreen()),
+    _Entry('Gravar', 'capture', (_) => CaptureScreen(friends: Stream.value(_demoFriends))),
     _Entry('Amigos', 'friends', (_) => const FriendsScreen()),
     _Entry('Perfil', 'profile', (_) => const ProfileScreen()),
     _Entry('Laboratório do gesto', 'dev/gesture_lab_screen', (_) => const GestureLabScreen()),
@@ -71,3 +74,10 @@ class _Entry {
   final String feature;
   final WidgetBuilder builder;
 }
+
+/// Amigos de exemplo para os chips da Gravação (no app vêm de `friendsRepository`).
+const List<Friend> _demoFriends = [
+  Friend(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
+  Friend(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
+  Friend(uid: 'alice', name: 'Alice Souza', username: 'alice.souza'),
+];

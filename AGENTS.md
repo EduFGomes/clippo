@@ -30,7 +30,7 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 
 ## Padrões a copiar
 - **Validação:** `app/lib/core/validation/input_validation.dart` (app) espelha `backend/functions/src/{users,sessions}/validation.ts` (servidor). Telas validam todos os campos no envio e mostram o erro embaixo de cada um; o repositório valida de novo antes de chamar o Firebase.
-- **Cloud Function chamável:** `backend/functions/src/users/completeProfile.ts` — (1) quem chamou? (2) valida antes de tocar no banco (validação em arquivo separado e testável), (3) grava tudo numa transação, (4) idempotente, (5) erros com `HttpsError` e mensagem em português pronta para a tela.
+- **Cloud Function chamável:** `backend/functions/src/users/completeProfile.ts` — (1) quem chamou? (2) valida antes de tocar no banco (validação em arquivo separado e testável), (3) grava tudo numa transação, (4) idempotente, (5) erros com `HttpsError` e mensagem em português pronta para a tela, (6) `onCall(CALLABLE_OPTIONS, ...)` de `src/config.ts`, que exige o App Check fora do Emulator.
 - **Gatilhos** (ex.: highlight criado) podem rodar mais de uma vez: escreva de forma idempotente.
 - **Nova Function:** arquivo no domínio certo (`users/`, `friends/`, `sessions/`, `highlights/`, `maintenance/`) e exportada no `index.ts` **do domínio**. Região vem de `src/config.ts`.
 - **Componentes visuais:** use os prontos de `app/lib/core/widgets/` (lista em `docs/design.md` › Componentes). Componentes novos são feitos pelo Gabriel; se nenhum serve, avise em vez de criar um parecido dentro da feature.
@@ -41,7 +41,8 @@ visível aos participantes da sessão. Backend 100% Firebase, sem API própria.
 - Tudo roda contra o **Firebase Emulator** com o projeto `demo-clippo` (sem custo, sem conta).
 - Portas: Auth 9099 · Firestore **8180** · Storage 9199 · Functions 5001 · interface 4000. Se mudar uma, mude em `backend/firebase.json`, `backend/tests/firestore.rules.test.ts` e `app/lib/core/firebase/firebase_setup.dart`.
 - App → Emulator: `10.0.2.2` no emulador do Android; IP do computador num celular real (`--dart-define=EMULATOR_HOST=...`).
-- Região de tudo: `us-east1`.
+- Regiões: Firestore e Functions em `southamerica-east1`; **só o Storage** (e o gatilho `onVideoUploaded`, que precisa ficar junto do bucket) em `us-east1`, pela cota gratuita. Constantes em `backend/functions/src/config.ts` e `functionsRegion` em `app/lib/core/firebase/firebase_setup.dart`.
+- **Projeto real `clippo-dev`** (App Check obrigatório): só com `--dart-define=USE_EMULATOR=false` no app e `--project dev` no CLI. Nunca faça deploy nem mude nada nele sem o pedido explícito de alguém do grupo. Guia: `docs/arquitetura.md` › Projeto real.
 
 ## Antes de dizer que terminou
 - `app/`: `flutter analyze` sem avisos e `flutter test` passando.

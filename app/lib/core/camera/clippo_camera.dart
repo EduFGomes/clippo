@@ -28,6 +28,64 @@ abstract final class HighlightLength {
   static const Duration standard = Duration(seconds: 30);
 }
 
+/// Resoluções do vídeo no buffer circular (a análise do gesto segue sempre em 720p para velocidade).
+enum VideoResolution {
+  hd720(label: '720p (HD)', shortLabel: '720p', fullHd: false),
+  fhd1080(label: '1080p (Full HD)', shortLabel: '1080p', fullHd: true);
+
+  const VideoResolution({required this.label, required this.shortLabel, required this.fullHd});
+
+  final String label;
+  final String shortLabel;
+  final bool fullHd;
+}
+
+/// Configurações do modo de gravação persistidas nas preferências locais do aparelho.
+class CaptureSettings {
+  const CaptureSettings({
+    this.length = HighlightLength.standard,
+    this.resolution = VideoResolution.hd720,
+    this.recordAudio = true,
+    this.soundOnSave = true,
+    this.flashOnSave = true,
+    this.vibrationOnSave = false,
+  });
+
+  factory CaptureSettings.fromMap(Map<Object?, Object?> data) {
+    final seconds = data['lengthSeconds'] as int? ?? 30;
+    final length = HighlightLength.options.firstWhere(
+      (d) => d.inSeconds == seconds,
+      orElse: () => HighlightLength.standard,
+    );
+    final fullHd = data['fullHd'] as bool? ?? false;
+    final resolution = fullHd ? VideoResolution.fhd1080 : VideoResolution.hd720;
+    return CaptureSettings(
+      length: length,
+      resolution: resolution,
+      recordAudio: data['recordAudio'] as bool? ?? true,
+      soundOnSave: data['sound'] as bool? ?? true,
+      flashOnSave: data['flash'] as bool? ?? true,
+      vibrationOnSave: data['vibrate'] as bool? ?? false,
+    );
+  }
+
+  final Duration length;
+  final VideoResolution resolution;
+  final bool recordAudio;
+  final bool soundOnSave;
+  final bool flashOnSave;
+  final bool vibrationOnSave;
+
+  Map<String, Object?> toMap() => {
+        'lengthSeconds': length.inSeconds,
+        'fullHd': resolution.fullHd,
+        'recordAudio': recordAudio,
+        'sound': soundOnSave,
+        'flash': flashOnSave,
+        'vibrate': vibrationOnSave,
+      };
+}
+
 /// O trecho que o buffer salvou: o MP4 no aparelho, ainda não enviado (R13 cuida do envio).
 class SavedClip {
   const SavedClip({required this.path, required this.duration, this.withSound = false});
@@ -76,13 +134,39 @@ class ClippoCamera {
   Future<bool> requestMicrophonePermission() =>
       _call<bool>('requestMicrophonePermission').then((granted) => granted ?? false);
 
-  /// Liga a câmera traseira e a análise (modelo padrão `base` do ML Kit).
+  /// Liga só a imagem da câmera na tela, sem análise nem buffer: a fase de enquadramento.
+  ///
+  /// Câmeras de nível LIMITED (ex.: Galaxy A50) não abrem a imagem, a análise e o buffer juntos.
+  /// Por isso a tela de gravação mostra a imagem só aqui e, ao gravar, troca para
+  /// [start] com `withPreview: false`.
+  ///
+  /// Devolve se o buffer vai gravar o som quando [start] ligar (previsão: o microfone liberado).
+  Future<bool> startPreview({bool recordAudio = true}) async {
+    final data = await _call<Map<Object?, Object?>>('startPreview', {
+      if (!recordAudio) 'recordAudio': false,
+    });
+    return data?['withSound'] as bool? ?? false;
+  }
+
+  /// Liga a câmera traseira, a análise (modelo padrão `base` do ML Kit) e o buffer.
   /// [multiPerson] acha cada pessoa do quadro
   /// com um detector antes do ML Kit (o modo escolhido); sem ele, o ML Kit segue uma pessoa só.
+  /// [withPreview] liga também a imagem na tela (o laboratório). São três fluxos, que câmeras
+  /// LIMITED recusam: a tela de gravação passa false (a tela fica preta durante a partida, R7).
   ///
   /// Devolve se o buffer está gravando o som (o microfone liberado e aberto).
-  Future<bool> start({bool multiPerson = false}) async {
-    final data = await _call<Map<Object?, Object?>>('start', {'multiPerson': multiPerson});
+  Future<bool> start({
+    bool multiPerson = false,
+    bool fullHd = false,
+    bool recordAudio = true,
+    bool withPreview = true,
+  }) async {
+    final data = await _call<Map<Object?, Object?>>('start', {
+      'multiPerson': multiPerson,
+      if (fullHd) 'fullHd': true,
+      if (!recordAudio) 'recordAudio': false,
+      if (!withPreview) 'withPreview': false,
+    });
     return data?['withSound'] as bool? ?? false;
   }
 
@@ -117,6 +201,17 @@ class ClippoCamera {
   /// Apaga da pasta interna do app o MP4 de um [SavedClip] (quando o usuário descarta a sessão,
   /// R14, ou depois que o envio para o banco é confirmado, R13).
   Future<void> deleteHighlight(SavedClip clip) => _call<void>('deleteHighlight', {'path': clip.path});
+
+  /// Lê as configurações salvas do modo de gravação (tempo, resolução, microfone, avisos).
+  Future<CaptureSettings> loadSettings() async {
+    final data = await _call<Map<Object?, Object?>>('loadSettings');
+    if (data == null) return const CaptureSettings();
+    return CaptureSettings.fromMap(data);
+  }
+
+  /// Salva as configurações de gravação nas preferências locais do aparelho.
+  Future<void> saveSettings(CaptureSettings settings) =>
+      _call<void>('saveSettings', settings.toMap());
 
   /// Um [PoseFrame] por quadro analisado, enquanto a câmera estiver ligada.
   ///

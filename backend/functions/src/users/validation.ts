@@ -1,5 +1,5 @@
 /**
- * Regras de validação da conta e do perfil, sem dependência do Firebase.
+ * Regras de validação da conta, do perfil e da sessão, sem dependência do Firebase.
  * Ficam separadas para poder ser testadas sozinhas (validation.test.ts).
  *
  * O app tem uma cópia destas regras (app/lib/core/validation/input_validation.dart),
@@ -11,11 +11,13 @@ export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 20;
 export const EMAIL_MAX = 254;
 export const EMAIL_LOCAL_MAX = 64;
+export const SESSION_NAME_MAX = 50;
+export const SESSION_LOCATION_MAX = 80;
 
 /** Erro de validação com uma mensagem pronta para mostrar ao usuário. */
 export class ValidationError extends Error {
   constructor(
-    readonly field: "email" | "name" | "username" | "birthDate",
+    readonly field: "email" | "name" | "username" | "birthDate" | "sessionName" | "sessionLocation",
     message: string,
   ) {
     super(message);
@@ -97,4 +99,64 @@ export function normalizeBirthDate(raw: unknown, today: Date = new Date()): stri
     throw new ValidationError("birthDate", "Data de nascimento inválida.");
   }
   return raw;
+}
+
+/** Nome da sessão: obrigatório, sem espaços nas pontas nem repetidos, até 50 caracteres. */
+export function normalizeSessionName(raw: unknown): string {
+  if (typeof raw !== "string") {
+    throw new ValidationError("sessionName", "Informe o nome da sessão.");
+  }
+  const name = raw.trim().replace(/\s+/g, " ");
+  if (name.length === 0) {
+    throw new ValidationError("sessionName", "Informe o nome da sessão.");
+  }
+  if (name.length > SESSION_NAME_MAX) {
+    throw new ValidationError(
+      "sessionName",
+      `O nome da sessão pode ter até ${SESSION_NAME_MAX} caracteres.`,
+    );
+  }
+  return name;
+}
+
+/** Local da sessão: opcional; quando preenchido, sem espaços repetidos e até 80 caracteres. */
+export function normalizeSessionLocation(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "string") {
+    throw new ValidationError(
+      "sessionLocation",
+      `O local pode ter até ${SESSION_LOCATION_MAX} caracteres.`,
+    );
+  }
+  const location = raw.trim().replace(/\s+/g, " ");
+  if (location.length === 0) return null;
+  if (location.length > SESSION_LOCATION_MAX) {
+    throw new ValidationError(
+      "sessionLocation",
+      `O local pode ter até ${SESSION_LOCATION_MAX} caracteres.`,
+    );
+  }
+  return location;
+}
+
+/** O que o updateProfile recebe já conferido: só os campos que vieram. */
+export interface ProfileUpdate {
+  name?: string;
+  username?: string;
+}
+
+/**
+ * Pedido do updateProfile: nome e/ou @usuário, com as mesmas regras do cadastro.
+ * Campo ausente (undefined ou null) = não mudar. Pelo menos um precisa vir.
+ */
+export function normalizeProfileUpdate(raw: unknown): ProfileUpdate {
+  const data = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const has = (key: string) => data[key] !== undefined && data[key] !== null;
+  if (!has("name") && !has("username")) {
+    throw new ValidationError("name", "Informe o nome ou o nome de usuário.");
+  }
+  const update: ProfileUpdate = {};
+  if (has("name")) update.name = normalizeName(data.name);
+  if (has("username")) update.username = normalizeUsername(data.username);
+  return update;
 }

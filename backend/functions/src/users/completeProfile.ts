@@ -14,6 +14,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
+import { CALLABLE_OPTIONS } from "../config";
 import { db } from "../shared/admin";
 import {
   ValidationError,
@@ -34,6 +35,7 @@ export interface CompleteProfileResponse {
 }
 
 export const completeProfile = onCall<CompleteProfileRequest, Promise<CompleteProfileResponse>>(
+  CALLABLE_OPTIONS,
   async (request) => {
 
     const uid = request.auth?.uid;

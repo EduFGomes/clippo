@@ -107,6 +107,32 @@ class AuthRepository {
     }
   }
 
+  /// Chama a Cloud Function updateProfile (backend/functions/src/users/updateProfile.ts)
+  /// para mudar o nome e/ou o @usuário na tela Perfil. Campo null = não mudar.
+  ///
+  /// Valida aqui antes (mesmas regras e mensagens do servidor). Não precisa atualizar a
+  /// tela depois: [watchMyProfile] emite o perfil novo sozinho.
+  Future<void> updateProfile({String? name, String? username}) async {
+    if (name == null && username == null) {
+      throw const AuthFailure('Informe o nome ou o nome de usuário.', field: 'name');
+    }
+    if (name != null) _check('name', validateName(name));
+    if (username != null) _check('username', validateUsername(username));
+    try {
+      await _functions.httpsCallable('updateProfile').call<Map<String, dynamic>>({
+        if (name != null) 'name': normalizeName(name),
+        if (username != null) 'username': normalizeUsername(username),
+      });
+    } on FirebaseFunctionsException catch (e) {
+      final details = e.details;
+      final field = details is Map ? details['field'] as String? : null;
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        throw AuthFailure('Sem conexão. Confira a internet e tente de novo.', field: field);
+      }
+      throw AuthFailure(e.message ?? 'Não foi possível salvar seu perfil.', field: field);
+    }
+  }
+
   /// Barra o envio quando a validação do app encontrou um erro.
   static void _check(String field, String? error) {
     if (error != null) throw AuthFailure(error, field: field);
@@ -143,3 +169,13 @@ AuthRepository? _authRepository;
 /// Instância única usada pelo app. Só acesse depois de setupFirebase() (main.dart).
 /// Provisório até a área de front-end escolher o gerenciamento de estado.
 AuthRepository get authRepository => _authRepository ??= AuthRepository();
+
+/// Retorna `true` somente quando o Firebase está inicializado e há alguém logado.
+/// Nos testes de widget ou no catálogo sem login, devolve `false` sem lançar erro.
+bool get isUserSignedIn {
+  try {
+    return authRepository.currentUser != null;
+  } catch (_) {
+    return false;
+  }
+}

@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Testes das Security Rules do Clippo no Emulator",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore,storage --project demo-clippo \"vitest run firestore.rules.test.ts\"",
-    "test:e2e": "npm --prefix ../functions run build && firebase emulators:exec --only auth,firestore,functions --project demo-clippo \"vitest run saveSession.test.ts\"",
+    "test": "firebase emulators:exec --only firestore,storage --project demo-clippo \"vitest run --no-file-parallelism firestore.rules.test.ts storage.rules.test.ts\"",
+    "test:e2e": "npm --prefix ../functions run build && firebase emulators:exec --only auth,firestore,functions --project demo-clippo \"vitest run --no-file-parallelism saveSession.test.ts friendsAndSessions.test.ts updateProfile.test.ts\"",
     "test:watch": "vitest"
   },
   "devDependencies": {

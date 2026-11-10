@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_capture_chip.dart';
+import 'package:clippo/core/widgets/clippo_capture_toast.dart';
+import 'package:clippo/core/widgets/clippo_ghost_button.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_link_line.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
+import 'package:clippo/core/widgets/clippo_pulse_dot.dart';
 import 'package:clippo/core/widgets/clippo_radial_nav.dart';
+import 'package:clippo/core/widgets/clippo_record_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_session_card.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -156,6 +162,30 @@ class _ComponentGalleryState extends State<ComponentGallery> {
                       onToggle: () => setState(() => _cardExpanded = !_cardExpanded),
                       onAction: () {},
                     ),
+                    const SizedBox(height: ClippoSpace.spaceL),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: ClippoHighlightTile(
+                              title: 'Jogada de cinema',
+                              timing: '00:12:40 · 30s',
+                              onTap: () {},
+                            ),
+                          ),
+                          const SizedBox(width: ClippoSpace.cardGap),
+                          Expanded(
+                            child: ClippoHighlightTile(
+                              title: 'Ponto antológico',
+                              timing: '00:27:08 · enviando…',
+                              uploading: true,
+                              onTap: () {},
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: ClippoSpace.sectionL),
                     const ClippoStepList(
                       highlightIndex: 2,
@@ -168,6 +198,36 @@ class _ComponentGalleryState extends State<ComponentGallery> {
                           description: 'Descrição do passo.',
                         ),
                       ],
+                    ),
+                    const SizedBox(height: ClippoSpace.sectionL),
+                    // Gravação: ignora o tema, sempre sobre o preto.
+                    ColoredBox(
+                      color: ClippoBrand.captureBackground,
+                      child: Padding(
+                        padding: const EdgeInsets.all(ClippoSpace.spaceL),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: ClippoSpace.spaceS,
+                              children: [
+                                ClippoCaptureChip(label: 'Gravar sozinho', selected: true, onPressed: () {}),
+                                ClippoCaptureChip(label: 'Com Rafa', selected: false, onPressed: () {}),
+                              ],
+                            ),
+                            const SizedBox(height: ClippoSpace.section),
+                            Center(child: ClippoRecordButton(caption: r'Iniciar detecção de gesto \ o /', onPressed: () {})),
+                            const SizedBox(height: ClippoSpace.section),
+                            const Center(child: ClippoPulseDot()),
+                            const SizedBox(height: ClippoSpace.section),
+                            const ClippoCaptureToast(title: 'Highlight salvo', detail: r'últimos 30s · gesto \ o / detectado'),
+                            const SizedBox(height: ClippoSpace.section),
+                            ClippoPrimaryButton.onWine(label: 'Encerrar sessão', onPressed: () {}),
+                            const SizedBox(height: ClippoSpace.spaceM),
+                            ClippoGhostButton(label: 'Cancelar gravação', onPressed: () {}),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),

@@ -89,31 +89,37 @@ Será ajustado quando o modelo de dados estiver definido.
 | Função | Gatilho | O que faz | Requisito |
 |---|---|---|---|
 | `completeProfile` ✅ | Chamada pelo app | Cria `users/{uid}`, reserva `usernames/{username}` e guarda a data de nascimento em `userPrivate/{uid}`, numa transação | Conta e perfil |
+| `updateProfile` ✅ | Chamada pelo app (tela Perfil) | Muda nome e/ou @usuário: troca a trava `usernames/` numa transação ("Esse nome de usuário já está em uso.") e depois atualiza as cópias em `friendships.profiles` e `sessions.participantsPreview` (idempotente) | Perfil, D16 |
 | `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
-| `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo, grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R14 |
-| `onHighlightCreated` | Highlight criado no Firestore | Atualiza contadores e avisa os participantes por push | R16, Perfil |
-| `onVideoUploaded` ✅ | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
-| `acceptFriendInvite` | Chamada pelo app | Grava a amizade nos dois perfis de uma vez | R15 🟡 |
+| `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo (inclusive R10: participantes são amigos do dono), grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R10, R14 |
+| `updateSession` ✅ | Chamada pelo app | O dono muda nome, local e participantes; acerta avatares, contadores e as sessões juntadas | R12, R10 |
+| `leaveSession` ✅ | Chamada pelo app | Um participante sai da sessão (o dono não) | 🟡 produto |
+| `requestSessionMerge` / `acceptSessionMerge` / `cancelSessionMerge` ✅ | Chamadas pelo app | Juntar duas sessões do mesmo jogo num hub só, com aceite do dono da outra | D18 🟡 |
+| `sendFriendRequest` ✅ | Chamada pelo app | Pedido de amizade pelo @ (aceita na hora se a outra pessoa já tinha pedido) | R15, D16 |
+| `acceptFriendRequest` ✅ | Chamada pelo app | Quem recebeu aceita; +1 em `stats.friends` dos dois | R15, D16 |
+| `removeFriend` ✅ | Chamada pelo app | Cancela, recusa ou desfaz a amizade | D16 |
+| `onHighlightCreated` | Highlight criado no Firestore | Avisa os participantes por push | Perfil |
+| `onVideoUploaded` ✅ | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" (e a cópia na sessão principal, D18) | R13 |
 | `deleteMyAccount` | Chamada pelo app | Apaga ou anonimiza os dados da pessoa | LGPD |
 | `cleanupOldVideos` | Agendada (todo dia) | Apaga vídeos antigos, se a retenção for ligada | Custo |
 
-Em aberto: validar R10 (participantes são amigos do dono) em `participantsAreFriends` no `saveSession` quando `Friendship` existir.
+## Projeto real e deploy
 
-## Projeto real e deploy (depois)
-
-Quando o projeto `clippo-dev` existir no console do Firebase:
+O projeto `clippo-dev` existe desde 09/11/2026 (alias `dev` no `.firebaserc`). Sempre com `--project dev`;
+sem ele, o CLI usa o `demo-clippo`:
 
 ```bash
 cd backend
-firebase use --add          # escolha clippo-dev e dê o apelido "dev"
-firebase deploy --only firestore:rules,storage   # regras
-firebase deploy --only functions                 # funções
+firebase deploy --only firestore:rules,firestore:indexes,storage --project dev   # regras e índices
+firebase deploy --only functions --project dev                                  # funções
 ```
 
-Antes do primeiro deploy: plano **Blaze** ativo e **alerta de orçamento** configurado no Google Cloud.
+Configuração, App Check, problemas comuns no deploy e o caminho até a Play Store:
+[`docs/arquitetura.md` › Projeto real](../docs/arquitetura.md#projeto-real-clippo-dev).
 
 ## Segurança
 
 - Nunca versione chaves de conta de serviço (`*-adminsdk-*.json`): o `.gitignore` da raiz já bloqueia.
 - O `google-services.json` do app **não é segredo**; a proteção vem das regras e do App Check.
+- **Tokens de depuração do App Check são segredo**: nunca no repositório (passe por `--dart-define`).
 - Segredos de funções (se um dia houver) vão no Secret Manager: `firebase functions:secrets:set NOME`.

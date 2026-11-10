@@ -14,14 +14,31 @@
  *   sessions/{sessionId}/highlights/{id}      → um documento por lance, `status: pending`
  *   users/{uid}.stats                         → atualiza contadores de sessões e lances
  *
+ * Os participantes precisam ser amigos do dono (R10, D16).
+ *
+ * Se a sessão já foi juntada a outra (D18) e o reenvio trouxer lances novos, eles são
+ * gravados na sessão e na principal, para aparecerem no hub.
+ *
  * O vídeo NÃO passa por aqui: ele sobe do app direto para o Storage, e o gatilho
  * `onVideoUploaded` marca o highlight como `uploaded` (R13).
  */
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
+import { CALLABLE_OPTIONS } from "../config";
+import { areFriendsWithAll } from "../friends/friendships";
 import { db } from "../shared/admin";
 import {
+  PREVIEW_MAX,
+  highlightThumbnailPath,
+  highlightVideoPath,
+  mergedIntoOf,
+  participantIdsOf,
+  previewEntry,
+  toDate,
+} from "./sessionDocs";
+import {
+  type HighlightInput,
   SessionValidationError,
   normalizeHighlights,
   normalizeId,
@@ -29,11 +46,9 @@ import {
   normalizeParticipantIds,
   normalizePeriod,
   normalizeSessionName,
-  participantsAreFriends,
 } from "./validation";
 
-/** Até onde a lista da Início mostra avatares sem abrir a sessão (produto.md › 4.2). */
-const PREVIEW_MAX = 5;
+export { highlightThumbnailPath, highlightVideoPath } from "./sessionDocs";
 
 export interface SaveSessionHighlight {
   /** Id gerado no aparelho. */
@@ -66,16 +81,35 @@ export interface SaveSessionResponse {
   created: boolean;
 }
 
-/** Caminho combinado do vídeo e da miniatura de um lance. */
-export function highlightVideoPath(sessionId: string, highlightId: string): string {
-  return `sessions/${sessionId}/highlights/${highlightId}/video.mp4`;
-}
-
-export function highlightThumbnailPath(sessionId: string, highlightId: string): string {
-  return `sessions/${sessionId}/highlights/${highlightId}/thumb.jpg`;
+/** O documento de um lance novo, como fica no Firestore. */
+function highlightDoc(
+  sessionId: string,
+  highlight: HighlightInput,
+  savedAt: Date,
+  offsetSeconds: number,
+  createdBy: string,
+  sourceSessionId: string | null,
+) {
+  const now = FieldValue.serverTimestamp();
+  return {
+    title: highlight.title,
+    offsetSeconds,
+    durationSeconds: highlight.durationSeconds,
+    savedAt,
+    createdBy,
+    // O vídeo fica sempre no caminho da sessão onde foi gravado, mesmo depois de juntar (D18).
+    videoPath: highlightVideoPath(sourceSessionId ?? sessionId, highlight.highlightId),
+    thumbnailPath: highlightThumbnailPath(sourceSessionId ?? sessionId, highlight.highlightId),
+    // O vídeo ainda está só no aparelho; o gatilho do Storage marca "uploaded" (R13).
+    status: "pending",
+    sourceSessionId,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionResponse>>(
+  CALLABLE_OPTIONS,
   async (request) => {
     // 1. Quem chamou?
     const uid = request.auth?.uid;
@@ -105,7 +139,7 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
       throw e;
     }
 
-    // 3. Os participantes existem? (e, quando Friendship existir, são amigos do dono — R10)
+    // 3. Os participantes existem e são amigos do dono (R10)?
     const others = participantIds.filter((id) => id !== uid);
     const profiles = others.length === 0
       ? []
@@ -115,7 +149,12 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
         field: "participantIds",
       });
     }
-    if (!(await participantsAreFriends(uid, others))) {
+
+    const sessionRef = db().doc(`sessions/${sessionId}`);
+    const existing = await sessionRef.get();
+    // No reenvio, os participantes já foram conferidos na primeira vez (e o dono pode ter
+    // desfeito uma amizade depois): a lista gravada vale, e a do pedido é ignorada.
+    if (!existing.exists && !(await areFriendsWithAll(uid, others))) {
       throw new HttpsError("failed-precondition", "Só dá para gravar com os seus amigos.", {
         field: "participantIds",
       });
@@ -123,29 +162,15 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
 
     // Avatares que a Início mostra sem abrir a sessão. O dono vem primeiro.
     const ownerSnap = await db().doc(`users/${uid}`).get();
-    const preview = [
-      { uid, name: (ownerSnap.get("name") as string) ?? "", photoUrl: ownerSnap.get("photoUrl") ?? null },
-      ...profiles.map((snap) => ({
-        uid: snap.id,
-        name: (snap.get("name") as string) ?? "",
-        photoUrl: snap.get("photoUrl") ?? null,
-      })),
-    ].slice(0, PREVIEW_MAX);
+    const preview = [previewEntry(ownerSnap), ...profiles.map(previewEntry)].slice(0, PREVIEW_MAX);
 
     // 4. Grava tudo de uma vez.
-    const sessionRef = db().doc(`sessions/${sessionId}`);
-    const highlightRefs = highlights.map((h) =>
-      sessionRef.collection("highlights").doc(h.highlightId),
-    );
-    const userRefs = participantIds.map((id) => db().doc(`users/${id}`));
-
     const created = await db().runTransaction(async (tx) => {
       // Todas as leituras da transação precisam vir antes de qualquer escrita.
       const snap = await tx.get(sessionRef);
-      const existingHighlightSnaps = highlightRefs.length === 0
+      const existingHighlightSnaps = highlights.length === 0
         ? []
-        : await tx.getAll(...highlightRefs);
-      const userSnaps = await tx.getAll(...userRefs);
+        : await tx.getAll(...highlights.map((h) => sessionRef.collection("highlights").doc(h.highlightId)));
 
       const now = FieldValue.serverTimestamp();
 
@@ -155,43 +180,59 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
           throw new HttpsError("permission-denied", "Essa sessão é de outra pessoa.");
         }
 
-        // Se o reenvio trouxe algum lance que ainda não tinha sido gravado,
-        // grava só os que faltam sem duplicar os existentes.
-        const missingHighlights = highlights.filter(
-          (_, index) => !existingHighlightSnaps[index]?.exists,
-        );
-        if (missingHighlights.length > 0) {
-          for (const highlight of missingHighlights) {
-            tx.set(sessionRef.collection("highlights").doc(highlight.highlightId), {
-              title: highlight.title,
-              offsetSeconds: highlight.offsetSeconds,
-              durationSeconds: highlight.durationSeconds,
-              savedAt: new Date(period.startedAt.getTime() + highlight.offsetSeconds * 1000),
-              createdBy: uid,
-              videoPath: highlightVideoPath(sessionId, highlight.highlightId),
-              thumbnailPath: highlightThumbnailPath(sessionId, highlight.highlightId),
-              status: "pending",
-              createdAt: now,
-              updatedAt: now,
-            });
-          }
-          tx.update(sessionRef, {
-            highlightCount: FieldValue.increment(missingHighlights.length),
-            updatedAt: now,
-          });
-          const savedParticipants = new Set<string>(
-            (snap.get("participantIds") as string[] | undefined) ?? participantIds,
+        const missing = highlights.filter((_, index) => !existingHighlightSnaps[index]?.exists);
+        if (missing.length === 0) return false;
+
+        // Juntada a outra (D18)? Os lances novos vão também para a principal.
+        const rootId = mergedIntoOf(snap);
+        const rootRef = rootId ? db().doc(`sessions/${rootId}`) : null;
+        const rootSnap = rootRef ? await tx.get(rootRef) : null;
+        const rootHighlightSnaps = rootRef
+          ? await tx.getAll(...missing.map((h) => rootRef.collection("highlights").doc(h.highlightId)))
+          : [];
+        const savedParticipants = participantIdsOf(rootSnap?.exists ? rootSnap : snap);
+        const userSnaps = await tx.getAll(...savedParticipants.map((id) => db().doc(`users/${id}`)));
+
+        const sessionStart = toDate(snap.get("startedAt"));
+        for (const highlight of missing) {
+          const savedAt = new Date(sessionStart.getTime() + highlight.offsetSeconds * 1000);
+          tx.set(
+            sessionRef.collection("highlights").doc(highlight.highlightId),
+            highlightDoc(sessionId, highlight, savedAt, highlight.offsetSeconds, uid, null),
           );
-          for (const userSnap of userSnaps) {
-            if (userSnap.exists && savedParticipants.has(userSnap.id)) {
-              tx.update(userSnap.ref, {
-                "stats.highlights": FieldValue.increment(missingHighlights.length),
-              });
-            }
+        }
+        tx.update(sessionRef, {
+          highlightCount: FieldValue.increment(missing.length),
+          updatedAt: now,
+        });
+
+        if (rootRef && rootSnap?.exists) {
+          const rootStart = toDate(rootSnap.get("startedAt"));
+          let copied = 0;
+          missing.forEach((highlight, index) => {
+            if (rootHighlightSnaps[index]?.exists) return;
+            const savedAt = new Date(sessionStart.getTime() + highlight.offsetSeconds * 1000);
+            const offset = Math.max(0, Math.round((savedAt.getTime() - rootStart.getTime()) / 1000));
+            tx.set(
+              rootRef.collection("highlights").doc(highlight.highlightId),
+              highlightDoc(rootRef.id, highlight, savedAt, offset, uid, sessionId),
+            );
+            copied++;
+          });
+          if (copied > 0) {
+            tx.update(rootRef, { highlightCount: FieldValue.increment(copied), updatedAt: now });
+          }
+        }
+
+        for (const userSnap of userSnaps) {
+          if (userSnap.exists) {
+            tx.update(userSnap.ref, { "stats.highlights": FieldValue.increment(missing.length) });
           }
         }
         return false;
       }
+
+      const userSnaps = await tx.getAll(...participantIds.map((id) => db().doc(`users/${id}`)));
 
       tx.set(sessionRef, {
         name,
@@ -204,24 +245,18 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
         durationSeconds: period.durationSeconds,
         location: location === null ? null : { label: location },
         highlightCount: highlights.length,
+        mergedInto: null,
+        mergedFrom: [],
         createdAt: now,
         updatedAt: now,
       });
 
       for (const highlight of highlights) {
-        tx.set(sessionRef.collection("highlights").doc(highlight.highlightId), {
-          title: highlight.title,
-          offsetSeconds: highlight.offsetSeconds,
-          durationSeconds: highlight.durationSeconds,
-          savedAt: new Date(period.startedAt.getTime() + highlight.offsetSeconds * 1000),
-          createdBy: uid,
-          videoPath: highlightVideoPath(sessionId, highlight.highlightId),
-          thumbnailPath: highlightThumbnailPath(sessionId, highlight.highlightId),
-          // O vídeo ainda está só no aparelho; o gatilho do Storage marca "uploaded" (R13).
-          status: "pending",
-          createdAt: now,
-          updatedAt: now,
-        });
+        const savedAt = new Date(period.startedAt.getTime() + highlight.offsetSeconds * 1000);
+        tx.set(
+          sessionRef.collection("highlights").doc(highlight.highlightId),
+          highlightDoc(sessionId, highlight, savedAt, highlight.offsetSeconds, uid, null),
+        );
       }
 
       // Atualiza os contadores de perfil (sessões e highlights) de cada participante.

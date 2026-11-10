@@ -4,7 +4,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 
 /// Ícones outline dos controles, desenhados na grade de 24 (mesmos traços dos SVGs de assets/icons/).
 /// Use dentro dos componentes; telas não desenham ícones direto.
-enum ClippoIconShape { chevronLeft, chevronDown, eye, eyeOff, check }
+enum ClippoIconShape { chevronLeft, chevronDown, eye, eyeOff, check, sliders }
 
 class ClippoIcon extends StatelessWidget {
   const ClippoIcon(
@@ -82,6 +82,8 @@ class _ClippoIconPainter extends CustomPainter {
       case ClippoIconShape.eyeOff:
         _eye(canvas, paint);
         canvas.drawLine(const Offset(3, 3), const Offset(21, 21), paint);
+      case ClippoIconShape.sliders:
+        _sliders(canvas, paint);
     }
   }
 
@@ -97,6 +99,20 @@ class _ClippoIconPainter extends CustomPainter {
       paint,
     );
     canvas.drawCircle(const Offset(12, 12), 3, paint);
+  }
+
+  void _sliders(Canvas canvas, Paint paint) {
+    canvas.drawLine(const Offset(4, 6), const Offset(7, 6), paint);
+    canvas.drawCircle(const Offset(9.5, 6), 2.2, paint);
+    canvas.drawLine(const Offset(12, 6), const Offset(20, 6), paint);
+
+    canvas.drawLine(const Offset(4, 12), const Offset(12, 12), paint);
+    canvas.drawCircle(const Offset(14.5, 12), 2.2, paint);
+    canvas.drawLine(const Offset(17, 12), const Offset(20, 12), paint);
+
+    canvas.drawLine(const Offset(4, 18), const Offset(7, 18), paint);
+    canvas.drawCircle(const Offset(9.5, 18), 2.2, paint);
+    canvas.drawLine(const Offset(12, 18), const Offset(20, 18), paint);
   }
 
   @override

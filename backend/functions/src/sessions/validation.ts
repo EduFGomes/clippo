@@ -132,7 +132,7 @@ export function normalizePeriod(
 
 /**
  * Participantes: o dono entra sempre (R9), sem repetidos.
- * Quem é amigo de quem ainda não é conferido aqui — ver `participantsAreFriends`.
+ * Quem é amigo de quem (R10) é conferido no banco — ver `friends/friendships.ts`.
  */
 export function normalizeParticipantIds(raw: unknown, ownerId: string): string[] {
   const list = Array.isArray(raw) ? raw : [];
@@ -227,18 +227,107 @@ export function normalizeHighlights(raw: unknown, durationSeconds: number): High
   });
 }
 
+// R10 (participantes são amigos do dono) precisa do banco: está em
+// friends/friendships.ts › areFriendsWithAll.
+
+// --- Juntar sessões (D18 em docs/arquitetura.md › Juntar sessões) -------------------
+
+/** Quanto as duas gravações podem estar afastadas no tempo e ainda serem "o mesmo jogo". */
+export const MERGE_TOLERANCE_MINUTES = 30;
+
+/** Sessões que podem virar uma só (a principal + as juntadas a ela). */
+export const MERGED_SESSIONS_MAX = 5;
+
+/** Id do pedido: um por par de sessões, então pedir de novo não duplica. */
+export function mergeRequestId(intoSessionId: string, fromSessionId: string): string {
+  return `${intoSessionId}__${fromSessionId}`;
+}
+
+/** O contrário de [mergeRequestId], validando as duas partes. */
+export function parseMergeRequestId(raw: unknown): { intoSessionId: string; fromSessionId: string } {
+  const parts = typeof raw === "string" ? raw.split("__") : [];
+  if (parts.length !== 2) {
+    throw new SessionValidationError("sessionId", "Esse pedido não existe mais.");
+  }
+  return {
+    intoSessionId: normalizeId(parts[0], "sessionId"),
+    fromSessionId: normalizeId(parts[1], "sessionId"),
+  };
+}
+
+/** As duas gravações se encostam no tempo (com [MERGE_TOLERANCE_MINUTES] de folga)? */
+export function periodsTouch(
+  a: { startedAt: Date; endedAt: Date },
+  b: { startedAt: Date; endedAt: Date },
+  toleranceMinutes: number = MERGE_TOLERANCE_MINUTES,
+): boolean {
+  const tolerance = toleranceMinutes * 60 * 1000;
+  return (
+    a.startedAt.getTime() <= b.endedAt.getTime() + tolerance &&
+    b.startedAt.getTime() <= a.endedAt.getTime() + tolerance
+  );
+}
+
+/** O período que cobre as duas gravações. */
+export function mergedPeriod(
+  a: { startedAt: Date; endedAt: Date },
+  b: { startedAt: Date; endedAt: Date },
+): SessionPeriod {
+  const startedAt = new Date(Math.min(a.startedAt.getTime(), b.startedAt.getTime()));
+  const endedAt = new Date(Math.max(a.endedAt.getTime(), b.endedAt.getTime()));
+  return {
+    startedAt,
+    endedAt,
+    durationSeconds: Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
+  };
+}
+
+/** A lista de participantes das duas, sem repetir, na ordem da principal. */
+export function mergedParticipants(into: string[], from: string[]): string[] {
+  return Array.from(new Set([...into, ...from]));
+}
+
+export interface StatsDelta {
+  sessions: number;
+  highlights: number;
+}
+
 /**
- * 🟡 R10: os participantes precisam ser amigos do dono.
+ * Quanto muda o `stats` de cada pessoa ao juntar B em A.
  *
- * Ainda não dá para conferir: `Friendship` não está modelado e a R15 (amizade com
- * aceite ou não) é decisão aberta do grupo. Quando a coleção existir, implemente aqui
- * e o `saveSession` passa a recusar sozinho — o lugar da chamada já está pronto.
- *
- * Até lá, o que protege é a checagem de que cada participante existe em `users/`.
+ * Antes, cada um contava as sessões e os lances das sessões em que estava. Depois,
+ * todos estão em uma sessão só (A) com os lances das duas. Quem estava nas duas perde
+ * uma sessão; quem estava só em B ganha os lances de A, e vice-versa.
  */
-export async function participantsAreFriends(
-  _ownerId: string,
-  _participantIds: string[],
-): Promise<boolean> {
-  return true;
+export function mergeStatsDeltas(
+  into: { participantIds: string[]; highlightCount: number },
+  from: { participantIds: string[]; highlightCount: number },
+): Map<string, StatsDelta> {
+  const inInto = new Set(into.participantIds);
+  const inFrom = new Set(from.participantIds);
+  const total = into.highlightCount + from.highlightCount;
+  const deltas = new Map<string, StatsDelta>();
+  for (const uid of mergedParticipants(into.participantIds, from.participantIds)) {
+    const a = inInto.has(uid);
+    const b = inFrom.has(uid);
+    const delta = {
+      sessions: 1 - (a ? 1 : 0) - (b ? 1 : 0),
+      highlights: total - (a ? into.highlightCount : 0) - (b ? from.highlightCount : 0),
+    };
+    if (delta.sessions !== 0 || delta.highlights !== 0) deltas.set(uid, delta);
+  }
+  return deltas;
+}
+
+/** Quem entrou e quem saiu quando o dono muda os participantes (R12). */
+export function participantChanges(
+  before: string[],
+  after: string[],
+): { added: string[]; removed: string[] } {
+  const was = new Set(before);
+  const now = new Set(after);
+  return {
+    added: after.filter((uid) => !was.has(uid)),
+    removed: before.filter((uid) => !now.has(uid)),
+  };
 }

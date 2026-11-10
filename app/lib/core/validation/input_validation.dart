@@ -209,3 +209,32 @@ String? validateHighlightDuration(int durationSeconds) {
   }
   return null;
 }
+
+// --- Juntar sessões (D18) ----------------------------------------------------
+// Espelho de backend/functions/src/sessions/validation.ts › parseMergeRequestId e
+// MERGE_TOLERANCE_MINUTES, com as MESMAS mensagens.
+
+/// Quanto as duas gravações podem estar afastadas no tempo e ainda serem "o mesmo jogo".
+const int mergeToleranceMinutes = 30;
+
+/// O id do pedido é `sessãoPrincipal__sessãoDeOrigem`.
+const String mergeRequestSeparator = '__';
+
+String? validateMergeRequestId(String raw) {
+  final parts = raw.split(mergeRequestSeparator);
+  if (parts.length != 2) return 'Esse pedido não existe mais.';
+  for (final id in parts) {
+    final error = validateEntityId(id);
+    if (error != null) return error;
+  }
+  return null;
+}
+
+// --- Amigos (D16) ------------------------------------------------------------
+// Espelho de backend/functions/src/friends/validation.ts. O @ que a pessoa digita
+// usa [validateUsername], que já tem a cópia no servidor (users/validation.ts).
+
+final RegExp _uidPattern = RegExp(r'^[A-Za-z0-9]{1,128}$');
+
+/// Uid do Firebase Auth (não é digitado, mas o servidor confere e o app também).
+String? validateUid(String raw) => _uidPattern.hasMatch(raw) ? null : 'Não encontramos essa pessoa.';

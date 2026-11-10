@@ -229,4 +229,58 @@ void main() {
     expect(find.text('+5'), findsOneWidget);
     expect(find.text('1h 42min · 10 participantes'), findsOneWidget);
   });
+
+  group('pedidos para juntar sessões (D18)', () {
+    SessionMergeRequest pedido({required String to}) => SessionMergeRequest(
+          id: 'tenis01__quinta',
+          intoSessionId: 'tenis01',
+          fromSessionId: 'quinta',
+          requestedBy: to == 'alice' ? 'bob' : 'alice',
+          requestedTo: to,
+          intoName: 'Tênis do Bruno',
+          fromName: 'Pelada de quinta',
+        );
+
+    testWidgets('pedido recebido aparece no topo com Aceitar e chama acceptSessionMerge',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final calls = <(String, Map<String, dynamic>)>[];
+
+      await tester.pumpWidget(_app(HomeScreen(
+        sessions: Stream.value(_fromServer([_session('quinta', name: 'Pelada de quinta')])),
+        profile: Stream<UserProfile?>.value(null),
+        currentUserId: 'alice',
+        mergeRequests: Stream.value([pedido(to: 'alice')]),
+        repository: SessionsRepository(callFunction: (name, payload) async {
+          calls.add((name, payload));
+          return {};
+        }),
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Juntar sessões?'), findsOneWidget);
+      expect(find.text('Recusar'), findsOneWidget);
+      await tester.tap(find.text('Aceitar'));
+      await tester.pumpAndSettle();
+
+      expect(calls.single.$1, 'acceptSessionMerge');
+      expect(calls.single.$2, {'requestId': 'tenis01__quinta'});
+      expect(find.text('Juntar sessões?'), findsNothing);
+    });
+
+    testWidgets('pedido que eu fiz não aparece na Início', (tester) async {
+      await tester.pumpWidget(_app(HomeScreen(
+        sessions: Stream.value(_fromServer([_session('quinta', name: 'Pelada de quinta')])),
+        profile: Stream<UserProfile?>.value(null),
+        currentUserId: 'alice',
+        mergeRequests: Stream.value([pedido(to: 'bob')]),
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Juntar sessões?'), findsNothing);
+      expect(find.text('Aceitar'), findsNothing);
+    });
+  });
 }
