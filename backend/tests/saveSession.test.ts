@@ -12,66 +12,19 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 
-const PROJECT = "demo-clippo";
-const REGION = "southamerica-east1";
-const AUTH = `http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1`;
-const FUNCTIONS = `http://127.0.0.1:5001/${PROJECT}/${REGION}`;
-const FIRESTORE = `http://127.0.0.1:8180/v1/projects/${PROJECT}/databases/(default)/documents`;
+import {
+  type Conta,
+  type Resposta as RespostaBase,
+  chamar,
+  criarPessoa,
+  fazerAmigos,
+  ler,
+  limparFirestore,
+  numero,
+  texto,
+} from "./e2e-helpers";
 
-interface Conta {
-  uid: string;
-  token: string;
-}
-
-interface Resposta {
-  status: number;
-  result?: { sessionId: string; videoPaths: Record<string, string>; created: boolean };
-  error?: { message: string; details?: { field?: string } };
-}
-
-/** Cria uma conta no Auth do Emulator e devolve o token, como o app faria. */
-async function criarConta(apelido: string): Promise<Conta> {
-  const r = await fetch(`${AUTH}/accounts:signUp?key=demo`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: `${apelido}${Date.now()}@clippo.test`,
-      password: "senha123",
-      returnSecureToken: true,
-    }),
-  });
-  const body = (await r.json()) as { idToken?: string; localId?: string };
-  if (!body.idToken || !body.localId) {
-    throw new Error(`não consegui criar a conta ${apelido}: ${JSON.stringify(body)}`);
-  }
-  return { uid: body.localId, token: body.idToken };
-}
-
-async function chamar(funcao: string, conta: Conta | null, data: unknown): Promise<Resposta> {
-  const r = await fetch(`${FUNCTIONS}/${funcao}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(conta ? { Authorization: `Bearer ${conta.token}` } : {}),
-    },
-    body: JSON.stringify({ data }),
-  });
-  const body = (await r.json()) as Omit<Resposta, "status">;
-  return { status: r.status, ...body };
-}
-
-/** Lê um documento COMO a pessoa: a API REST do Firestore passa pelas Security Rules. */
-async function ler(caminho: string, conta?: Conta) {
-  const r = await fetch(`${FIRESTORE}/${caminho}`, {
-    headers: conta ? { Authorization: `Bearer ${conta.token}` } : {},
-  });
-  if (!r.ok) return null;
-  const body = (await r.json()) as { fields?: Record<string, any> };
-  return body.fields ?? {};
-}
-
-const texto = (campo: any) => campo?.stringValue as string | undefined;
-const numero = (campo: any) => campo?.integerValue as string | undefined;
+type Resposta = RespostaBase<{ sessionId: string; videoPaths: Record<string, string>; created: boolean }>;
 
 const SESSAO_ID = "sessao-e2e-0001";
 
@@ -103,28 +56,18 @@ let primeiraResposta: Resposta;
 
 beforeAll(async () => {
   // Começa do zero: o id da sessão é fixo e colidiria com a rodada anterior.
-  await fetch(`http://127.0.0.1:8180/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, {
-    method: "DELETE",
-  });
+  await limparFirestore();
 
-  [alice, bob, carol] = await Promise.all([
-    criarConta("alice"),
-    criarConta("bob"),
-    criarConta("carol"),
+  const [a, b, c] = await Promise.all([
+    criarPessoa("alice", "Alice Prado"),
+    criarPessoa("bob", "Bob Silva"),
+    criarPessoa("carol", "Carol Lima"),
   ]);
-
-  await Promise.all([
-    chamar("completeProfile", alice, {
-      name: "Alice Prado",
-      username: `alice${Date.now()}`.slice(0, 20),
-      birthDate: "2001-02-28",
-    }),
-    chamar("completeProfile", bob, {
-      name: "Bob Silva",
-      username: `bob${Date.now()}`.slice(0, 20),
-      birthDate: "2000-05-10",
-    }),
-  ]);
+  alice = a;
+  bob = b;
+  carol = c;
+  // R10: só dá para gravar com amigos. alice e bob são; carol não é amiga de ninguém.
+  await fazerAmigos(a, b);
 
   primeiraResposta = await chamar("saveSession", alice, sessao({ participantIds: [bob.uid] }));
 }, 60_000);
@@ -256,6 +199,16 @@ describe("saveSession — o que ele recusa", () => {
       highlights: [],
     }));
     expect(r.error?.message).toBe("A sessão não pode terminar no futuro.");
+  });
+
+  it("participante que não é amigo do dono (R10)", async () => {
+    const r = await chamar("saveSession", alice, sessao({
+      sessionId: "e2e-nao-amiga",
+      participantIds: [carol.uid],
+    }));
+    expect(r.error?.message).toBe("Só dá para gravar com os seus amigos.");
+    expect(r.error?.details?.field).toBe("participantIds");
+    expect(await ler("sessions/e2e-nao-amiga", alice)).toBeNull();
   });
 
   it("participante que não existe mais", async () => {

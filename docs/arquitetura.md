@@ -37,6 +37,9 @@ Celular de quem grava              Firebase (São Paulo; Storage nos EUA)       
 | D13 | **Câmera e pose em código nativo (Kotlin: CameraX + ML Kit Pose base); regra do gesto em Dart** (`app/android/.../camera/` e `app/lib/core/gesture/`) | O Android entrega a câmera a um cliente por vez: o CameraX abre uma vez e alimenta a imagem na tela, a análise de pose e o buffer de 30 s. O ML Kit (modelo padrão `base`) roda no Kotlin, sem copiar cada quadro para o Dart; o Dart recebe só os 33 pontos do corpo (~25 vezes por segundo). A regra e o disparo em Dart são testáveis sem câmera | Código Kotlin sem teste automático (só no celular); só Android (iOS precisaria do equivalente); o ML Kit Pose só tem versões beta desde 2020 (usamos a 18.0.0-beta5). Decidido pela visão computacional em 23/10/2026, confirmado pelo grupo em 28/10/2026 |
 | D14 | **Gesto só vale de frente para a câmera**, conferido pela profundidade (z) do nariz em relação aos ombros | O produto pede o gesto "olhando para a câmera" para não disparar em comemorações. Em vídeo, o Y de costas disparava; a confiança do ML Kit não serve (diz se o ponto está na imagem, não se está visível) e a ordem dos ombros erra. O nariz separou bem: de frente −0,8 a −2,1, de costas +1,2 a +2,1 | Depende de uma profundidade estimada a partir de uma imagem só; ainda não medido a 8 m. Decidido pela visão computacional em 24/10/2026, confirmado pelo grupo em 28/10/2026 |
 | D15 | **Sessões e highlights gravados por uma Cloud Function chamável (`saveSession`)**; os vídeos sobem do app direto para o Storage, e um gatilho marca o highlight como enviado (R13) | Valida tudo no servidor (regra 0 do AGENTS.md, e os participantes são amigos do dono, R10) e grava numa transação, como o `completeProfile`; as Security Rules continuam fechadas para escrita. A gravação não depende dela (R8): só o "Salvar sessão" chama, e sem internet o app guarda e tenta de novo depois (WorkManager) | O projeto real precisa do plano Blaze (pago por uso, com cartão; o Storage também exige). O uso de um projeto de faculdade cabe na cota sem custo. Decidido pelo grupo em 28/10/2026 |
+| D16 | **Amizade num documento por par** (`friendships/{uidA_uidB}`, ids em ordem), gravado só por Functions | Não existe pedido duplicado nem "meio amigo" (R15 é um documento só); conferir R10 custa uma leitura por participante; a lista de amigos é uma consulta (`uids` contém eu) | Nome e foto copiados no documento (`profiles`) ficam velhos se a pessoa mudar o perfil. 🟡 Proposta do back-end em 09/11/2026, a confirmar com o grupo |
+| D17 | **Vídeos protegidos pelas regras do Storage lendo o Firestore** (`firestore.get()` na regra), sem URL pública | Só participantes da sessão baixam (R11) e só quem gravou envia, num highlight `pending`, um MP4 de tamanho limitado; nada de link que funciona sem login | Cada download custa uma leitura no Firestore; no projeto real, o primeiro deploy das regras pede para dar ao Storage permissão de ler o Firestore. 🟡 Proposta do back-end em 09/11/2026 |
+| D18 | **Juntar sessões** (ex.: tênis com um celular de cada lado): os highlights da sessão de origem são **copiados** para a sessão principal, mas o vídeo **não sai do lugar** no Storage | Um hub só, com todos os ângulos em ordem de horário, sem mover arquivo; a sessão de origem fica escondida (`mergedInto`) e com a mesma lista de participantes, para as regras do Storage continuarem liberando o vídeo | O documento do lance existe em dois lugares (origem e principal); o gatilho do upload e o reenvio da fila atualizam os dois. 🟡 Proposta do back-end em 09/11/2026 |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
 
@@ -46,11 +49,13 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 
 | Coleção / documento | Campos | Quem lê | Quem grava |
 |---|---|---|---|
-| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`; `stats` atualizado em `saveSession`) |
-| `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado | Só Functions (`completeProfile`) |
+| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp | Qualquer usuário logado, **um documento por vez** (ninguém lista a coleção) | Só Functions (`completeProfile`; `stats` atualizado pelas Functions de sessão e de amizade) |
+| `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado, **um @ exato por vez** (é a busca da tela Amigos) | Só Functions (`completeProfile`) |
+| `friendships/{uidA_uidB}` — amizade ou pedido (D16) | `uids` [uidA, uidB] em ordem · `status` `pending`\|`accepted` · `requestedBy` · `requestedTo` · `profiles` {uid: {`name`, `username`, `photoUrl`}} · `createdAt` · `updatedAt` · `acceptedAt` timestamp\|null | Só as duas pessoas | Só Functions (`sendFriendRequest`, `acceptFriendRequest`, `removeFriend`) |
+| `sessionMergeRequests/{intoId__fromId}` — pedido para juntar sessões (D18) | `uids` [quem pediu, dono da outra] · `intoSessionId` · `fromSessionId` · `requestedBy` · `requestedTo` · `intoName` · `fromName` · `createdAt` | Só as duas pessoas | Só Functions (`requestSessionMerge`, `acceptSessionMerge`, `cancelSessionMerge`) |
 | `userPrivate/{uid}` — dados privados | `birthDate` string `AAAA-MM-DD` · `createdAt` timestamp | Só o dono | Só Functions (`completeProfile`) |
-| `sessions/{sessionId}` — um jogo gravado | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, D15) |
-| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`; `onVideoUploaded` marca `uploaded`, D15) |
+| `sessions/{sessionId}` — um jogo gravado | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `mergedInto` string\|null (D18: esta sessão foi juntada àquela) · `mergedFrom` string[] (D18: sessões juntadas a esta) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, `updateSession`, `leaveSession`, `acceptSessionMerge`) |
+| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `sourceSessionId` string\|null (D18: de qual sessão o lance veio) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`, `acceptSessionMerge`; `onVideoUploaded` marca `uploaded`, D15) |
 
 Regras de modelagem:
 - O **e-mail fica só no Firebase Auth**, nunca no Firestore.
@@ -62,7 +67,58 @@ Regras de modelagem:
 - **O Firestore não tem JOIN** (D2): o que a lista precisa mostrar sem abrir a sessão fica copiado nela (`participantsPreview`, `highlightCount`, `durationSeconds`).
 - **Contadores são mantidos por gatilho**, nunca pelo app, e de forma idempotente.
 
-🟡 **Ainda não modelado:** `Friendship`. A tela Amigos e a validação de R10 ("participantes são amigos do dono") dependem dele.
+### Amigos (D16) 🟡
+
+1. **Pedido:** eu digito o @ exato do meu amigo; o app lê `usernames/{@}` para mostrar quem é, e
+   `sendFriendRequest({username})` cria `friendships/{par}` com `status: pending`. Se ele já tinha me
+   pedido, a amizade é aceita na hora (os dois querem).
+2. **Aceite:** só quem recebeu chama `acceptFriendRequest({uid})` (R15). Os dois ganham +1 em `stats.friends`.
+3. **Recusar, cancelar ou desfazer:** `removeFriend({uid})` apaga o documento, em qualquer estado.
+   Era amizade? Os dois perdem 1 em `stats.friends`. Sessões antigas não mudam.
+4. **Limites contra spam:** até 50 pedidos esperando resposta e até 500 amigos por pessoa.
+
+Telas: **amigos** = `uids` contém eu e `status == accepted`; **pedidos recebidos** = o mesmo com
+`requestedTo == eu` e `status == pending`. A busca da tela Amigos é por **@ exato** (ninguém lista
+`users/` nem `usernames/`, para um script não baixar a base inteira); filtrar por nome é só dentro da
+lista de amigos já carregada.
+
+**"X sessões juntos" (R16)** é contado **no aparelho**, a partir das sessões que a Início já leu
+(`participantIds` contém os dois). O Firestore não consegue filtrar duas vezes por `array-contains`, e
+um contador por par precisaria de até 435 escritas por sessão de 30 pessoas. Se a lista de sessões de
+alguém ficar grande demais, vira contador.
+
+### Participantes e "hub" da sessão 🟡
+
+- No "Salvar sessão", o dono escolhe os participantes **entre os amigos** (R10, conferido no `saveSession`).
+  Eles **não precisam aceitar**: a sessão aparece na Início deles (proposta da Gravação › Estado A).
+- Todo participante vê, assiste e **baixa** todos os highlights (R11). Download = ler o vídeo pelo Storage.
+- Depois de salva, só o dono muda nome, local e participantes: `updateSession` (R12). Quem entra
+  também precisa ser amigo do dono; quem sai perde o acesso aos vídeos na hora.
+- Um participante pode sair sozinho: `leaveSession` (o dono não sai; 🟡 decisão de produto em aberto).
+- O app **não** cria sessão "aberta" nem entra por código/link: o campo `isClosed` do app não existe no
+  servidor. Se o grupo quiser convite por link, entra como pedido que o dono aprova.
+
+### Juntar sessões (D18) 🟡
+
+Caso de uso: tênis, cada um com o celular atrás de si. São duas sessões, cada uma com os seus lances;
+no fim, elas viram uma só.
+
+1. Ana (dona da sessão **A**) participa da sessão **B** do Beto (ele a incluiu ao salvar). Na tela da A,
+   ela escolhe "Juntar com…" entre as sessões em que ela está, de outro dono, com horário que encosta
+   na A (até 30 min de diferença). `requestSessionMerge({intoSessionId: A, fromSessionId: B})`.
+2. Beto vê o pedido e aceita: `acceptSessionMerge({requestId})`. Recusar ou desistir:
+   `cancelSessionMerge({requestId})`.
+3. Numa transação: os lances de B são **copiados** para A (mesmo id, `sourceSessionId: B`,
+   `offsetSeconds` recalculado pelo novo início); A passa a ter os participantes das duas, o período
+   que cobre as duas e a soma dos lances; B ganha `mergedInto: A` e a mesma lista de participantes.
+   Os contadores do perfil são acertados (a pessoa que estava nas duas fica com uma sessão só).
+4. A Início **esconde** sessões com `mergedInto` (filtro no aparelho, sem índice novo). Os vídeos de B
+   continuam em `sessions/B/...`; como B tem os mesmos participantes que A, as regras do Storage
+   liberam o download. `updateSession` e `leaveSession` em A repetem a lista de participantes em B.
+5. O vídeo de B que ainda estava subindo, quando chega, marca `uploaded` nas duas cópias
+   (`onVideoUploaded`); um reenvio da fila de B grava o lance nas duas sessões (`saveSession`).
+
+Limites: até 5 sessões juntadas numa só, 30 participantes e 200 lances no total.
 
 ### Sessões e highlights
 
@@ -121,20 +177,27 @@ tenta de novo sozinho quando a conexão voltar (WorkManager), mesmo com o app fe
 vídeo sobe do app direto para o Storage, e um gatilho marca o highlight como `uploaded`;
 só depois disso o app apaga a cópia local (R13).
 
-#### Acesso aos vídeos no Storage 🟡
+#### Acesso aos vídeos no Storage (D17) 🟡
 
-Problema encontrado ao modelar, que vale levar ao grupo: **as regras do Storage não
-conseguem ler o Firestore.** Então não dá para escrever "só participantes desta sessão
-baixam este vídeo" como se faz no Firestore. Os caminhos possíveis:
+Caminho combinado (o `saveSession` devolve ele pronto para o app enviar):
+`sessions/{sessionId}/highlights/{highlightId}/video.mp4` e `thumb.jpg`.
 
-1. Gravar os uids participantes nos **metadados do objeto** e conferir na regra do Storage
-   (funciona, mas os metadados precisam ser atualizados quando os participantes mudam);
-2. Guardar a **URL de download com token** no documento do highlight (quem tem a regra do
-   Firestore tem a URL; quem tem a URL vê o vídeo, mesmo sem login);
-3. Uma **Function que gera URL assinada** a cada pedido (mais controle, mais latência).
+As regras do Storage **conseguem** ler o Firestore (`firestore.get()`; a versão anterior deste
+documento dizia que não, o que estava desatualizado). Então `storage.rules` diz:
 
-Caminho **combinado** (o `saveSession` devolve ele pronto para o app enviar):
-`sessions/{sessionId}/highlights/{highlightId}/video.mp4` e `thumb.jpg`. `storage.rules` segue bloqueando tudo até a decisão.
+| Ação | Quem | Condições |
+|---|---|---|
+| Baixar (`read`) | Participante da sessão | `uid in sessions/{id}.participantIds` |
+| Enviar o vídeo | Quem gravou o lance (`createdBy`) | highlight `pending` ou `failed`; `video/mp4`; até 100 MB (o mesmo `MAX_VIDEO_BYTES` do gatilho) |
+| Enviar a miniatura | Quem gravou o lance | `image/jpeg`; até 1 MB |
+| Sobrescrever ou apagar | Ninguém pelo app | Só Functions (Admin SDK) |
+| Qualquer outro caminho | Ninguém | — |
+
+Alternativas descartadas: uids nos metadados do arquivo (precisam ser reescritos quando os
+participantes mudam), URL com token no documento (funciona sem login para quem tiver o link) e
+URL assinada por Function (latência e mais código). **No projeto real:** no primeiro
+`firebase deploy --only storage`, o CLI pede para dar ao agente de serviço do Storage o papel de
+leitura do Firestore; aceite, senão toda regra com `firestore.get()` recusa.
 
 ## Quem faz o quê
 
@@ -270,8 +333,9 @@ alerta de orçamento; e o que está 🟡 abaixo (retenção de vídeos, idade m�
 | Tema | Quem decide |
 |---|---|
 | Gerenciamento de estado no app (Provider, Riverpod, Bloc…) | Front-end |
-| Modelo de Amizade (`Friendship`) | Back-end + grupo |
-| Como autorizar o download dos vídeos, já que as regras do Storage não leem o Firestore — [opções acima](#acesso-aos-vídeos-no-storage-) | Back-end + grupo |
+| Confirmar D16 (amizade por par), D17 (vídeos pelas regras do Storage) e D18 (juntar sessões) | Back-end + grupo |
+| Participante pode sair sozinho da sessão (`leaveSession` já existe)? Participante precisa aceitar entrar? | Grupo |
+| Sessão aberta/fechada e entrada por código ou link (o app tem `isClosed`; o servidor não) | Grupo |
 | Login com Google (precisa do projeto real) | Back-end |
 | Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |

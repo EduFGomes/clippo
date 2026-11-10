@@ -1,7 +1,12 @@
 /**
- * Domínio: amigos.
+ * Domínio: amigos (D16 em docs/arquitetura.md › Amigos).
  *
- * Planejado (rascunho, depende do modelo de dados):
- * - acceptFriendInvite: chamada pelo app → grava a amizade nos dois perfis de uma vez (R15 🟡).
+ * Pronto:
+ * - sendFriendRequest: "Adicionar amigo" pelo @ → cria o pedido (ou aceita, se a outra
+ *   pessoa já tinha pedido).
+ * - acceptFriendRequest: quem recebeu aceita → amizade mútua (R15).
+ * - removeFriend: cancela, recusa ou desfaz a amizade.
  */
-export {};
+export { sendFriendRequest } from "./sendFriendRequest";
+export { acceptFriendRequest } from "./acceptFriendRequest";
+export { removeFriend } from "./removeFriend";

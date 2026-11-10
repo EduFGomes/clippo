@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 
 import 'package:clippo/firebase_options.dart';
@@ -40,7 +41,7 @@ Future<void> _activateAppCheck() async {
   );
 }
 
-/// Inicia o Firebase e, no modo local, aponta Auth, Firestore e Functions para o Emulator.
+/// Inicia o Firebase e, no modo local, aponta Auth, Firestore, Functions e Storage para o Emulator.
 Future<void> setupFirebase() async {
   if (!useEmulator) {
     // Projeto real clippo-dev. As chaves vêm de lib/firebase_options.dart, gerado por
@@ -59,10 +60,12 @@ Future<void> setupFirebase() async {
       appId: '1:000000000000:android:0000000000000000',
       messagingSenderId: '000000000000',
       projectId: 'demo-clippo',
+      storageBucket: 'demo-clippo.appspot.com',
     ),
   );
 
   await FirebaseAuth.instance.useAuthEmulator(emulatorHost, 9099);
   FirebaseFirestore.instance.useFirestoreEmulator(emulatorHost, 8180);
   FirebaseFunctions.instanceFor(region: functionsRegion).useFunctionsEmulator(emulatorHost, 5001);
+  await FirebaseStorage.instance.useStorageEmulator(emulatorHost, 9199);
 }

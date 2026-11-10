@@ -75,6 +75,8 @@ class Session {
     this.endedAt,
     this.location,
     this.isClosed = false,
+    this.mergedInto,
+    this.mergedFrom = const [],
   });
 
   factory Session.fromMap(String id, Map<String, dynamic> data) {
@@ -101,6 +103,10 @@ class Session {
       location: location is Map<String, dynamic> ? SessionLocation.fromMap(location) : null,
       highlightCount: (data['highlightCount'] as num?)?.toInt() ?? 0,
       isClosed: data['isClosed'] as bool? ?? false,
+      mergedInto: data['mergedInto'] as String?,
+      mergedFrom: (data['mergedFrom'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 
@@ -139,6 +145,19 @@ class Session {
   /// `true` = sessão fechada (exige permissão do criador para entrar).
   final bool isClosed;
 
+  /// Esta sessão foi juntada àquela (D18 em docs/arquitetura.md › Juntar sessões).
+  /// A Início não mostra sessões juntadas: os lances delas estão na principal.
+  final String? mergedInto;
+
+  /// As sessões juntadas a esta (D18). Os vídeos delas continuam no Storage delas.
+  final List<String> mergedFrom;
+
+  /// true quando esta sessão foi juntada a outra e não deve aparecer na lista.
+  bool get isMerged => mergedInto != null && mergedInto!.isNotEmpty;
+
+  /// O par de amigos jogou junto aqui? Base do "X sessões juntos" (R16).
+  bool includesBoth(String a, String b) => participantIds.contains(a) && participantIds.contains(b);
+
   /// Quem gravou é o dono (R9) e, hoje, o único que edita a sessão (R12 🟡).
   bool isOwnedBy(String uid) => uid == ownerId;
 
@@ -174,6 +193,8 @@ class Session {
       location: clearLocation ? null : (location ?? this.location),
       highlightCount: highlightCount,
       isClosed: isClosed ?? this.isClosed,
+      mergedInto: mergedInto,
+      mergedFrom: mergedFrom,
     );
   }
 

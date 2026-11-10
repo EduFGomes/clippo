@@ -15,17 +15,33 @@ service cloud.firestore {
     }
 
     // Perfil público: nome, @usuário, foto e contadores.
-    // Qualquer pessoa logada lê (amigos, busca por @). Ninguém grava pelo app:
-    // a criação passa por completeProfile, que valida tudo.
+    // Qualquer pessoa logada lê UM perfil pelo uid (amigos, participantes). Ninguém LISTA
+    // a coleção: senão um script com uma conta baixaria nome e foto de todo mundo.
+    // Ninguém grava pelo app: a criação passa por completeProfile, que valida tudo.
     match /users/{uid} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if false;
       allow write: if false;
     }
 
-    // Trava de @usuário único. O app pode ler para avisar "esse @ já existe"
-    // enquanto a pessoa digita; quem grava é só a Function.
+    // Trava de @usuário único. O app lê UM @ exato: para avisar "esse @ já existe" no
+    // cadastro e para a busca da tela Amigos (D16). Listar daria a lista de todos os @.
     match /usernames/{username} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Amizade ou pedido de amizade (D16): um documento por par, só as duas pessoas leem.
+    // As consultas do app precisam do filtro .where('uids', arrayContains: uid).
+    match /friendships/{pairId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.uids;
+      allow write: if false;
+    }
+
+    // Pedido para juntar duas sessões (D18): só quem pediu e o dono da outra sessão leem.
+    match /sessionMergeRequests/{requestId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.uids;
       allow write: if false;
     }
 
@@ -49,7 +65,7 @@ service cloud.firestore {
 
       allow read: if isParticipant();
 
-      // Escrita fechada para o app: só a Function saveSession grava (D15 em
+      // Escrita fechada para o app: só Functions gravam (D15 em
       // docs/arquitetura.md › Quem grava sessões e highlights).
       allow write: if false;
 

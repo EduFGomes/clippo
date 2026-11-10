@@ -90,14 +90,17 @@ Será ajustado quando o modelo de dados estiver definido.
 |---|---|---|---|
 | `completeProfile` ✅ | Chamada pelo app | Cria `users/{uid}`, reserva `usernames/{username}` e guarda a data de nascimento em `userPrivate/{uid}`, numa transação | Conta e perfil |
 | `validateNewAccount` ✅ | Bloqueio do Auth (antes de criar a conta) | Recusa a conta se o e-mail não estiver no formato `nome@dominio.tld`. 🟡 No projeto real exige Identity Platform | Regra 0 do `AGENTS.md` |
-| `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo, grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R14 |
-| `onHighlightCreated` | Highlight criado no Firestore | Atualiza contadores e avisa os participantes por push | R16, Perfil |
-| `onVideoUploaded` ✅ | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" | R13 |
-| `acceptFriendInvite` | Chamada pelo app | Grava a amizade nos dois perfis de uma vez | R15 🟡 |
+| `saveSession` ✅ | Chamada pelo app no "Salvar sessão" | Valida tudo (inclusive R10: participantes são amigos do dono), grava `sessions/{id}` e os highlights numa transação (idempotente pelo id vindo do aparelho) e devolve onde enviar cada vídeo | D15, R9, R10, R14 |
+| `updateSession` ✅ | Chamada pelo app | O dono muda nome, local e participantes; acerta avatares, contadores e as sessões juntadas | R12, R10 |
+| `leaveSession` ✅ | Chamada pelo app | Um participante sai da sessão (o dono não) | 🟡 produto |
+| `requestSessionMerge` / `acceptSessionMerge` / `cancelSessionMerge` ✅ | Chamadas pelo app | Juntar duas sessões do mesmo jogo num hub só, com aceite do dono da outra | D18 🟡 |
+| `sendFriendRequest` ✅ | Chamada pelo app | Pedido de amizade pelo @ (aceita na hora se a outra pessoa já tinha pedido) | R15, D16 |
+| `acceptFriendRequest` ✅ | Chamada pelo app | Quem recebeu aceita; +1 em `stats.friends` dos dois | R15, D16 |
+| `removeFriend` ✅ | Chamada pelo app | Cancela, recusa ou desfaz a amizade | D16 |
+| `onHighlightCreated` | Highlight criado no Firestore | Avisa os participantes por push | Perfil |
+| `onVideoUploaded` ✅ | Vídeo chegou no Storage | Confere tamanho/formato; marca o highlight como "enviado" (e a cópia na sessão principal, D18) | R13 |
 | `deleteMyAccount` | Chamada pelo app | Apaga ou anonimiza os dados da pessoa | LGPD |
 | `cleanupOldVideos` | Agendada (todo dia) | Apaga vídeos antigos, se a retenção for ligada | Custo |
-
-Em aberto: validar R10 (participantes são amigos do dono) em `participantsAreFriends` no `saveSession` quando `Friendship` existir.
 
 ## Projeto real e deploy
 

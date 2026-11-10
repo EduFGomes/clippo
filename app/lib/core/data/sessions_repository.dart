@@ -166,7 +166,13 @@ class SessionsRepository {
         .snapshots()
         .map(
           (snapshot) => SessionsSnapshot(
-            sessions: snapshot.docs.map(Session.fromDocument).toList(growable: false),
+            // Sessão juntada a outra (D18) não aparece: os lances dela estão na principal.
+            // O filtro é aqui, e não na consulta, para não precisar de índice novo nem
+            // de reescrever as sessões antigas, que não têm o campo `mergedInto`.
+            sessions: snapshot.docs
+                .map(Session.fromDocument)
+                .where((session) => !session.isMerged)
+                .toList(growable: false),
             fromCache: snapshot.metadata.isFromCache,
           ),
         )
@@ -279,10 +285,167 @@ class SessionsRepository {
     }
   }
 
+  /// O dono muda nome, local e/ou participantes depois de salva (R12).
+  ///
+  /// Só vai o que não for nulo. [participantIds] é a lista inteira, nova (sem o dono,
+  /// que entra sozinho); quem entra precisa ser amigo do dono (R10, conferido no servidor).
+  Future<void> updateSession({
+    required String sessionId,
+    String? name,
+    String? location,
+    bool clearLocation = false,
+    List<String>? participantIds,
+  }) async {
+    _check('sessionId', validateEntityId(sessionId));
+    if (name != null) _check('name', validateSessionName(name));
+    if (location != null) _check('location', validateLocation(location));
+    if (participantIds != null) {
+      _check('participantIds', validateParticipantIds(participantIds));
+    }
+
+    await _call('updateSession', {
+      'sessionId': sessionId,
+      if (name != null) 'name': normalizeSessionName(name),
+      if (clearLocation) 'location': null else if (location != null) 'location': normalizeLocation(location),
+      if (participantIds != null) 'participantIds': normalizeParticipantIds(participantIds),
+    }, fallback: 'Não foi possível salvar as mudanças. Tente de novo.');
+  }
+
+  /// Um participante sai da sessão (🟡 a confirmar com o grupo). O dono não sai.
+  Future<void> leaveSession(String sessionId) async {
+    _check('sessionId', validateEntityId(sessionId));
+    await _call('leaveSession', {'sessionId': sessionId},
+        fallback: 'Não foi possível sair da sessão. Tente de novo.');
+  }
+
+  /// As sessões que dá para juntar a [into] (D18): de outro dono, em que eu participo,
+  /// ainda não juntadas e gravadas no mesmo jogo (até [mergeToleranceMinutes] de diferença).
+  ///
+  /// Filtra a lista que a Início já tem, sem ir ao banco.
+  static List<Session> mergeCandidates(Session into, List<Session> mySessions) {
+    const tolerance = Duration(minutes: mergeToleranceMinutes);
+    final intoEnd = into.endedAt ?? into.startedAt.add(into.duration);
+    return mySessions.where((s) {
+      if (s.id == into.id || s.ownerId == into.ownerId || s.isMerged) return false;
+      if (into.mergedFrom.contains(s.id)) return false;
+      final end = s.endedAt ?? s.startedAt.add(s.duration);
+      return !s.startedAt.isAfter(intoEnd.add(tolerance)) &&
+          !into.startedAt.isAfter(end.add(tolerance));
+    }).toList(growable: false);
+  }
+
+  /// Pede ao dono de [fromSessionId] para juntar a sessão dele à minha [intoSessionId] (D18).
+  /// Devolve o id do pedido.
+  Future<String> requestSessionMerge({
+    required String intoSessionId,
+    required String fromSessionId,
+  }) async {
+    _check('sessionId', validateEntityId(intoSessionId));
+    _check('sessionId', validateEntityId(fromSessionId));
+    final data = await _call(
+      'requestSessionMerge',
+      {'intoSessionId': intoSessionId, 'fromSessionId': fromSessionId},
+      fallback: 'Não foi possível pedir para juntar as sessões. Tente de novo.',
+    );
+    return data['requestId'] as String? ?? '$intoSessionId$mergeRequestSeparator$fromSessionId';
+  }
+
+  /// O dono da outra sessão aceita o pedido: os lances dela vão para a principal (D18).
+  Future<void> acceptSessionMerge(String requestId) async {
+    _check('sessionId', validateMergeRequestId(requestId));
+    await _call('acceptSessionMerge', {'requestId': requestId},
+        fallback: 'Não foi possível juntar as sessões. Tente de novo.');
+  }
+
+  /// Recusa (quem recebeu) ou desiste (quem pediu) de juntar as sessões.
+  Future<void> cancelSessionMerge(String requestId) async {
+    _check('sessionId', validateMergeRequestId(requestId));
+    await _call('cancelSessionMerge', {'requestId': requestId},
+        fallback: 'Não foi possível cancelar o pedido. Tente de novo.');
+  }
+
+  /// Pedidos para juntar sessões em que estou (os que fiz e os que recebi).
+  Stream<List<SessionMergeRequest>> watchMergeRequests() {
+    final uid = _auth().currentUser?.uid;
+    if (uid == null) {
+      return Stream<List<SessionMergeRequest>>.error(
+        const SessionsFailure('Entre na sua conta para ver suas sessões.'),
+      );
+    }
+    return _firestore()
+        .collection(mergeRequestsCollection)
+        .where('uids', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => SessionMergeRequest.fromMap(doc.id, doc.data()))
+            .toList(growable: false))
+        .handleError((Object error) {
+      throw SessionsFailure.from(error);
+    });
+  }
+
+  /// Coleção dos pedidos para juntar sessões. Igual ao de backend/firestore.rules.
+  static const String mergeRequestsCollection = 'sessionMergeRequests';
+
+  /// Chama uma Function e traduz o erro para a tela.
+  Future<Map<String, dynamic>> _call(
+    String name,
+    Map<String, dynamic> payload, {
+    required String fallback,
+  }) async {
+    try {
+      return await _callFunction(name, payload);
+    } on FirebaseFunctionsException catch (e) {
+      final details = e.details;
+      final field = details is Map ? details['field'] as String? : null;
+      throw SessionsFailure(e.message ?? fallback, code: field ?? e.code);
+    } on FirebaseException catch (e) {
+      throw SessionsFailure.from(e);
+    }
+  }
+
   /// Barra o envio quando a validação do app encontrou um erro.
   static void _check(String field, String? error) {
     if (error != null) throw SessionsFailure(error, code: field);
   }
+}
+
+/// Pedido para juntar duas sessões do mesmo jogo (D18).
+class SessionMergeRequest {
+  const SessionMergeRequest({
+    required this.id,
+    required this.intoSessionId,
+    required this.fromSessionId,
+    required this.requestedBy,
+    required this.requestedTo,
+    required this.intoName,
+    required this.fromName,
+  });
+
+  factory SessionMergeRequest.fromMap(String id, Map<String, dynamic> data) => SessionMergeRequest(
+        id: id,
+        intoSessionId: data['intoSessionId'] as String? ?? '',
+        fromSessionId: data['fromSessionId'] as String? ?? '',
+        requestedBy: data['requestedBy'] as String? ?? '',
+        requestedTo: data['requestedTo'] as String? ?? '',
+        intoName: data['intoName'] as String? ?? '',
+        fromName: data['fromName'] as String? ?? '',
+      );
+
+  final String id;
+
+  /// A sessão principal (de quem pediu), que vira o hub.
+  final String intoSessionId;
+
+  /// A sessão de quem recebeu o pedido, cujos lances vão para a principal.
+  final String fromSessionId;
+  final String requestedBy;
+  final String requestedTo;
+  final String intoName;
+  final String fromName;
+
+  /// true quando sou eu quem precisa aceitar ou recusar.
+  bool waitsFor(String uid) => requestedTo == uid;
 }
 
 /// Um lance salvo pelo gesto, esperando para ser enviado.
