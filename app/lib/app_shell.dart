@@ -111,49 +111,9 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Session _toSession(DiscoverableSession item) {
-    final existing = _localSessions.where((s) => s.id == item.id || s.name == item.name);
-    if (existing.isNotEmpty) {
-      return existing.first.copyWith(isClosed: item.isClosed);
-    }
-    final isOwnedByMe = item.ownerName.toLowerCase().startsWith('gustavo');
-    return Session(
-      id: item.id,
-      name: item.name,
-      ownerId: isOwnedByMe ? 'gustavo' : 'amigo',
-      participantIds: const ['gustavo', 'rafa', 'bruno', 'alice'],
-      participants: [
-        SessionParticipant(uid: 'owner', name: item.ownerName),
-        const SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
-        const SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
-        const SessionParticipant(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
-      ],
-      participantCount: item.participantCount,
-      startedAt: item.startedAt,
-      endedAt: item.startedAt.add(item.duration),
-      duration: item.duration,
-      location: SessionLocation(label: item.locationLabel),
-      highlightCount: item.highlightCount,
-      isClosed: item.isClosed,
-    );
-  }
-
-  void _onSessionJoinedFromFriends(DiscoverableSession joined) {
-    final converted = _toSession(joined);
-    if (_localSessions.every((s) => s.id != converted.id && s.name != converted.name)) {
-      setState(() {
-        _localSessions.insert(0, converted);
-      });
-      _emitLocalSessions();
-    }
-  }
-
-  void _openSessionFromFriends(DiscoverableSession target) {
-    final session = _toSession(target);
+  void _openSessionFromFriends(Session session) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SessionScreen(session: session),
-      ),
+      MaterialPageRoute<void>(builder: (_) => SessionScreen(session: session)),
     );
   }
 
@@ -179,10 +139,7 @@ class _AppShellState extends State<AppShell> {
                   sessions: isUserSignedIn ? null : _homeSessionsStream,
                   onRecord: _openCapture,
                 ),
-                FriendsScreen(
-                  onOpenSession: _openSessionFromFriends,
-                  onSessionJoined: _onSessionJoinedFromFriends,
-                ),
+                FriendsScreen(onOpenSession: _openSessionFromFriends),
                 const ProfileScreen(),
               ],
             ),
