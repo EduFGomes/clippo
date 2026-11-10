@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
@@ -12,12 +14,22 @@ import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
 import 'package:clippo/core/widgets/clippo_session_card.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
+import 'package:clippo/features/home/widgets/home_feedback.dart';
+import 'package:clippo/features/home/widgets/merge_request_card.dart';
 
 /// Início: as sessões de que o usuário participa, da mais recente para a mais
 /// antiga (docs/produto.md › 4.2). Só um card fica aberto por vez, e o mais
 /// recente já começa aberto.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.sessions, this.profile, this.onRecord});
+  const HomeScreen({
+    super.key,
+    this.sessions,
+    this.profile,
+    this.onRecord,
+    this.mergeRequests,
+    this.repository,
+    this.currentUserId,
+  });
 
   /// Fonte das sessões. Os testes passam um stream próprio, sem Firebase;
   /// no app, vem do SessionsRepository (mesmo recurso do `home` em app.dart).
@@ -30,6 +42,16 @@ class HomeScreen extends StatefulWidget {
   /// pode importar a feature de captura (regra 3 do AGENTS.md): quem liga as duas
   /// é o `AppShell`. Sem ela, o botão aparece desabilitado.
   final VoidCallback? onRecord;
+
+  /// Pedidos para juntar sessões (D18). Os que esperam a minha resposta aparecem
+  /// no topo, com Aceitar / Recusar. No app, `sessionsRepository.watchMergeRequests()`.
+  final Stream<List<SessionMergeRequest>>? mergeRequests;
+
+  /// Quem responde aos pedidos e é repassado à Sessão. No app, `sessionsRepository`.
+  final SessionsRepository? repository;
+
+  /// UID de quem está logado. Nulo = o do Firebase Auth.
+  final String? currentUserId;
 
   static final List<Session> defaultDemoSessions = [
     Session(
@@ -61,7 +83,6 @@ class HomeScreen extends StatefulWidget {
       duration: const Duration(hours: 1, minutes: 42),
       location: const SessionLocation(label: 'Quadra do Parque'),
       highlightCount: 6,
-      isClosed: false,
     ),
     Session(
       id: 'volei-terca-09set',
@@ -80,7 +101,6 @@ class HomeScreen extends StatefulWidget {
       duration: const Duration(hours: 1, minutes: 45),
       location: const SessionLocation(label: 'Ginásio Ibirapuera'),
       highlightCount: 4,
-      isClosed: true,
     ),
     Session(
       id: 'beach-sabado-06set',
@@ -99,7 +119,6 @@ class HomeScreen extends StatefulWidget {
       duration: const Duration(hours: 1, minutes: 30),
       location: const SessionLocation(label: 'Arena Praia Clube'),
       highlightCount: 5,
-      isClosed: false,
     ),
   ];
 
@@ -110,6 +129,67 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Stream<SessionsSnapshot> _sessions = _resolveSessions();
   late final Stream<UserProfile?> _profile = _resolveProfile();
+
+  List<SessionMergeRequest> _mergeRequests = const [];
+  final Set<String> _busyRequests = <String>{};
+  StreamSubscription<List<SessionMergeRequest>>? _mergeSubscription;
+
+  SessionsRepository get _repository => widget.repository ?? sessionsRepository;
+
+  String? get _viewerId {
+    if (widget.currentUserId != null) return widget.currentUserId;
+    return isUserSignedIn ? authRepository.currentUser?.uid : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final requests = widget.mergeRequests ??
+        (isUserSignedIn
+            ? sessionsRepository.watchMergeRequests()
+            : Stream.value(const <SessionMergeRequest>[]));
+    // Sem os pedidos a Início continua útil: um erro aqui só esconde o aviso.
+    _mergeSubscription = requests.listen((items) {
+      if (mounted) setState(() => _mergeRequests = items);
+    }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    _mergeSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Os pedidos que esperam a MINHA resposta (sou o dono da sessão de origem).
+  List<SessionMergeRequest> get _incomingRequests {
+    final me = _viewerId;
+    if (me == null) return const [];
+    return _mergeRequests.where((r) => r.waitsFor(me)).toList(growable: false);
+  }
+
+  Future<void> _answerMerge(SessionMergeRequest request, {required bool accept}) async {
+    setState(() => _busyRequests.add(request.id));
+    try {
+      if (accept) {
+        await _repository.acceptSessionMerge(request.id);
+      } else {
+        await _repository.cancelSessionMerge(request.id);
+      }
+      if (!mounted) return;
+      setState(() => _mergeRequests = [
+            for (final r in _mergeRequests)
+              if (r.id != request.id) r,
+          ]);
+      showHomeMessage(
+        context,
+        accept ? 'Sessões juntadas. Os lances agora estão em ${request.intoName}.' : 'Pedido recusado.',
+      );
+    } catch (e) {
+      if (mounted) showHomeMessage(context, SessionsFailure.from(e).message);
+    } finally {
+      if (mounted) setState(() => _busyRequests.remove(request.id));
+    }
+  }
 
   /// Qual card está aberto. Null = nenhum; o primeiro da lista começa aberto.
   String? _openId;
@@ -153,6 +233,16 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Heading(profile: _profile),
+          for (final request in _incomingRequests) ...[
+            const SizedBox(height: ClippoSpace.spaceL),
+            MergeRequestCard(
+              request: request,
+              viewerId: _viewerId!,
+              busy: _busyRequests.contains(request.id),
+              onAccept: () => _answerMerge(request, accept: true),
+              onCancel: () => _answerMerge(request, accept: false),
+            ),
+          ],
           const SizedBox(height: ClippoSpace.section),
           StreamBuilder<SessionsSnapshot>(
             stream: _sessions,
@@ -196,7 +286,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openSession(Session session) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => SessionScreen(session: session)),
+      MaterialPageRoute<void>(
+        builder: (_) => SessionScreen(
+          session: session,
+          repository: widget.repository,
+          currentUserId: widget.currentUserId,
+        ),
+      ),
     );
   }
 }

@@ -1,8 +1,13 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/friends_repository.dart';
+import 'package:clippo/core/data/friendship.dart';
 import 'package:clippo/core/data/highlight.dart';
+import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
@@ -18,80 +23,74 @@ import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 import 'package:clippo/features/home/screens/player_screen.dart';
+import 'package:clippo/features/home/widgets/home_feedback.dart';
+import 'package:clippo/features/home/widgets/merge_request_card.dart';
 
-/// Sessão: cabeçalho da sessão, participantes clicáveis, compartilhamento por
-/// link/QR Code, edição pelo criador (R12) com controle de sessão aberta/fechada
-/// e lista de highlights em ordem cronológica (docs/produto.md › 4.3).
+/// 🟡 Participante pode sair sozinho da sessão? Decisão de produto em aberto
+/// (docs/arquitetura.md › Participantes e hub da sessão). Mude para `false` para
+/// esconder o "Sair da sessão" sem mexer no resto da tela.
+const bool participantsCanLeaveSession = true;
+
+/// Sessão: o hub dos lances de um jogo (docs/produto.md › 4.3).
+///
+/// Todo participante assiste e baixa qualquer lance (R11). Só o dono edita nome,
+/// local e participantes (R12) e pede para juntar outra sessão do mesmo jogo (D18).
+/// Ninguém entra por código, link ou QR: o dono adiciona entre os amigos dele.
+///
+/// Tudo o que vem do Firebase pode ser injetado pelo construtor, para a tela
+/// abrir nos testes e no catálogo sem Firebase.
 class SessionScreen extends StatefulWidget {
   const SessionScreen({
     super.key,
     this.session,
     this.highlights,
     this.currentUserId,
-    this.availableFriends = _defaultFriends,
-    this.initialJoinRequests = _defaultJoinRequests,
+    this.repository,
+    this.friendsRepository,
+    this.mediaRepository,
+    this.friendships,
+    this.mySessions,
+    this.mergeRequests,
   });
 
-  /// Sessão aberta. Quando nula (ex.: aberta isoladamente pelo catálogo),
-  /// usa uma sessão de exemplo para visualização.
+  /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
   final Session? session;
 
-  /// Fonte dos highlights. Nos testes ou no catálogo pode vir pronta; no app,
-  /// vem de `sessionsRepository.watchHighlightsOf(session.id)`.
+  /// Lances da sessão. No app, `sessionsRepository.watchHighlightsOf(session.id)`.
   final Stream<HighlightsSnapshot>? highlights;
 
-  /// UID de quem está vendo a sessão. Se nulo, considera o criador da sessão
-  /// para permitir testar a edição no catálogo/emulador.
+  /// UID de quem está vendo. Nulo = quem está logado (ou o dono, no catálogo sem login).
   final String? currentUserId;
 
-  /// Amigos disponíveis para o criador adicionar à sessão (R10, R12).
-  final List<SessionParticipant> availableFriends;
+  /// Quem grava (editar, sair, juntar). No app, `sessionsRepository`.
+  final SessionsRepository? repository;
 
-  /// Pedidos pendentes para entrar na sessão quando ela é fechada.
-  final List<SessionParticipant> initialJoinRequests;
+  /// Pedido de amizade a partir da lista de participantes. No app, `friendsRepository`.
+  final FriendsRepository? friendsRepository;
 
-  static const List<SessionParticipant> _defaultFriends = [
-    SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
-    SessionParticipant(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
-    SessionParticipant(uid: 'alice', name: 'Alice Prado', username: 'alice.prado'),
-    SessionParticipant(uid: 'caio', name: 'Caio Nunes', username: 'caio.nunes'),
-    SessionParticipant(uid: 'bia', name: 'Bia Ferreira', username: 'bia.ferreira'),
-    SessionParticipant(uid: 'gui', name: 'Gui Santos', username: 'gui.santos'),
-  ];
+  /// Vídeos dos lances, repassado ao Player. No app, `highlightMediaRepository`.
+  final HighlightMediaRepository? mediaRepository;
 
-  static const List<SessionParticipant> _defaultJoinRequests = [
-    SessionParticipant(uid: 'gui', name: 'Gui Santos', username: 'gui.santos'),
-  ];
+  /// Amizades de quem está vendo: os aceitos são quem o dono pode adicionar (R10).
+  final Stream<List<Friendship>>? friendships;
+
+  /// Minhas sessões: mantêm o cabeçalho em dia e dão os candidatos a juntar (D18).
+  final Stream<SessionsSnapshot>? mySessions;
+
+  /// Pedidos para juntar sessões em que estou (D18).
+  final Stream<List<SessionMergeRequest>>? mergeRequests;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
     name: 'Pelada de quinta',
     ownerId: 'gustavo',
-    participantIds: const [
-      'gustavo',
-      'rafa',
-      'bruno',
-      'alice',
-      'caio',
-      'diego',
-      'leo',
-      'pedro',
-      'lucas',
-      'mateus',
-    ],
+    participantIds: const ['gustavo', 'rafa', 'bruno'],
     participants: const [
       SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
       SessionParticipant(uid: 'rafa', name: 'Rafa Costa', username: 'rafa.costa'),
       SessionParticipant(uid: 'bruno', name: 'Bruno Lima', username: 'bruno.lima'),
-      SessionParticipant(uid: 'alice', name: 'Alice Prado', username: 'alice.prado'),
-      SessionParticipant(uid: 'caio', name: 'Caio Nunes', username: 'caio.nunes'),
-      SessionParticipant(uid: 'diego', name: 'Diego Souza', username: 'diego.souza'),
-      SessionParticipant(uid: 'leo', name: 'Leo Martins', username: 'leo.martins'),
-      SessionParticipant(uid: 'pedro', name: 'Pedro Rocha', username: 'pedro.rocha'),
-      SessionParticipant(uid: 'lucas', name: 'Lucas Mendes', username: 'lucas.mendes'),
-      SessionParticipant(uid: 'mateus', name: 'Mateus Silva', username: 'mateus.silva'),
     ],
-    participantCount: 10,
+    participantCount: 3,
     startedAt: DateTime(2026, 9, 11, 19, 30),
     endedAt: DateTime(2026, 9, 11, 21, 12),
     duration: const Duration(hours: 1, minutes: 42),
@@ -157,14 +156,86 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   late Session _session = widget.session ?? SessionScreen._demoSession;
-  late Stream<HighlightsSnapshot> _highlights = _resolveStream();
-  late List<SessionParticipant> _joinRequests =
-      List<SessionParticipant>.from(widget.initialJoinRequests);
-  final Set<String> _sentFriendRequests = <String>{};
+  late Stream<HighlightsSnapshot> _highlights = _resolveHighlights();
 
-  String get _viewerId => widget.currentUserId ?? _session.ownerId;
+  List<Friend> _friends = const [];
+  Set<String> _outgoingFriendUids = const {};
+  final Set<String> _sentFriendRequests = <String>{};
+  List<Session> _mySessions = const [];
+  List<SessionMergeRequest> _mergeRequests = const [];
+  final Set<String> _busyRequests = <String>{};
+  bool _leaving = false;
+
+  final List<StreamSubscription<Object?>> _subscriptions = [];
+
+  SessionsRepository get _repository => widget.repository ?? sessionsRepository;
+  FriendsRepository get _friendsRepo => widget.friendsRepository ?? friendsRepository;
+
+  String get _viewerId {
+    if (widget.currentUserId != null) return widget.currentUserId!;
+    if (isUserSignedIn) return authRepository.currentUser!.uid;
+    // Catálogo sem login: vê como o dono, para dar para testar a edição.
+    return _session.ownerId;
+  }
 
   bool get _isOwner => _session.isOwnedBy(_viewerId);
+
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subscriptions) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+
+  void _listen() {
+    final signedIn = isUserSignedIn;
+    final friendships = widget.friendships ??
+        (signedIn ? friendsRepository.watchFriendships() : Stream.value(const <Friendship>[]));
+    final mySessions = widget.mySessions ??
+        (signedIn
+            ? sessionsRepository.watchMySessions()
+            : Stream.value(const SessionsSnapshot(sessions: [], fromCache: false)));
+    final mergeRequests = widget.mergeRequests ??
+        (signedIn
+            ? sessionsRepository.watchMergeRequests()
+            : Stream.value(const <SessionMergeRequest>[]));
+
+    // Sem amigos, pedidos ou a lista de sessões a tela continua útil (assistir e
+    // baixar); por isso um erro nesses streams só deixa a lista vazia.
+    _subscriptions
+      ..add(friendships.listen((items) {
+        if (!mounted) return;
+        setState(() {
+          _friends = [for (final f in items) if (f.isAccepted) f.other];
+          _outgoingFriendUids = {
+            for (final f in items)
+              if (f.isOutgoingFor(_viewerId)) f.other.uid,
+          };
+        });
+      }, onError: (Object _) {}))
+      ..add(mySessions.listen((snapshot) {
+        if (!mounted) return;
+        setState(() {
+          _mySessions = snapshot.sessions;
+          if (widget.session != null) {
+            for (final s in snapshot.sessions) {
+              if (s.id == _session.id) _session = s;
+            }
+          }
+        });
+      }, onError: (Object _) {}))
+      ..add(mergeRequests.listen((items) {
+        if (!mounted) return;
+        setState(() => _mergeRequests = items);
+      }, onError: (Object _) {}));
+  }
 
   @override
   void didUpdateWidget(covariant SessionScreen oldWidget) {
@@ -173,33 +244,11 @@ class _SessionScreenState extends State<SessionScreen> {
       _session = widget.session!;
     }
     if (widget.highlights != oldWidget.highlights) {
-      _highlights = _resolveStream();
+      _highlights = _resolveHighlights();
     }
   }
 
-  /// Lista completa de participantes para a tela de participantes.
-  List<SessionParticipant> get _allParticipants {
-    final byId = <String, SessionParticipant>{
-      for (final p in widget.availableFriends) p.uid: p,
-      for (final p in _session.participants) p.uid: p,
-    };
-    final result = <SessionParticipant>[];
-    for (final p in _session.participants) {
-      result.add(p);
-    }
-    for (final uid in _session.participantIds) {
-      if (result.every((p) => p.uid != uid)) {
-        result.add(byId[uid] ?? SessionParticipant(uid: uid, name: 'Participante $uid'));
-      }
-    }
-    while (result.length < _session.participantCount) {
-      final index = result.length + 1;
-      result.add(SessionParticipant(uid: 'p$index', name: 'Jogador $index'));
-    }
-    return result;
-  }
-
-  Stream<HighlightsSnapshot> _resolveStream() {
+  Stream<HighlightsSnapshot> _resolveHighlights() {
     if (widget.highlights != null) return widget.highlights!;
     if (widget.session != null && isUserSignedIn) {
       return sessionsRepository.watchHighlightsOf(widget.session!.id);
@@ -209,9 +258,33 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
-  void _retry() {
-    setState(() => _highlights = _resolveStream());
+  void _retry() => setState(() => _highlights = _resolveHighlights());
+
+  /// Os participantes com nome: a cópia da sessão tem só os 5 primeiros; o resto
+  /// vem dos amigos. Quem não está em nenhum dos dois aparece como "Participante".
+  List<SessionParticipant> _participantsOf(Session session) {
+    final byId = <String, SessionParticipant>{
+      for (final f in _friends)
+        f.uid: SessionParticipant(
+          uid: f.uid,
+          name: f.name,
+          username: f.username,
+          photoUrl: f.photoUrl,
+        ),
+      for (final p in session.participants) p.uid: p,
+    };
+    final ids = session.participantIds.isNotEmpty
+        ? session.participantIds
+        : [for (final p in session.participants) p.uid];
+    return [
+      for (final uid in ids) byId[uid] ?? SessionParticipant(uid: uid, name: 'Participante'),
+    ];
   }
+
+  /// Pedidos de juntar que envolvem esta sessão, como principal ou como origem.
+  List<SessionMergeRequest> get _requestsHere => _mergeRequests
+      .where((r) => r.intoSessionId == _session.id || r.fromSessionId == _session.id)
+      .toList(growable: false);
 
   void _openPlayer(List<Highlight> items, int index) {
     Navigator.of(context).push(
@@ -220,64 +293,141 @@ class _SessionScreenState extends State<SessionScreen> {
           sessionName: _session.name,
           highlights: items,
           initialIndex: index,
+          mediaRepository: widget.mediaRepository,
         ),
       ),
     );
   }
 
-  Future<void> _openEditSession() async {
-    if (!_isOwner) return;
-    final result = await Navigator.of(context).push<_EditSessionResult>(
-      MaterialPageRoute<_EditSessionResult>(
-        builder: (_) => _EditSessionScreen(
-          session: _session,
-          currentParticipants: _allParticipants,
-          availableFriends: widget.availableFriends,
-          pendingJoinRequests: _joinRequests,
-        ),
-      ),
-    );
-    if (result != null && mounted) {
-      setState(() {
-        _session = result.session;
-        _joinRequests = result.remainingRequests;
-      });
-    }
-  }
-
-  Future<void> _openParticipants() async {
+  Future<Session?> _openEditSession() async {
+    if (!_isOwner) return null;
     final updated = await Navigator.of(context).push<Session>(
       MaterialPageRoute<Session>(
-        builder: (_) => _SessionParticipantsScreen(
+        builder: (_) => _EditSessionScreen(
           session: _session,
-          participants: _allParticipants,
-          currentUserId: _viewerId,
-          isOwner: _isOwner,
-          availableFriends: widget.availableFriends,
-          sentFriendRequests: _sentFriendRequests,
-          pendingJoinRequests: _joinRequests,
-          onRemainingJoinRequestsChanged: (remaining) {
-            _joinRequests = remaining;
-          },
+          participants: _participantsOf(_session),
+          friends: _friends,
+          repository: _repository,
         ),
       ),
     );
     if (updated != null && mounted) {
       setState(() => _session = updated);
+      showHomeMessage(context, 'Sessão atualizada.');
+    }
+    return updated;
+  }
+
+  Future<void> _openParticipants() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _SessionParticipantsScreen(
+          session: _session,
+          participantsOf: _participantsOf,
+          viewerId: _viewerId,
+          isOwner: _isOwner,
+          friendUids: {for (final f in _friends) f.uid},
+          sentFriendRequests: {..._outgoingFriendUids, ..._sentFriendRequests},
+          mySessions: _mySessions,
+          onSendFriendRequest: _sendFriendRequest,
+          onEdit: _openEditSession,
+        ),
+      ),
+    );
+  }
+
+  /// Manda o pedido de amizade pelo @ do participante. Devolve true se deu certo.
+  Future<bool> _sendFriendRequest(SessionParticipant participant) async {
+    final username = participant.username;
+    if (username == null || username.trim().isEmpty) return false;
+    try {
+      await _friendsRepo.sendFriendRequest(username);
+      if (!mounted) return true;
+      setState(() => _sentFriendRequests.add(participant.uid));
+      showHomeMessage(context, 'Pedido enviado para ${participant.firstName}.');
+      return true;
+    } on FriendsFailure catch (e) {
+      if (mounted) showHomeMessage(context, e.message);
+    } catch (e) {
+      if (mounted) showHomeMessage(context, FriendsFailure.from(e).message);
+    }
+    return false;
+  }
+
+  Future<void> _openMerge() async {
+    final pendingFrom = {
+      for (final r in _mergeRequests)
+        if (r.intoSessionId == _session.id) r.fromSessionId,
+    };
+    final sent = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => _MergeSessionScreen(
+          into: _session,
+          candidates: SessionsRepository.mergeCandidates(_session, _mySessions),
+          pendingFromIds: pendingFrom,
+          repository: _repository,
+        ),
+      ),
+    );
+    if (sent == true && mounted) {
+      showHomeMessage(context, 'Pedido enviado. Os lances juntam quando o outro dono aceitar.');
     }
   }
 
-  void _openShareSession() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _ShareSessionScreen(session: _session),
-      ),
+  Future<void> _answerMerge(SessionMergeRequest request, {required bool accept}) async {
+    setState(() => _busyRequests.add(request.id));
+    try {
+      if (accept) {
+        await _repository.acceptSessionMerge(request.id);
+      } else {
+        await _repository.cancelSessionMerge(request.id);
+      }
+      if (!mounted) return;
+      setState(() => _mergeRequests = [
+            for (final r in _mergeRequests)
+              if (r.id != request.id) r,
+          ]);
+      if (accept && request.fromSessionId == _session.id) {
+        // Esta sessão acabou de virar parte da outra: a Início deixa de mostrá-la.
+        showHomeMessage(context, 'Sessões juntadas. Os lances agora estão em ${request.intoName}.');
+        Navigator.of(context).maybePop();
+        return;
+      }
+      showHomeMessage(context, accept ? 'Sessões juntadas.' : 'Pedido cancelado.');
+    } catch (e) {
+      if (mounted) showHomeMessage(context, SessionsFailure.from(e).message);
+    } finally {
+      if (mounted) setState(() => _busyRequests.remove(request.id));
+    }
+  }
+
+  Future<void> _leave() async {
+    final confirmed = await confirmHomeAction(
+      context,
+      title: 'Sair da sessão?',
+      message: 'Você deixa de ver os lances de ${_session.name}. '
+          'Para voltar, o dono precisa te adicionar de novo.',
+      confirmLabel: 'Sair da sessão',
+      cancelLabel: 'Ficar',
     );
+    if (!confirmed || !mounted) return;
+    setState(() => _leaving = true);
+    try {
+      await _repository.leaveSession(_session.id);
+      if (!mounted) return;
+      showHomeMessage(context, 'Você saiu de ${_session.name}.');
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) showHomeMessage(context, SessionsFailure.from(e).message);
+    } finally {
+      if (mounted) setState(() => _leaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final session = _session;
+    final requests = _requestsHere;
 
     return ClippoScreenGround(
       child: Column(
@@ -286,45 +436,37 @@ class _SessionScreenState extends State<SessionScreen> {
           Row(
             children: [
               const Expanded(child: ClippoBackButton(label: 'Sessões')),
-              _HeaderIconButton(
-                icon: 'share',
-                semanticLabel: 'Compartilhar sessão',
-                onPressed: _openShareSession,
-              ),
-              if (_isOwner) ...[
-                const SizedBox(width: ClippoSpace.spaceS),
+              if (_isOwner)
                 _HeaderIconButton(
                   icon: 'edit',
                   semanticLabel: 'Editar sessão',
                   onPressed: _openEditSession,
                 ),
-              ],
             ],
           ),
           const SizedBox(height: ClippoSpace.section),
-          _SessionHeader(
-            session: session,
-            onTapParticipants: _openParticipants,
-          ),
+          _SessionHeader(session: session, onTapParticipants: _openParticipants),
+          for (final request in requests) ...[
+            const SizedBox(height: ClippoSpace.spaceL),
+            MergeRequestCard(
+              request: request,
+              viewerId: _viewerId,
+              busy: _busyRequests.contains(request.id),
+              onAccept: () => _answerMerge(request, accept: true),
+              onCancel: () => _answerMerge(request, accept: false),
+            ),
+          ],
           const SizedBox(height: ClippoSpace.section),
           StreamBuilder<HighlightsSnapshot>(
             stream: _highlights,
             builder: (context, snapshot) {
               if (snapshot.hasError) {
-                return _Problem(
-                  failure: SessionsFailure.from(snapshot.error!),
-                  onRetry: _retry,
-                );
+                return _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry);
               }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return _Loading(expectedCount: session.highlightCount);
-              }
-
               final data = snapshot.data;
-              if (data == null) {
+              if (snapshot.connectionState == ConnectionState.waiting || data == null) {
                 return _Loading(expectedCount: session.highlightCount);
               }
-
               if (data.isEmpty && data.fromCache) {
                 return _Problem(
                   failure: const SessionsFailure(
@@ -333,18 +475,21 @@ class _SessionScreenState extends State<SessionScreen> {
                   onRetry: _retry,
                 );
               }
-              if (data.isEmpty) {
-                return const _Empty();
-              }
+              if (data.isEmpty) return const _Empty();
 
-              final distinctHighlights = ensureDistinctHighlightTitles(data.highlights);
+              final distinct = ensureDistinctHighlightTitles(data.highlights);
               return _HighlightList(
-                highlights: distinctHighlights,
+                highlights: distinct,
                 offline: data.fromCache,
-                onTapHighlight: (index) => _openPlayer(distinctHighlights, index),
+                onTapHighlight: (index) => _openPlayer(distinct, index),
               );
             },
           ),
+          const SizedBox(height: ClippoSpace.section),
+          if (_isOwner)
+            ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge)
+          else if (participantsCanLeaveSession)
+            ClippoTextButton(label: 'Sair da sessão', onPressed: _leaving ? null : _leave),
         ],
       ),
     );
@@ -378,16 +523,9 @@ class _HeaderIconButton extends StatelessWidget {
               child: Container(
                 width: ClippoSize.control,
                 height: ClippoSize.control,
-                decoration: BoxDecoration(
-                  color: colors.controlSoft,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: colors.controlSoft, shape: BoxShape.circle),
                 alignment: Alignment.center,
-                child: ClippoSvgIcon(
-                  icon,
-                  size: ClippoSize.fieldIcon,
-                  color: colors.text,
-                ),
+                child: ClippoSvgIcon(icon, size: ClippoSize.fieldIcon, color: colors.text),
               ),
             ),
           ),
@@ -397,13 +535,10 @@ class _HeaderIconButton extends StatelessWidget {
   }
 }
 
-/// Cabeçalho da Sessão: título em duas linhas, "data · duração", local,
-/// selo de sessão aberta/fechada e participantes clicáveis.
+/// Cabeçalho da Sessão: título em duas linhas, "data · duração", local e
+/// participantes clicáveis.
 class _SessionHeader extends StatelessWidget {
-  const _SessionHeader({
-    required this.session,
-    required this.onTapParticipants,
-  });
+  const _SessionHeader({required this.session, required this.onTapParticipants});
 
   final Session session;
   final VoidCallback onTapParticipants;
@@ -414,22 +549,14 @@ class _SessionHeader extends StatelessWidget {
     final withoutTrailingDot =
         trimmed.endsWith('.') ? trimmed.substring(0, trimmed.length - 1).trim() : trimmed;
     final words = withoutTrailingDot.split(RegExp(r'\s+'));
-    if (words.length == 1) {
-      return ('Sessão', '${words.first}.');
-    }
-    final line1 = words.sublist(0, words.length - 1).join(' ');
-    final line2 = '${words.last}.';
-    return (line1, line2);
+    if (words.length == 1) return ('Sessão', '${words.first}.');
+    return (words.sublist(0, words.length - 1).join(' '), '${words.last}.');
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
     final (line1, line2) = _splitTitle(session.name);
-    final dateAndDuration = clippoDotList([
-      clippoDate(session.startedAt),
-      clippoDuration(session.duration),
-    ]);
     final place = session.location?.label;
     final visiblePeople = [
       for (final p in session.visibleParticipants())
@@ -443,52 +570,20 @@ class _SessionHeader extends StatelessWidget {
         ClippoScreenTitle(
           line1: line1,
           line2: line2,
-          subtitle: dateAndDuration,
+          subtitle: clippoDotList([clippoDate(session.startedAt), clippoDuration(session.duration)]),
         ),
-        const SizedBox(height: ClippoSpace.spaceM),
-        Wrap(
-          spacing: ClippoSpace.spaceM,
-          runSpacing: ClippoSpace.spaceS,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (place != null && place.isNotEmpty)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ClippoSvgIcon(
-                    'map-pin',
-                    size: ClippoSize.checkIcon,
-                    color: colors.accent,
-                  ),
-                  const SizedBox(width: ClippoSpace.spaceS),
-                  Flexible(
-                    child: Text(
-                      place,
-                      style: ClippoText.body.copyWith(color: colors.textMuted),
-                    ),
-                  ),
-                ],
+        if (place != null && place.isNotEmpty) ...[
+          const SizedBox(height: ClippoSpace.spaceM),
+          Row(
+            children: [
+              ClippoSvgIcon('map-pin', size: ClippoSize.checkIcon, color: colors.accent),
+              const SizedBox(width: ClippoSpace.spaceS),
+              Flexible(
+                child: Text(place, style: ClippoText.body.copyWith(color: colors.textMuted)),
               ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: session.isClosed ? colors.controlSoft : colors.accentSoft,
-                borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ClippoSpace.spaceM,
-                  vertical: ClippoSpace.spaceXs,
-                ),
-                child: Text(
-                  session.isClosed ? 'Sessão fechada' : 'Sessão aberta',
-                  style: ClippoText.label.copyWith(
-                    color: session.isClosed ? colors.textMuted : colors.accent,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
         const SizedBox(height: ClippoSpace.spaceL),
         Semantics(
           button: true,
@@ -507,11 +602,7 @@ class _SessionHeader extends StatelessWidget {
                 child: Row(
                   children: [
                     if (visiblePeople.isNotEmpty || hiddenCount > 0) ...[
-                      ClippoAvatarRow(
-                        people: visiblePeople,
-                        hidden: hiddenCount,
-                        ring: colors.surface,
-                      ),
+                      ClippoAvatarRow(people: visiblePeople, hidden: hiddenCount, ring: colors.surface),
                       const SizedBox(width: ClippoSpace.spaceM),
                     ],
                     Expanded(
@@ -523,11 +614,7 @@ class _SessionHeader extends StatelessWidget {
                         ),
                       ),
                     ),
-                    ClippoSvgIcon(
-                      'chevron-right',
-                      size: ClippoSize.checkIcon,
-                      color: colors.textMuted,
-                    ),
+                    ClippoSvgIcon('chevron-right', size: ClippoSize.checkIcon, color: colors.textMuted),
                   ],
                 ),
               ),
@@ -551,19 +638,11 @@ class _SectionHeading extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Expanded(
-          child: Text(
-            'Highlights',
-            style: ClippoText.titleS.copyWith(color: colors.text),
-          ),
-        ),
+        Expanded(child: Text('Highlights', style: ClippoText.titleS.copyWith(color: colors.text))),
         const SizedBox(width: ClippoSpace.spaceM),
         Text(
           clippoSavedPlaysCount(count),
-          style: ClippoText.label.copyWith(
-            color: colors.textMuted,
-            fontFeatures: ClippoText.tabular,
-          ),
+          style: ClippoText.label.copyWith(color: colors.textMuted, fontFeatures: ClippoText.tabular),
         ),
       ],
     );
@@ -585,15 +664,11 @@ class _HighlightList extends StatelessWidget {
     final item = highlights[index];
     return ClippoHighlightTile(
       title: item.title,
-      timing: clippoHighlightTiming(
-        item.offset,
-        item.duration,
-        uploading: item.isUploading,
-      ),
+      timing: clippoHighlightTiming(item.offset, item.duration, uploading: item.isUploading),
       uploading: item.isUploading,
-      thumbnailUrl: item.thumbnailPath != null && item.thumbnailPath!.startsWith('http')
-          ? item.thumbnailPath
-          : null,
+      // Miniatura só quando já é uma URL (D17: o app não pede getDownloadURL()).
+      thumbnailUrl:
+          item.thumbnailPath != null && item.thumbnailPath!.startsWith('http') ? item.thumbnailPath : null,
       onTap: () => onTapHighlight(index),
     );
   }
@@ -601,7 +676,6 @@ class _HighlightList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -623,9 +697,7 @@ class _HighlightList extends StatelessWidget {
                 Expanded(child: _buildCard(i)),
                 const SizedBox(width: ClippoSpace.cardGap),
                 Expanded(
-                  child: i + 1 < highlights.length
-                      ? _buildCard(i + 1)
-                      : const SizedBox.shrink(),
+                  child: i + 1 < highlights.length ? _buildCard(i + 1) : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -636,7 +708,7 @@ class _HighlightList extends StatelessWidget {
   }
 }
 
-/// Esqueletos dos cards em grade 2x2 enquanto os highlights carregam.
+/// Esqueletos dos cards enquanto os highlights carregam.
 class _Loading extends StatelessWidget {
   const _Loading({required this.expectedCount});
 
@@ -681,7 +753,7 @@ class _Loading extends StatelessWidget {
   }
 }
 
-/// Estado sem highlights salvos na sessão (docs/produto.md › 4.3).
+/// Sessão sem lances salvos (docs/produto.md › 4.3).
 class _Empty extends StatelessWidget {
   const _Empty();
 
@@ -693,10 +765,7 @@ class _Empty extends StatelessWidget {
       children: [
         const _SectionHeading(count: 0),
         const SizedBox(height: ClippoSpace.spaceL),
-        Text(
-          'Nenhum lance salvo nessa sessão',
-          style: ClippoText.titleS.copyWith(color: colors.text),
-        ),
+        Text('Nenhum lance salvo nessa sessão', style: ClippoText.titleS.copyWith(color: colors.text)),
         const SizedBox(height: ClippoSpace.spaceM),
         Text(
           'Na próxima vez, olhe para a câmera e faça \\ o / quando rolar um lance bom.',
@@ -728,48 +797,40 @@ class _Problem extends StatelessWidget {
   }
 }
 
-class _EditSessionResult {
-  const _EditSessionResult({
-    required this.session,
-    required this.remainingRequests,
-  });
-
-  final Session session;
-  final List<SessionParticipant> remainingRequests;
-}
-
-/// Tela de edição da sessão — acessível apenas pelo criador (R12).
+/// Editar a sessão — só o dono (R12). Salva por `updateSession`, com a validação de
+/// input_validation.dart embaixo de cada campo, e devolve a sessão atualizada.
 class _EditSessionScreen extends StatefulWidget {
   const _EditSessionScreen({
     required this.session,
-    required this.currentParticipants,
-    required this.availableFriends,
-    required this.pendingJoinRequests,
+    required this.participants,
+    required this.friends,
+    required this.repository,
   });
 
   final Session session;
-  final List<SessionParticipant> currentParticipants;
-  final List<SessionParticipant> availableFriends;
-  final List<SessionParticipant> pendingJoinRequests;
+  final List<SessionParticipant> participants;
+
+  /// Amigos aceitos do dono: só eles podem entrar (R10, conferido de novo no servidor).
+  final List<Friend> friends;
+  final SessionsRepository repository;
 
   @override
   State<_EditSessionScreen> createState() => _EditSessionScreenState();
 }
 
 class _EditSessionScreenState extends State<_EditSessionScreen> {
-  late final TextEditingController _nameController =
-      TextEditingController(text: widget.session.name);
+  late final TextEditingController _nameController = TextEditingController(text: widget.session.name);
   late final TextEditingController _locationController =
       TextEditingController(text: widget.session.location?.label ?? '');
-
-  late final List<SessionParticipant> _selectedParticipants =
-      List<SessionParticipant>.of(widget.currentParticipants);
-  late final List<SessionParticipant> _pendingRequests =
-      List<SessionParticipant>.of(widget.pendingJoinRequests);
-  late bool _isClosed = widget.session.isClosed;
+  late final List<SessionParticipant> _selected = List<SessionParticipant>.of(widget.participants);
 
   String? _nameError;
   String? _locationError;
+  String? _participantsError;
+  String? _generalError;
+  bool _saving = false;
+
+  String get _ownerId => widget.session.ownerId;
 
   @override
   void dispose() {
@@ -778,86 +839,111 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
     super.dispose();
   }
 
-  List<SessionParticipant> get _unselectedFriends {
-    final pendingUids = _pendingRequests.map((p) => p.uid).toSet();
-    return widget.availableFriends
-        .where(
-          (friend) =>
-              _selectedParticipants.every((p) => p.uid != friend.uid) &&
-              !pendingUids.contains(friend.uid),
-        )
-        .toList(growable: false);
-  }
+  List<Friend> get _addable => widget.friends
+      .where((f) => f.uid != _ownerId && _selected.every((p) => p.uid != f.uid))
+      .toList(growable: false);
 
-  void _removeParticipant(SessionParticipant participant) {
-    if (participant.uid == widget.session.ownerId) return;
+  /// Os participantes, sem o dono (ele entra sozinho, R9).
+  List<String> get _selectedIds => [
+        for (final p in _selected)
+          if (p.uid != _ownerId) p.uid,
+      ];
+
+  void _remove(SessionParticipant participant) {
+    if (participant.uid == _ownerId) return;
     setState(() {
-      _selectedParticipants.removeWhere((p) => p.uid == participant.uid);
+      _selected.removeWhere((p) => p.uid == participant.uid);
+      _participantsError = null;
     });
   }
 
-  void _addParticipant(SessionParticipant friend) {
+  void _add(Friend friend) {
     setState(() {
-      _selectedParticipants.add(friend);
+      _selected.add(SessionParticipant(
+        uid: friend.uid,
+        name: friend.name,
+        username: friend.username,
+        photoUrl: friend.photoUrl,
+      ));
+      _participantsError = null;
     });
   }
 
-  void _approveJoinRequest(SessionParticipant person) {
-    setState(() {
-      _pendingRequests.removeWhere((p) => p.uid == person.uid);
-      if (_selectedParticipants.every((p) => p.uid != person.uid)) {
-        _selectedParticipants.add(person);
-      }
-    });
-  }
-
-  void _declineJoinRequest(SessionParticipant person) {
-    setState(() {
-      _pendingRequests.removeWhere((p) => p.uid == person.uid);
-    });
-  }
-
-  void _submit() {
+  Future<void> _submit() async {
+    final ids = _selectedIds;
     final nameErr = validateSessionName(_nameController.text);
     final locErr = validateLocation(_locationController.text);
-    if (nameErr != null || locErr != null) {
+    final partErr = validateParticipantIds(ids, ownerId: _ownerId);
+    setState(() {
+      _nameError = nameErr;
+      _locationError = locErr;
+      _participantsError = partErr;
+      _generalError = null;
+    });
+    if (nameErr != null || locErr != null || partErr != null) return;
+
+    final location = normalizeLocation(_locationController.text);
+    final hadLocation = (widget.session.location?.label ?? '').trim().isNotEmpty;
+    final before = {
+      for (final uid in widget.session.participantIds)
+        if (uid != _ownerId) uid,
+    };
+    final participantsChanged = !setEquals(before, ids.toSet());
+
+    setState(() => _saving = true);
+    try {
+      await widget.repository.updateSession(
+        sessionId: widget.session.id,
+        name: _nameController.text,
+        location: location,
+        clearLocation: location == null && hadLocation,
+        participantIds: participantsChanged ? ids : null,
+      );
+      if (!mounted) return;
+      final allIds = normalizeParticipantIds(ids, ownerId: _ownerId);
+      Navigator.of(context).pop(widget.session.copyWith(
+        name: normalizeSessionName(_nameController.text),
+        location: location == null ? null : SessionLocation(label: location),
+        clearLocation: location == null,
+        participantIds: allIds,
+        participants: List<SessionParticipant>.unmodifiable(_selected),
+        participantCount: allIds.length,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      final failure = SessionsFailure.from(e);
       setState(() {
-        _nameError = nameErr;
-        _locationError = locErr;
+        _saving = false;
+        // O servidor diz qual campo falhou; a mensagem vai embaixo dele.
+        switch (failure.code) {
+          case 'name':
+            _nameError = failure.message;
+          case 'location':
+            _locationError = failure.message;
+          case 'participantIds':
+            _participantsError = failure.message;
+          default:
+            _generalError = failure.message;
+        }
       });
-      return;
     }
-
-    final normalizedName = normalizeSessionName(_nameController.text);
-    final normalizedLoc = normalizeLocation(_locationController.text);
-
-    final updated = widget.session.copyWith(
-      name: normalizedName,
-      location: normalizedLoc == null ? null : SessionLocation(label: normalizedLoc),
-      clearLocation: normalizedLoc == null,
-      participantIds: [for (final p in _selectedParticipants) p.uid],
-      participants: List<SessionParticipant>.unmodifiable(_selectedParticipants),
-      participantCount: _selectedParticipants.length,
-      isClosed: _isClosed,
-    );
-
-    Navigator.of(context).pop(
-      _EditSessionResult(
-        session: updated,
-        remainingRequests: List<SessionParticipant>.unmodifiable(_pendingRequests),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    final unselected = _unselectedFriends;
+    final addable = _addable;
 
     return ClippoScreenGround(
-      footer: ClippoPrimaryButton(
-        label: 'Salvar alterações',
-        onPressed: _submit,
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_generalError != null) ...[
+            Text(_generalError!, style: ClippoText.label.copyWith(color: colors.error)),
+            const SizedBox(height: ClippoSpace.spaceM),
+          ],
+          ClippoPrimaryButton(label: 'Salvar alterações', onPressed: _submit, loading: _saving),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -867,7 +953,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
           const ClippoScreenTitle(
             line1: 'Editar',
             line2: 'sessão.',
-            subtitle: 'Como criador, você pode ajustar os dados, o acesso e os participantes.',
+            subtitle: 'Só quem gravou muda o nome, o local e quem jogou.',
           ),
           const SizedBox(height: ClippoSpace.section),
           ClippoTextField(
@@ -893,68 +979,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
           ),
           const SizedBox(height: ClippoSpace.section),
           Text(
-            'Acesso à sessão',
-            style: ClippoText.titleS.copyWith(color: colors.text),
-          ),
-          const SizedBox(height: ClippoSpace.spaceS),
-          Row(
-            children: [
-              Expanded(
-                child: _SessionAccessOptionTile(
-                  label: 'Sessão aberta',
-                  selected: !_isClosed,
-                  onTap: () => setState(() => _isClosed = false),
-                ),
-              ),
-              const SizedBox(width: ClippoSpace.spaceM),
-              Expanded(
-                child: _SessionAccessOptionTile(
-                  label: 'Sessão fechada',
-                  selected: _isClosed,
-                  onTap: () => setState(() => _isClosed = true),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: ClippoSpace.spaceXs),
-          Text(
-            _isClosed
-                ? 'Quem usar o código ou link precisa pedir sua permissão para entrar.'
-                : 'Qualquer pessoa com o código ou link entra direto na sessão.',
-            style: ClippoText.label.copyWith(color: colors.textMuted),
-          ),
-          if (_pendingRequests.isNotEmpty) ...[
-            const SizedBox(height: ClippoSpace.section),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Pedidos para entrar',
-                    style: ClippoText.titleS.copyWith(color: colors.text),
-                  ),
-                ),
-                Text(
-                  '${_pendingRequests.length}',
-                  style: ClippoText.label.copyWith(
-                    color: colors.accent,
-                    fontFeatures: ClippoText.tabular,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: ClippoSpace.spaceM),
-            for (var i = 0; i < _pendingRequests.length; i++) ...[
-              if (i > 0) const SizedBox(height: ClippoSpace.cardGap),
-              _JoinRequestTile(
-                person: _pendingRequests[i],
-                onApprove: () => _approveJoinRequest(_pendingRequests[i]),
-                onDecline: () => _declineJoinRequest(_pendingRequests[i]),
-              ),
-            ],
-          ],
-          const SizedBox(height: ClippoSpace.section),
-          Text(
-            'Participantes (${_selectedParticipants.length})',
+            'Participantes (${_selected.length})',
             style: ClippoText.titleS.copyWith(color: colors.text),
           ),
           const SizedBox(height: ClippoSpace.spaceM),
@@ -962,35 +987,44 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
             spacing: ClippoSpace.spaceM,
             runSpacing: ClippoSpace.spaceM,
             children: [
-              for (final participant in _selectedParticipants)
+              for (final participant in _selected)
                 _EditableParticipantPill(
                   participant: participant,
-                  isOwner: participant.uid == widget.session.ownerId,
-                  onRemove: () => _removeParticipant(participant),
+                  isOwner: participant.uid == _ownerId,
+                  onRemove: () => _remove(participant),
                 ),
             ],
           ),
-          if (unselected.isNotEmpty) ...[
-            const SizedBox(height: ClippoSpace.section),
-            Text(
-              'Adicionar amigos',
-              style: ClippoText.label.copyWith(color: colors.textMuted),
-            ),
+          if (_participantsError != null) ...[
             const SizedBox(height: ClippoSpace.spaceM),
+            Text(_participantsError!, style: ClippoText.label.copyWith(color: colors.error)),
+          ],
+          const SizedBox(height: ClippoSpace.section),
+          Text('Adicionar amigos', style: ClippoText.label.copyWith(color: colors.textMuted)),
+          const SizedBox(height: ClippoSpace.spaceM),
+          if (addable.isEmpty)
+            Text(
+              widget.friends.isEmpty
+                  ? 'Só dá para adicionar seus amigos. Adicione amigos na aba Amigos.'
+                  : 'Todos os seus amigos já estão na sessão.',
+              style: ClippoText.body.copyWith(color: colors.textMuted),
+            )
+          else
             Wrap(
               spacing: ClippoSpace.spaceM,
               runSpacing: ClippoSpace.spaceM,
               children: [
-                for (final friend in unselected)
+                for (final friend in addable)
                   Semantics(
                     button: true,
                     label: 'Adicionar ${friend.name}',
+                    excludeSemantics: true,
                     child: Material(
                       color: colors.surface,
                       borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
-                        onTap: () => _addParticipant(friend),
+                        onTap: () => _add(friend),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: ClippoSpace.spaceL,
@@ -999,11 +1033,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              ClippoSvgIcon(
-                                'plus',
-                                size: ClippoSize.checkIcon,
-                                color: colors.accent,
-                              ),
+                              ClippoSvgIcon('plus', size: ClippoSize.checkIcon, color: colors.accent),
                               const SizedBox(width: ClippoSpace.spaceS),
                               Flexible(
                                 child: Text(
@@ -1019,165 +1049,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
                   ),
               ],
             ),
-          ],
         ],
-      ),
-    );
-  }
-}
-
-class _SessionAccessOptionTile extends StatelessWidget {
-  const _SessionAccessOptionTile({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ClippoColors.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: selected ? colors.accentSoft : colors.surface,
-              borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-              border: Border.all(
-                color: selected ? colors.accent : colors.outline,
-                width: ClippoSize.border,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ClippoSpace.spaceM,
-                vertical: ClippoSpace.spaceM,
-              ),
-              child: Center(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ClippoText.label.copyWith(
-                    color: selected ? colors.accent : colors.text,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _JoinRequestTile extends StatelessWidget {
-  const _JoinRequestTile({
-    required this.person,
-    required this.onApprove,
-    required this.onDecline,
-  });
-
-  final SessionParticipant person;
-  final VoidCallback onApprove;
-  final VoidCallback onDecline;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ClippoColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: ClippoSpace.cardPadding,
-          vertical: ClippoSpace.fieldPaddingV,
-        ),
-        child: Row(
-          children: [
-            ClippoAvatar(
-              name: person.name,
-              photoUrl: person.photoUrl,
-              size: ClippoSize.avatarLarge,
-            ),
-            const SizedBox(width: ClippoSpace.spaceM),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    person.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ClippoText.titleS.copyWith(color: colors.text),
-                  ),
-                  const SizedBox(height: ClippoSpace.labelToValue),
-                  Text(
-                    'Pediu para entrar na sessão',
-                    style: ClippoText.label.copyWith(color: colors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: ClippoSpace.spaceS),
-            Semantics(
-              button: true,
-              label: 'Aprovar entrada de ${person.name}',
-              child: ExcludeSemantics(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onApprove,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.primary,
-                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ClippoSpace.spaceM,
-                        vertical: ClippoSpace.spaceS,
-                      ),
-                      child: Text(
-                        'Liberar',
-                        style: ClippoText.label.copyWith(color: colors.onPrimary),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: ClippoSpace.spaceXs),
-            Semantics(
-              button: true,
-              label: 'Recusar entrada de ${person.name}',
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onDecline,
-                child: SizedBox.square(
-                  dimension: ClippoSize.minTouchTarget,
-                  child: Center(
-                    child: ClippoSvgIcon(
-                      'close',
-                      size: ClippoSize.checkIcon,
-                      color: colors.textMuted,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1201,25 +1073,17 @@ class _EditableParticipantPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: isOwner ? colors.accentSoft : colors.surface,
         borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-        border: Border.all(
-          color: isOwner ? colors.accent : colors.outline,
-          width: ClippoSize.border,
-        ),
+        border: Border.all(color: isOwner ? colors.accent : colors.outline, width: ClippoSize.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: ClippoSpace.spaceL,
-          vertical: ClippoSpace.spaceM,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL, vertical: ClippoSpace.spaceM),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(
               child: Text(
                 isOwner ? '${participant.firstName} (Criador)' : participant.firstName,
-                style: ClippoText.label.copyWith(
-                  color: isOwner ? colors.accent : colors.text,
-                ),
+                style: ClippoText.label.copyWith(color: isOwner ? colors.accent : colors.text),
               ),
             ),
             if (!isOwner) ...[
@@ -1230,11 +1094,7 @@ class _EditableParticipantPill extends StatelessWidget {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onRemove,
-                  child: ClippoSvgIcon(
-                    'close',
-                    size: ClippoSize.checkIcon,
-                    color: colors.textMuted,
-                  ),
+                  child: ClippoSvgIcon('close', size: ClippoSize.checkIcon, color: colors.textMuted),
                 ),
               ),
             ],
@@ -1245,28 +1105,29 @@ class _EditableParticipantPill extends StatelessWidget {
   }
 }
 
-/// Lista de usuários que participaram da sessão, com botão de adicionar amigo
-/// para quem ainda não é amigo e toque para abrir o perfil de cada um.
+/// Quem jogou: toque abre o perfil; "Adicionar" manda pedido de amizade pelo @.
 class _SessionParticipantsScreen extends StatefulWidget {
   const _SessionParticipantsScreen({
     required this.session,
-    required this.participants,
-    required this.currentUserId,
+    required this.participantsOf,
+    required this.viewerId,
     required this.isOwner,
-    required this.availableFriends,
+    required this.friendUids,
     required this.sentFriendRequests,
-    required this.pendingJoinRequests,
-    required this.onRemainingJoinRequestsChanged,
+    required this.mySessions,
+    required this.onSendFriendRequest,
+    required this.onEdit,
   });
 
   final Session session;
-  final List<SessionParticipant> participants;
-  final String currentUserId;
+  final List<SessionParticipant> Function(Session) participantsOf;
+  final String viewerId;
   final bool isOwner;
-  final List<SessionParticipant> availableFriends;
+  final Set<String> friendUids;
   final Set<String> sentFriendRequests;
-  final List<SessionParticipant> pendingJoinRequests;
-  final ValueChanged<List<SessionParticipant>> onRemainingJoinRequestsChanged;
+  final List<Session> mySessions;
+  final Future<bool> Function(SessionParticipant) onSendFriendRequest;
+  final Future<Session?> Function() onEdit;
 
   @override
   State<_SessionParticipantsScreen> createState() => _SessionParticipantsScreenState();
@@ -1274,26 +1135,20 @@ class _SessionParticipantsScreen extends StatefulWidget {
 
 class _SessionParticipantsScreenState extends State<_SessionParticipantsScreen> {
   late Session _session = widget.session;
-  late List<SessionParticipant> _participants = widget.participants;
-  late List<SessionParticipant> _joinRequests = widget.pendingJoinRequests;
+  late List<SessionParticipant> _participants = widget.participantsOf(_session);
+  late final Set<String> _sent = {...widget.sentFriendRequests};
 
-  Set<String> get _friendUids =>
-      widget.availableFriends.map((f) => f.uid).toSet();
+  bool _isFriend(SessionParticipant p) => widget.friendUids.contains(p.uid);
+  bool _isSelf(SessionParticipant p) => p.uid == widget.viewerId;
+  bool _canAsk(SessionParticipant p) => (p.username ?? '').trim().isNotEmpty;
 
-  bool _isFriend(SessionParticipant p) => _friendUids.contains(p.uid);
-
-  bool _isSelf(SessionParticipant p) => p.uid == widget.currentUserId;
-
-  bool _isRequestSent(SessionParticipant p) =>
-      widget.sentFriendRequests.contains(p.uid);
-
-  void _sendFriendRequest(SessionParticipant participant) {
-    setState(() {
-      widget.sentFriendRequests.add(participant.uid);
-    });
+  Future<bool> _sendFriendRequest(SessionParticipant participant) async {
+    final ok = await widget.onSendFriendRequest(participant);
+    if (ok && mounted) setState(() => _sent.add(participant.uid));
+    return ok;
   }
 
-  Future<void> _openParticipantProfile(SessionParticipant participant) async {
+  Future<void> _openProfile(SessionParticipant participant) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => _ParticipantProfileScreen(
@@ -1301,61 +1156,45 @@ class _SessionParticipantsScreenState extends State<_SessionParticipantsScreen> 
           isSessionOwner: participant.uid == _session.ownerId,
           isSelf: _isSelf(participant),
           isFriend: _isFriend(participant),
-          initialRequestSent: _isRequestSent(participant),
+          canAsk: _canAsk(participant),
+          initialRequestSent: _sent.contains(participant.uid),
           sessionName: _session.name,
+          sessionsTogether:
+              FriendsRepository.sessionsTogether(widget.viewerId, participant.uid, widget.mySessions),
           onSendFriendRequest: () => _sendFriendRequest(participant),
         ),
       ),
     );
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
-  Future<void> _editParticipants() async {
-    final result = await Navigator.of(context).push<_EditSessionResult>(
-      MaterialPageRoute<_EditSessionResult>(
-        builder: (_) => _EditSessionScreen(
-          session: _session,
-          currentParticipants: _participants,
-          availableFriends: widget.availableFriends,
-          pendingJoinRequests: _joinRequests,
-        ),
-      ),
-    );
-    if (result != null && mounted) {
+  Future<void> _edit() async {
+    final updated = await widget.onEdit();
+    if (updated != null && mounted) {
       setState(() {
-        _session = result.session;
-        _participants = result.session.participants;
-        _joinRequests = result.remainingRequests;
+        _session = updated;
+        _participants = widget.participantsOf(updated);
       });
-      widget.onRemainingJoinRequestsChanged(result.remainingRequests);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
+    final unnamed = _session.participantCount - _participants.length;
 
     return ClippoScreenGround(
-      footer: widget.isOwner
-          ? ClippoPrimaryButton(
-              label: 'Editar participantes',
-              onPressed: _editParticipants,
-            )
-          : null,
+      footer: widget.isOwner ? ClippoPrimaryButton(label: 'Editar participantes', onPressed: _edit) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClippoBackButton(
-            onPressed: () => Navigator.of(context).pop(_session),
-          ),
+          const ClippoBackButton(),
           const SizedBox(height: ClippoSpace.section),
           ClippoScreenTitle(
             line1: 'Jogaram',
             line2: 'juntos.',
-            subtitle:
-                '${clippoParticipantCount(_participants.length)} em ${_session.name}. Toque em alguém para ver o perfil.',
+            subtitle: '${clippoParticipantCount(_session.participantCount)} em ${_session.name}. '
+                'Toque em alguém para ver o perfil.',
           ),
           const SizedBox(height: ClippoSpace.section),
           for (var i = 0; i < _participants.length; i++) ...[
@@ -1365,10 +1204,17 @@ class _SessionParticipantsScreenState extends State<_SessionParticipantsScreen> 
               isSessionOwner: _participants[i].uid == _session.ownerId,
               isSelf: _isSelf(_participants[i]),
               isFriend: _isFriend(_participants[i]),
-              isRequestSent: _isRequestSent(_participants[i]),
-              onTapProfile: () => _openParticipantProfile(_participants[i]),
+              canAsk: _canAsk(_participants[i]),
+              isRequestSent: _sent.contains(_participants[i].uid),
+              onTapProfile: () => _openProfile(_participants[i]),
               onAddFriend: () => _sendFriendRequest(_participants[i]),
-              colors: colors,
+            ),
+          ],
+          if (unnamed > 0) ...[
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(
+              unnamed == 1 ? 'E mais 1 pessoa.' : 'E mais $unnamed pessoas.',
+              style: ClippoText.label.copyWith(color: colors.textMuted),
             ),
           ],
         ],
@@ -1383,24 +1229,25 @@ class _ParticipantRowTile extends StatelessWidget {
     required this.isSessionOwner,
     required this.isSelf,
     required this.isFriend,
+    required this.canAsk,
     required this.isRequestSent,
     required this.onTapProfile,
     required this.onAddFriend,
-    required this.colors,
   });
 
   final SessionParticipant participant;
   final bool isSessionOwner;
   final bool isSelf;
   final bool isFriend;
+  final bool canAsk;
   final bool isRequestSent;
   final VoidCallback onTapProfile;
   final VoidCallback onAddFriend;
-  final ClippoColors colors;
 
   @override
   Widget build(BuildContext context) {
-    final canAddFriend = !isSelf && !isFriend;
+    final colors = ClippoColors.of(context);
+    final canAddFriend = !isSelf && !isFriend && canAsk;
 
     return Material(
       color: colors.surface,
@@ -1415,11 +1262,7 @@ class _ParticipantRowTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              ClippoAvatar(
-                name: participant.name,
-                photoUrl: participant.photoUrl,
-                size: ClippoSize.avatarLarge,
-              ),
+              ClippoAvatar(name: participant.name, photoUrl: participant.photoUrl, size: ClippoSize.avatarLarge),
               const SizedBox(width: ClippoSpace.spaceM),
               Expanded(
                 child: Column(
@@ -1437,43 +1280,31 @@ class _ParticipantRowTile extends StatelessWidget {
                         ),
                         if (isSessionOwner) ...[
                           const SizedBox(width: ClippoSpace.spaceS),
-                          Text(
-                            '· Criador',
-                            style: ClippoText.label.copyWith(color: colors.accent),
-                          ),
+                          Text('· Criador', style: ClippoText.label.copyWith(color: colors.accent)),
                         ],
                       ],
                     ),
-                    const SizedBox(height: ClippoSpace.labelToValue),
-                    Text(
-                      '@${participant.displayUsername}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ClippoText.label.copyWith(color: colors.textMuted),
-                    ),
+                    if (canAsk) ...[
+                      const SizedBox(height: ClippoSpace.labelToValue),
+                      Text(
+                        '@${participant.displayUsername}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ClippoText.label.copyWith(color: colors.textMuted),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: ClippoSpace.spaceS),
               if (isFriend && !isSelf) ...[
-                Text(
-                  'Amigo',
-                  style: ClippoText.label.copyWith(color: colors.textMuted),
-                ),
+                Text('Amigo', style: ClippoText.label.copyWith(color: colors.textMuted)),
                 const SizedBox(width: ClippoSpace.spaceS),
               ] else if (canAddFriend) ...[
-                _AddFriendChip(
-                  participantName: participant.name,
-                  sent: isRequestSent,
-                  onPressed: onAddFriend,
-                ),
+                _AddFriendChip(participantName: participant.name, sent: isRequestSent, onPressed: onAddFriend),
                 const SizedBox(width: ClippoSpace.spaceS),
               ],
-              ClippoSvgIcon(
-                'chevron-right',
-                size: ClippoSize.checkIcon,
-                color: colors.textMuted,
-              ),
+              ClippoSvgIcon('chevron-right', size: ClippoSize.checkIcon, color: colors.textMuted),
             ],
           ),
         ),
@@ -1483,11 +1314,7 @@ class _ParticipantRowTile extends StatelessWidget {
 }
 
 class _AddFriendChip extends StatelessWidget {
-  const _AddFriendChip({
-    required this.participantName,
-    required this.sent,
-    required this.onPressed,
-  });
+  const _AddFriendChip({required this.participantName, required this.sent, required this.onPressed});
 
   final String participantName;
   final bool sent;
@@ -1496,6 +1323,7 @@ class _AddFriendChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
+    const padding = EdgeInsets.symmetric(horizontal: ClippoSpace.spaceM, vertical: ClippoSpace.spaceS);
 
     if (sent) {
       return DecoratedBox(
@@ -1504,23 +1332,13 @@ class _AddFriendChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: ClippoSpace.spaceM,
-            vertical: ClippoSpace.spaceS,
-          ),
+          padding: padding,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClippoSvgIcon(
-                'check',
-                size: ClippoSize.checkIcon,
-                color: colors.accent,
-              ),
+              ClippoSvgIcon('check', size: ClippoSize.checkIcon, color: colors.accent),
               const SizedBox(width: ClippoSpace.spaceXs),
-              Text(
-                'Enviado',
-                style: ClippoText.label.copyWith(color: colors.accent),
-              ),
+              Text('Enviado', style: ClippoText.label.copyWith(color: colors.accent)),
             ],
           ),
         ),
@@ -1537,29 +1355,16 @@ class _AddFriendChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: colors.accentSoft,
             borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-            border: Border.all(
-              color: colors.accent,
-              width: ClippoSize.border,
-            ),
+            border: Border.all(color: colors.accent, width: ClippoSize.border),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ClippoSpace.spaceM,
-              vertical: ClippoSpace.spaceS,
-            ),
+            padding: padding,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ClippoSvgIcon(
-                  'plus',
-                  size: ClippoSize.checkIcon,
-                  color: colors.accent,
-                ),
+                ClippoSvgIcon('plus', size: ClippoSize.checkIcon, color: colors.accent),
                 const SizedBox(width: ClippoSpace.spaceXs),
-                Text(
-                  'Adicionar',
-                  style: ClippoText.label.copyWith(color: colors.accent),
-                ),
+                Text('Adicionar', style: ClippoText.label.copyWith(color: colors.accent)),
               ],
             ),
           ),
@@ -1569,15 +1374,18 @@ class _AddFriendChip extends StatelessWidget {
   }
 }
 
-/// Perfil público de um participante da sessão.
+/// Perfil de um participante, com o que o app sabe de verdade: nome, @ e quantas
+/// sessões vocês jogaram juntos (R16, contado nas sessões que a Início já leu).
 class _ParticipantProfileScreen extends StatefulWidget {
   const _ParticipantProfileScreen({
     required this.participant,
     required this.isSessionOwner,
     required this.isSelf,
     required this.isFriend,
+    required this.canAsk,
     required this.initialRequestSent,
     required this.sessionName,
+    required this.sessionsTogether,
     required this.onSendFriendRequest,
   });
 
@@ -1585,9 +1393,11 @@ class _ParticipantProfileScreen extends StatefulWidget {
   final bool isSessionOwner;
   final bool isSelf;
   final bool isFriend;
+  final bool canAsk;
   final bool initialRequestSent;
   final String sessionName;
-  final VoidCallback onSendFriendRequest;
+  final int sessionsTogether;
+  final Future<bool> Function() onSendFriendRequest;
 
   @override
   State<_ParticipantProfileScreen> createState() => _ParticipantProfileScreenState();
@@ -1595,29 +1405,31 @@ class _ParticipantProfileScreen extends StatefulWidget {
 
 class _ParticipantProfileScreenState extends State<_ParticipantProfileScreen> {
   late bool _requestSent = widget.initialRequestSent;
+  bool _sending = false;
 
-  void _handleAddFriend() {
-    if (_requestSent) return;
-    widget.onSendFriendRequest();
-    setState(() => _requestSent = true);
+  Future<void> _handleAddFriend() async {
+    if (_requestSent || _sending) return;
+    setState(() => _sending = true);
+    final ok = await widget.onSendFriendRequest();
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      _requestSent = ok;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
     final participant = widget.participant;
-    final seed = participant.uid.codeUnits.fold<int>(0, (acc, c) => acc + c);
-    final sessionsCount = 4 + (seed % 14);
-    final highlightsCount = 9 + (seed % 28);
-    final friendsCount = 5 + (seed % 11);
-    final togetherCount = 1 + (seed % 6);
-    final canAddFriend = !widget.isSelf && !widget.isFriend;
+    final canAddFriend = !widget.isSelf && !widget.isFriend && widget.canAsk;
 
     return ClippoScreenGround(
       footer: canAddFriend
           ? ClippoPrimaryButton(
-              label: _requestSent ? 'Convite de amizade enviado' : 'Adicionar amigo',
+              label: _requestSent ? 'Pedido de amizade enviado' : 'Adicionar amigo',
               onPressed: _requestSent ? null : _handleAddFriend,
+              loading: _sending,
             )
           : null,
       child: Column(
@@ -1629,8 +1441,8 @@ class _ParticipantProfileScreenState extends State<_ParticipantProfileScreen> {
             line1: 'Perfil de',
             line2: '${participant.firstName}.',
             subtitle: widget.isSessionOwner
-                ? 'Criou a sessão ${widget.sessionName}.'
-                : 'Participou de ${widget.sessionName}.',
+                ? 'Gravou a sessão ${widget.sessionName}.'
+                : 'Jogou em ${widget.sessionName}.',
           ),
           const SizedBox(height: ClippoSpace.section),
           DecoratedBox(
@@ -1642,47 +1454,37 @@ class _ParticipantProfileScreenState extends State<_ParticipantProfileScreen> {
               padding: const EdgeInsets.all(ClippoSpace.cardPadding),
               child: Column(
                 children: [
-                  ClippoAvatar(
-                    name: participant.name,
-                    photoUrl: participant.photoUrl,
-                    size: ClippoSize.avatarProfile,
-                  ),
+                  ClippoAvatar(name: participant.name, photoUrl: participant.photoUrl, size: ClippoSize.avatarProfile),
                   const SizedBox(height: ClippoSpace.spaceM),
                   Text(
                     participant.name,
                     textAlign: TextAlign.center,
                     style: ClippoText.titleS.copyWith(color: colors.text),
                   ),
-                  const SizedBox(height: ClippoSpace.labelToValue),
-                  Text(
-                    '@${participant.displayUsername}',
-                    textAlign: TextAlign.center,
-                    style: ClippoText.label.copyWith(color: colors.accent),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceM),
-                  Text(
-                    '$togetherCount sessões juntos',
-                    textAlign: TextAlign.center,
-                    style: ClippoText.label.copyWith(
-                      color: colors.textMuted,
-                      fontFeatures: ClippoText.tabular,
+                  if (widget.canAsk) ...[
+                    const SizedBox(height: ClippoSpace.labelToValue),
+                    Text(
+                      '@${participant.displayUsername}',
+                      textAlign: TextAlign.center,
+                      style: ClippoText.label.copyWith(color: colors.accent),
                     ),
-                  ),
+                  ],
+                  if (!widget.isSelf) ...[
+                    const SizedBox(height: ClippoSpace.spaceM),
+                    Text(
+                      clippoSharedSessionsCount(widget.sessionsTogether),
+                      textAlign: TextAlign.center,
+                      style: ClippoText.label.copyWith(color: colors.textMuted, fontFeatures: ClippoText.tabular),
+                    ),
+                  ],
                   if (widget.isFriend && !widget.isSelf) ...[
                     const SizedBox(height: ClippoSpace.spaceM),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ClippoSvgIcon(
-                          'check',
-                          size: ClippoSize.checkIcon,
-                          color: colors.accent,
-                        ),
+                        ClippoSvgIcon('check', size: ClippoSize.checkIcon, color: colors.accent),
                         const SizedBox(width: ClippoSpace.spaceXs),
-                        Text(
-                          'Vocês já são amigos',
-                          style: ClippoText.label.copyWith(color: colors.accent),
-                        ),
+                        Text('Vocês já são amigos', style: ClippoText.label.copyWith(color: colors.accent)),
                       ],
                     ),
                   ],
@@ -1690,324 +1492,168 @@ class _ParticipantProfileScreenState extends State<_ParticipantProfileScreen> {
               ),
             ),
           ),
-          const SizedBox(height: ClippoSpace.spaceM),
-          Row(
-            children: [
-              Expanded(
-                child: _ProfileStatBox(
-                  value: '$sessionsCount',
-                  label: 'sessões',
-                ),
-              ),
-              const SizedBox(width: ClippoSpace.spaceM),
-              Expanded(
-                child: _ProfileStatBox(
-                  value: '$highlightsCount',
-                  label: 'highlights',
-                ),
-              ),
-              const SizedBox(width: ClippoSpace.spaceM),
-              Expanded(
-                child: _ProfileStatBox(
-                  value: '$friendsCount',
-                  label: 'amigos',
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 }
 
-class _ProfileStatBox extends StatelessWidget {
-  const _ProfileStatBox({required this.value, required this.label});
+/// "Juntar com outra sessão" (D18): as sessões do mesmo jogo gravadas por outra
+/// pessoa, em que eu também estou. O dono dela precisa aceitar.
+class _MergeSessionScreen extends StatefulWidget {
+  const _MergeSessionScreen({
+    required this.into,
+    required this.candidates,
+    required this.pendingFromIds,
+    required this.repository,
+  });
 
-  final String value;
-  final String label;
+  final Session into;
+  final List<Session> candidates;
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = ClippoColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: ClippoSpace.fieldPaddingV,
-          horizontal: ClippoSpace.spaceM,
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: ClippoText.titleS.copyWith(
-                color: colors.accent,
-                fontFeatures: ClippoText.tabular,
-              ),
-            ),
-            const SizedBox(height: ClippoSpace.labelToValue),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ClippoText.label.copyWith(color: colors.textMuted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Tela de compartilhamento da sessão por Link ou QR Code.
-/// Exige que quem receber tenha o app Clippo baixado para acessar.
-class _ShareSessionScreen extends StatefulWidget {
-  const _ShareSessionScreen({required this.session});
-
-  final Session session;
+  /// Sessões para as quais já existe pedido meu esperando resposta.
+  final Set<String> pendingFromIds;
+  final SessionsRepository repository;
 
   @override
-  State<_ShareSessionScreen> createState() => _ShareSessionScreenState();
+  State<_MergeSessionScreen> createState() => _MergeSessionScreenState();
 }
 
-class _ShareSessionScreenState extends State<_ShareSessionScreen> {
-  bool _copied = false;
+class _MergeSessionScreenState extends State<_MergeSessionScreen> {
+  String? _sendingId;
+  String? _error;
 
-  String get _sessionLink => 'https://clippo.app/s/${widget.session.id}';
-
-  Future<void> _copyLink() async {
-    await Clipboard.setData(ClipboardData(text: _sessionLink));
-    if (!mounted) return;
-    setState(() => _copied = true);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          backgroundColor: ClippoBrand.wine,
-          content: Text(
-            'Link copiado! Quem abrir precisa ter o app Clippo baixado.',
-            style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  Future<void> _request(Session from) async {
+    setState(() {
+      _sendingId = from.id;
+      _error = null;
+    });
+    try {
+      await widget.repository.requestSessionMerge(intoSessionId: widget.into.id, fromSessionId: from.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sendingId = null;
+        _error = SessionsFailure.from(e).message;
+      });
+    }
   }
 
-  void _shareInvite() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          backgroundColor: ClippoBrand.wine,
-          content: Text(
-            'Convite de ${widget.session.name} pronto para enviar.',
-            style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  String? _ownerName(Session s) {
+    for (final p in s.participants) {
+      if (p.uid == s.ownerId) return p.firstName;
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
+    final candidates = widget.candidates;
 
     return ClippoScreenGround(
-      footer: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ClippoPrimaryButton(
-            label: _copied ? 'Link copiado' : 'Copiar link da sessão',
-            onPressed: _copyLink,
-          ),
-          const SizedBox(height: ClippoSpace.spaceS),
-          ClippoTextButton(
-            label: 'Compartilhar convite',
-            onPressed: _shareInvite,
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const ClippoBackButton(),
           const SizedBox(height: ClippoSpace.section),
           ClippoScreenTitle(
-            line1: 'Compartilhar',
-            line2: 'sessão.',
-            subtitle: widget.session.name,
+            line1: 'Juntar',
+            line2: 'sessões.',
+            subtitle: 'Cada um gravou de um lado? Junte os lances em ${widget.into.name}. '
+                'O dono da outra sessão precisa aceitar.',
           ),
           const SizedBox(height: ClippoSpace.section),
-          // Aviso de que é obrigatório ter o app baixado para acessar.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-              border: Border.all(color: colors.accent, width: ClippoSize.border),
+          if (_error != null) ...[
+            Text(_error!, style: ClippoText.label.copyWith(color: colors.error)),
+            const SizedBox(height: ClippoSpace.spaceM),
+          ],
+          if (candidates.isEmpty) ...[
+            Text('Nenhuma sessão para juntar', style: ClippoText.titleS.copyWith(color: colors.text)),
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(
+              'Aparecem aqui as sessões de outra pessoa em que você está, gravadas até '
+              '$mergeToleranceMinutes min antes ou depois desta.',
+              style: ClippoText.body.copyWith(color: colors.textMuted),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(ClippoSpace.cardPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'É preciso ter o app Clippo baixado',
-                    style: ClippoText.titleS.copyWith(color: colors.accent),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceS),
-                  Text(
-                    'Quem receber o link ou escanear o QR Code deve ter o app Clippo instalado no celular e entrar na conta para ter acesso aos highlights desta sessão.',
-                    style: ClippoText.body.copyWith(color: colors.text),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceS),
-                  Text(
-                    widget.session.isClosed
-                        ? 'Sessão fechada: quem usar o link ou QR Code enviará um pedido de permissão para o criador liberar a entrada.'
-                        : 'Sessão aberta: quem abrir o link ou QR Code entra direto como participante.',
-                    style: ClippoText.label.copyWith(color: colors.textMuted),
-                  ),
-                ],
-              ),
+          ],
+          for (var i = 0; i < candidates.length; i++) ...[
+            if (i > 0) const SizedBox(height: ClippoSpace.cardGap),
+            _MergeCandidateTile(
+              session: candidates[i],
+              ownerName: _ownerName(candidates[i]),
+              pending: widget.pendingFromIds.contains(candidates[i].id),
+              sending: _sendingId == candidates[i].id,
+              onTap: _sendingId == null ? () => _request(candidates[i]) : null,
             ),
-          ),
-          const SizedBox(height: ClippoSpace.spaceL),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(ClippoSpace.cardPadding),
-              child: Column(
-                children: [
-                  Text(
-                    'QR Code da sessão',
-                    style: ClippoText.titleS.copyWith(color: colors.text),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceM),
-                  Semantics(
-                    label: 'QR Code para abrir a sessão ${widget.session.name} no app Clippo',
-                    child: Container(
-                      width: ClippoSize.qrCode,
-                      height: ClippoSize.qrCode,
-                      padding: const EdgeInsets.all(ClippoSpace.spaceL),
-                      decoration: BoxDecoration(
-                        color: ClippoBrand.onWine,
-                        borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-                      ),
-                      child: CustomPaint(
-                        painter: _SessionQrPainter(
-                          data: _sessionLink,
-                          color: ClippoBrand.onPeach,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceM),
-                  Text(
-                    'Aponte a câmera com o app Clippo instalado.',
-                    textAlign: TextAlign.center,
-                    style: ClippoText.label.copyWith(color: colors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: ClippoSpace.spaceM),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(ClippoSpace.cardPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Link da sessão',
-                    style: ClippoText.label.copyWith(color: colors.textLabel),
-                  ),
-                  const SizedBox(height: ClippoSpace.labelToValue),
-                  Text(
-                    _sessionLink,
-                    style: ClippoText.input.copyWith(color: colors.text),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// Desenha uma matriz de QR Code 21×21 determinística a partir do link da sessão.
-class _SessionQrPainter extends CustomPainter {
-  const _SessionQrPainter({required this.data, required this.color});
+class _MergeCandidateTile extends StatelessWidget {
+  const _MergeCandidateTile({
+    required this.session,
+    required this.ownerName,
+    required this.pending,
+    required this.sending,
+    required this.onTap,
+  });
 
-  final String data;
-  final Color color;
-
-  static const int _grid = 21;
-
-  bool _isFinderArea(int r, int c) {
-    final topLeft = r < 8 && c < 8;
-    final topRight = r < 8 && c >= _grid - 8;
-    final bottomLeft = r >= _grid - 8 && c < 8;
-    return topLeft || topRight || bottomLeft;
-  }
-
-  bool _isFinderModule(int r, int c) {
-    bool inPattern(int pr, int pc) {
-      final lr = r - pr;
-      final lc = c - pc;
-      if (lr < 0 || lr >= 7 || lc < 0 || lc >= 7) return false;
-      if (lr == 0 || lr == 6 || lc == 0 || lc == 6) return true;
-      if (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4) return true;
-      return false;
-    }
-
-    return inPattern(0, 0) || inPattern(0, _grid - 7) || inPattern(_grid - 7, 0);
-  }
+  final Session session;
+  final String? ownerName;
+  final bool pending;
+  final bool sending;
+  final VoidCallback? onTap;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final cell = size.width / _grid;
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final bytes = data.codeUnits;
-    for (var r = 0; r < _grid; r++) {
-      for (var c = 0; c < _grid; c++) {
-        bool dark;
-        if (_isFinderArea(r, c)) {
-          dark = _isFinderModule(r, c);
-        } else if (r == 6 || c == 6) {
-          dark = (r + c).isEven;
-        } else {
-          final idx = (r * _grid + c) % bytes.length;
-          final b = bytes[idx];
-          dark = ((b + r * 7 + c * 13) & 1) == 0;
-        }
-
-        if (dark) {
-          canvas.drawRect(
-            Rect.fromLTWH(c * cell, r * cell, cell + 0.4, cell + 0.4),
-            paint,
-          );
-        }
-      }
-    }
+  Widget build(BuildContext context) {
+    final colors = ClippoColors.of(context);
+    final status = pending ? 'Esperando' : (sending ? 'Enviando…' : 'Pedir');
+    return Semantics(
+      button: !pending,
+      label: '${session.name}, $status',
+      excludeSemantics: true,
+      child: Material(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: pending ? null : onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ClippoSpace.cardPadding,
+              vertical: ClippoSpace.fieldPaddingV,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(session.name, style: ClippoText.titleS.copyWith(color: colors.text)),
+                      const SizedBox(height: ClippoSpace.labelToValue),
+                      Text(
+                        clippoDotList([
+                          clippoTimeRange(session.startedAt, session.endedAt),
+                          if (ownerName != null) 'de $ownerName',
+                          clippoHighlightCount(session.highlightCount),
+                        ]),
+                        style: ClippoText.label.copyWith(color: colors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: ClippoSpace.spaceM),
+                Text(status, style: ClippoText.label.copyWith(color: pending ? colors.textMuted : colors.accent)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(_SessionQrPainter oldDelegate) =>
-      oldDelegate.data != data || oldDelegate.color != color;
 }
