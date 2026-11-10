@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_player/video_player.dart';
 
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
@@ -65,6 +66,14 @@ Future<void> _settlePage(WidgetTester tester) async {
 
 Future<File> _neverLoads(String path) => Completer<File>().future;
 
+/// Player que nunca termina de abrir (sem o plugin de vídeo, nos testes).
+class _HangingController extends VideoPlayerController {
+  _HangingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  @override
+  Future<void> initialize() => Completer<void>().future;
+}
+
 void main() {
   testWidgets('mostra a sessão, o lance e carrega o vídeo pelo repositório', (tester) async {
     _phone(tester);
@@ -121,6 +130,62 @@ void main() {
 
     expect(baixou, 0);
     expect(salvou, 0);
+  });
+
+  group('streaming da nuvem', () {
+    final source = HighlightVideoStream(
+      url: Uri.parse('https://firebasestorage.googleapis.com/v0/b/b/o/x?alt=media'),
+      headers: {'Authorization': 'Firebase token'},
+    );
+
+    testWidgets('toca enquanto o vídeo chega, sem baixar o arquivo inteiro antes', (tester) async {
+      _phone(tester);
+      final pedidos = <String>[];
+      final abertos = <HighlightVideoStream>[];
+      var baixou = 0;
+
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: _highlights(),
+        streamVideo: (path) async {
+          pedidos.add(path);
+          return source;
+        },
+        streamControllerFactory: (s) {
+          abertos.add(s);
+          // Fica "abrindo" para sempre: o plugin de vídeo não existe nos testes.
+          return _HangingController();
+        },
+        loadVideo: (path) async {
+          baixou++;
+          return File(path);
+        },
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      expect(pedidos, [_videoH1]);
+      expect(abertos.single.headers['Authorization'], 'Firebase token');
+      expect(baixou, 0);
+      expect(find.text('Carregando o lance…'), findsOneWidget);
+    });
+
+    testWidgets('se o streaming falhar, baixa o arquivo inteiro e toca', (tester) async {
+      _phone(tester);
+      final pedidos = <String>[];
+
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: _highlights(),
+        streamVideo: (path) async => throw const HighlightMediaFailure('sem streaming'),
+        loadVideo: (path) {
+          pedidos.add(path);
+          return Completer<File>().future;
+        },
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      expect(pedidos, [_videoH1]);
+    });
   });
 
   group('MP4 ainda no celular de quem gravou', () {

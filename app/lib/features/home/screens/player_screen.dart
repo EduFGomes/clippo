@@ -20,12 +20,19 @@ typedef HighlightVideoLoader = Future<File> Function(String storagePath);
 /// Cria o player de um arquivo local. Injetável para os testes.
 typedef HighlightVideoControllerFactory = VideoPlayerController Function(File file);
 
+/// Onde buscar o vídeo aos poucos (streaming). Injetável para os testes.
+typedef HighlightVideoStreamSource = Future<HighlightVideoStream> Function(String storagePath);
+
+/// Cria o player que toca enquanto o vídeo chega. Injetável para os testes.
+typedef HighlightStreamControllerFactory = VideoPlayerController Function(HighlightVideoStream source);
+
 /// Compartilha o arquivo do lance com outro app.
 typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highlight, String sessionName);
 
 /// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4).
 ///
-/// Toca o arquivo que o [HighlightMediaRepository] baixou para o cache, baixa para a
+/// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
+/// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
 /// galeria e compartilha o vídeo (R11: todo participante assiste e baixa). Quem gravou e
 /// ainda tem o MP4 no celular ([Highlight.localPath]) assiste, baixa e compartilha direto
 /// dele, sem internet e antes de o lance subir. Sem o arquivo, lance ainda subindo
@@ -45,6 +52,8 @@ class PlayerScreen extends StatefulWidget {
     this.controllerFactory,
     this.saveFileToGallery,
     this.localFileExists,
+    this.streamVideo,
+    this.streamControllerFactory,
   });
 
   /// Nome da sessão, discreto no topo.
@@ -79,6 +88,13 @@ class PlayerScreen extends StatefulWidget {
 
   /// Substitui `File.exists` do MP4 no celular (testes).
   final Future<bool> Function(String path)? localFileExists;
+
+  /// Substitui `mediaRepository.videoStream` (testes). Nos testes que só passam [loadVideo],
+  /// o Player não faz streaming: baixa e toca, como antes.
+  final HighlightVideoStreamSource? streamVideo;
+
+  /// Substitui `VideoPlayerController.networkUrl` (testes).
+  final HighlightStreamControllerFactory? streamControllerFactory;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -197,8 +213,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
+    if (_streams && await _playStream(token, path)) return;
     await _play(token, () => _fetch(path));
   }
+
+  /// Com o repositório de verdade (ou um [PlayerScreen.streamVideo]), a nuvem toca por streaming.
+  bool get _streams => widget.streamVideo != null || widget.loadVideo == null;
+
+  /// Toca do cache, se o vídeo já foi baixado; se não, enquanto ele chega da nuvem.
+  /// Devolve false se o streaming não abriu (o [_load] então baixa o arquivo inteiro).
+  Future<bool> _playStream(int token, String path) async {
+    if (token != _loadToken || !mounted) return true;
+    setState(() {
+      _stage = _Stage.loading;
+      _message = 'Carregando o lance…';
+    });
+    VideoPlayerController? controller;
+    try {
+      if (widget.streamVideo == null) {
+        final cached = await _media.cachedVideoFile(path);
+        if (token != _loadToken || !mounted) return true;
+        if (cached != null) {
+          await _play(token, () async => cached);
+          return true;
+        }
+      }
+      final source = await (widget.streamVideo ?? _media.videoStream)(path);
+      if (token != _loadToken || !mounted) return true;
+      controller = (widget.streamControllerFactory ?? _networkController)(source);
+      final startedAt = DateTime.now();
+      await _show(token, controller, file: null);
+      debugPrint('ClippoPlayer: streaming abriu em ${DateTime.now().difference(startedAt).inMilliseconds} ms');
+      return true;
+    } catch (e) {
+      // Ex.: rede que não aceita streaming ou token recusado: o download dá o erro certo.
+      debugPrint('ClippoPlayer: streaming falhou, baixando o arquivo inteiro ($e)');
+      if (controller != null && !identical(controller, _controller)) unawaited(controller.dispose());
+      if (identical(controller, _controller) && controller != null) return true; // já está na tela
+      return token != _loadToken || !mounted;
+    }
+  }
+
+  static VideoPlayerController _networkController(HighlightVideoStream source) =>
+      VideoPlayerController.networkUrl(source.url, httpHeaders: source.headers);
 
   /// Abre o player com o arquivo de [source] (do celular ou baixado da nuvem).
   Future<void> _play(int token, Future<File> Function() source) async {
@@ -210,20 +267,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final file = await source();
       if (token != _loadToken || !mounted) return;
-      final controller = (widget.controllerFactory ?? VideoPlayerController.file)(file);
-      await controller.initialize();
-      if (token != _loadToken || !mounted) {
-        unawaited(controller.dispose());
-        return;
-      }
-      controller.addListener(_onTick);
-      setState(() {
-        _file = file;
-        _controller = controller;
-        _stage = _Stage.ready;
-        _message = null;
-      });
-      if (_wantsPlay) await controller.play();
+      await _show(token, (widget.controllerFactory ?? VideoPlayerController.file)(file), file: file);
     } catch (e) {
       if (token != _loadToken || !mounted) return;
       setState(() {
@@ -231,6 +275,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _message = HighlightMediaFailure.from(e).message;
       });
     }
+  }
+
+  /// Liga [controller] na tela. Lança se o vídeo não abrir.
+  Future<void> _show(int token, VideoPlayerController controller, {required File? file}) async {
+    await controller.initialize();
+    if (token != _loadToken || !mounted) {
+      unawaited(controller.dispose());
+      return;
+    }
+    controller.addListener(_onTick);
+    setState(() {
+      _file = file;
+      _controller = controller;
+      _stage = _Stage.ready;
+      _message = null;
+    });
+    if (_wantsPlay) await controller.play();
   }
 
   void _onTick() {

@@ -38,7 +38,7 @@ Celular de quem grava              Firebase (São Paulo; Storage nos EUA)       
 | D14 | **Gesto só vale de frente para a câmera**, conferido pela profundidade (z) do nariz em relação aos ombros | O produto pede o gesto "olhando para a câmera" para não disparar em comemorações. Em vídeo, o Y de costas disparava; a confiança do ML Kit não serve (diz se o ponto está na imagem, não se está visível) e a ordem dos ombros erra. O nariz separou bem: de frente −0,8 a −2,1, de costas +1,2 a +2,1 | Depende de uma profundidade estimada a partir de uma imagem só; ainda não medido a 8 m. Decidido pela visão computacional em 24/10/2026, confirmado pelo grupo em 28/10/2026 |
 | D15 | **Sessões e highlights gravados por uma Cloud Function chamável (`saveSession`)**; os vídeos sobem do app direto para o Storage, e um gatilho marca o highlight como enviado (R13) | Valida tudo no servidor (regra 0 do AGENTS.md, e os participantes são amigos do dono, R10) e grava numa transação, como o `completeProfile`; as Security Rules continuam fechadas para escrita. A gravação não depende dela (R8): só o "Salvar sessão" chama, e sem internet o app guarda e tenta de novo depois (WorkManager) | O projeto real precisa do plano Blaze (pago por uso, com cartão; o Storage também exige). O uso de um projeto de faculdade cabe na cota sem custo. Decidido pelo grupo em 28/10/2026 |
 | D16 | **Amizade num documento por par** (`friendships/{uidA_uidB}`, ids em ordem), gravado só por Functions | Não existe pedido duplicado nem "meio amigo" (R15 é um documento só); conferir R10 custa uma leitura por participante; a lista de amigos é uma consulta (`uids` contém eu) | Nome e foto copiados no documento (`profiles`) ficam velhos se a pessoa mudar o perfil. 🟡 Proposta do back-end em 09/11/2026, a confirmar com o grupo |
-| D17 | **Vídeos protegidos pelas regras do Storage lendo o Firestore** (`firestore.get()` na regra), sem URL pública | Só participantes da sessão baixam (R11) e só quem gravou envia, num highlight `pending`, um MP4 de tamanho limitado; nada de link que funciona sem login | Cada download custa uma leitura no Firestore; no projeto real, o primeiro deploy das regras pede para dar ao Storage permissão de ler o Firestore. 🟡 Proposta do back-end em 09/11/2026 |
+| D17 | **Vídeos protegidos pelas regras do Storage lendo o Firestore** (`firestore.get()` na regra), sem URL pública | Só participantes da sessão baixam (R11) e só quem gravou envia, num highlight `pending`, um MP4 de tamanho limitado; nada de link que funciona sem login. O Player assiste por streaming com o login e o App Check no cabeçalho ([Acesso aos vídeos](#acesso-aos-vídeos-no-storage-d17-)) | Cada download custa uma leitura no Firestore; no projeto real, o primeiro deploy das regras pede para dar ao Storage permissão de ler o Firestore. 🟡 Proposta do back-end em 09/11/2026 |
 | D18 | **Juntar sessões** (ex.: tênis com um celular de cada lado): os highlights da sessão de origem são **copiados** para a sessão principal, mas o vídeo **não sai do lugar** no Storage | Um hub só, com todos os ângulos em ordem de horário, sem mover arquivo; a sessão de origem fica escondida (`mergedInto`) e com a mesma lista de participantes, para as regras do Storage continuarem liberando o vídeo | O documento do lance existe em dois lugares (origem e principal); o gatilho do upload e o reenvio da fila atualizam os dois. 🟡 Proposta do back-end em 09/11/2026 |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
@@ -196,7 +196,21 @@ documento dizia que não, o que estava desatualizado). Então `storage.rules` di
 
 Alternativas descartadas: uids nos metadados do arquivo (precisam ser reescritos quando os
 participantes mudam), URL com token no documento (funciona sem login para quem tiver o link) e
-URL assinada por Function (latência e mais código). **No projeto real:** no primeiro
+URL assinada por Function (latência e mais código).
+
+**Como o app lê o vídeo** (`HighlightMediaRepository`), sempre pelas regras acima e sem link público:
+
+| Para quê | Como |
+|---|---|
+| Assistir no Player | **Streaming**: o player busca o arquivo aos poucos na mesma API que o SDK usa (`/v0/b/{bucket}/o/{caminho}?alt=media`), com os cabeçalhos `Authorization: Firebase <token do login>` e `X-Firebase-AppCheck`. Começa a tocar sem esperar o download inteiro. Sem login ou App Check, o Storage recusa. Se o streaming falhar, o Player baixa o arquivo inteiro e toca |
+| Baixar e compartilhar | O SDK baixa o arquivo inteiro para o cache do app (que também serve para tocar de novo na hora) |
+| Quem gravou, antes de subir | O MP4 da pasta do app (`Highlight.localPath`, vindo da fila de envio), sem internet |
+
+O MP4 do buffer sai com o índice (`moov`) no fim do arquivo, como o `MediaMuxer` grava: o player
+busca o fim antes de começar, uma ida e volta a mais. 🟡 Se o início ficar lento, mover o índice
+para o começo ao salvar o highlight.
+
+**No projeto real:** no primeiro
 `firebase deploy --only storage`, o CLI pede para dar ao agente de serviço do Storage o papel de
 leitura do Firestore; aceite, senão toda regra com `firestore.get()` recusa.
 

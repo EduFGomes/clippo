@@ -1,8 +1,12 @@
 import 'dart:io';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'package:clippo/core/firebase/firebase_setup.dart';
 
 /// Erro ao enviar, baixar ou salvar o vídeo de um lance, com a mensagem pronta para a tela.
 class HighlightMediaFailure implements Exception {
@@ -36,17 +40,40 @@ class HighlightMediaFailure implements Exception {
   String toString() => code == null ? message : '$message ($code)';
 }
 
+/// Onde o player busca o vídeo aos poucos (streaming): o endereço do arquivo no Storage e os
+/// cabeçalhos que provam quem está pedindo. Sem link público: sem eles, o Storage recusa.
+class HighlightVideoStream {
+  const HighlightVideoStream({required this.url, required this.headers});
+
+  final Uri url;
+  final Map<String, String> headers;
+}
+
 /// Envio e leitura dos vídeos e miniaturas dos lances no Storage (D17 em
 /// docs/arquitetura.md › Acesso aos vídeos no Storage).
 ///
 /// As regras do Storage liberam o vídeo só para os participantes da sessão. Por isso o
 /// app **não usa `getDownloadURL()`**: essa URL tem um token que funciona para qualquer
-/// pessoa, sem login, e furaria a R11. O vídeo é baixado pelo SDK (que passa pelas
-/// regras) para uma pasta de cache do app, e o player toca o arquivo local.
+/// pessoa, sem login, e furaria a R11. Para assistir, o player busca o vídeo aos poucos
+/// ([videoStream]) com o login e o App Check de quem pede, e as regras valem para cada
+/// pedaço. Para baixar e compartilhar, o SDK (que também passa pelas regras) baixa o arquivo
+/// inteiro para uma pasta de cache do app ([videoFile]).
 class HighlightMediaRepository {
-  HighlightMediaRepository({FirebaseStorage? storage, Future<Directory> Function()? cacheDir})
-      : _storage = (() => storage ?? FirebaseStorage.instance),
-        _cacheDir = cacheDir ?? getTemporaryDirectory;
+  HighlightMediaRepository({
+    FirebaseStorage? storage,
+    Future<Directory> Function()? cacheDir,
+    Future<String?> Function()? idToken,
+    Future<String?> Function()? appCheckToken,
+    String? emulatorOrigin,
+  })  : _storage = (() => storage ?? FirebaseStorage.instance),
+        _cacheDir = cacheDir ?? getTemporaryDirectory,
+        _idToken = idToken ?? _currentIdToken,
+        _appCheckToken = appCheckToken ?? (useEmulator ? _noAppCheck : _currentAppCheckToken),
+        _emulatorOrigin = emulatorOrigin ?? (useEmulator ? 'http://$emulatorHost:9199' : null);
+
+  static Future<String?> _currentIdToken() async => FirebaseAuth.instance.currentUser?.getIdToken();
+  static Future<String?> _currentAppCheckToken() => FirebaseAppCheck.instance.getToken();
+  static Future<String?> _noAppCheck() async => null;
 
   /// Teto do vídeo, igual ao de storage.rules e de highlights/validation.ts.
   static const int maxVideoBytes = 100 * 1024 * 1024;
@@ -60,6 +87,11 @@ class HighlightMediaRepository {
 
   final FirebaseStorage Function() _storage;
   final Future<Directory> Function() _cacheDir;
+  final Future<String?> Function() _idToken;
+  final Future<String?> Function() _appCheckToken;
+
+  /// O Storage do Emulator (`http://host:9199`); nulo no projeto real.
+  final String? _emulatorOrigin;
 
   /// Envia o MP4 do lance para o caminho que o `saveSession` devolveu.
   ///
@@ -86,13 +118,45 @@ class HighlightMediaRepository {
     }
   }
 
+  /// Para o player tocar o vídeo enquanto ele chega (streaming), sem baixar tudo antes.
+  ///
+  /// É a mesma API que o SDK usa por baixo (`/v0/b/{bucket}/o/{caminho}?alt=media`), com o
+  /// login (`Authorization: Firebase <token>`) e o App Check (`X-Firebase-AppCheck`) de quem
+  /// pede: as regras do Storage (D17) valem para cada pedaço, e nada funciona sem login.
+  Future<HighlightVideoStream> videoStream(String storagePath) async {
+    checkPath(storagePath, expectedFile: 'video.mp4');
+    final idToken = await _idToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw const HighlightMediaFailure('Entre na sua conta para assistir.');
+    }
+    final appCheck = await _appCheckToken();
+    final origin = _emulatorOrigin ?? 'https://firebasestorage.googleapis.com';
+    final bucket = Uri.encodeComponent(_storage().bucket);
+    return HighlightVideoStream(
+      url: Uri.parse('$origin/v0/b/$bucket/o/${Uri.encodeComponent(storagePath)}?alt=media'),
+      headers: {
+        'Authorization': 'Firebase $idToken',
+        if (appCheck != null && appCheck.isNotEmpty) 'X-Firebase-AppCheck': appCheck,
+      },
+    );
+  }
+
+  /// O vídeo já baixado antes (pelo "Baixar" ou "Compartilhar"), ou nulo. Tocar dele é instantâneo.
+  Future<File?> cachedVideoFile(String storagePath) async {
+    checkPath(storagePath, expectedFile: 'video.mp4');
+    final file = await _cacheFileOf(storagePath);
+    return await file.exists() && await file.length() > 0 ? file : null;
+  }
+
+  Future<File> _cacheFileOf(String storagePath) async =>
+      File('${(await _cacheDir()).path}/clippo-videos/${storagePath.replaceAll('/', '_')}');
+
   /// O vídeo do lance como arquivo local, baixado uma vez e guardado no cache.
   Future<File> videoFile(String storagePath) async {
-    checkPath(storagePath, expectedFile: 'video.mp4');
-    final dir = Directory('${(await _cacheDir()).path}/clippo-videos');
-    final file = File('${dir.path}/${storagePath.replaceAll('/', '_')}');
-    if (await file.exists() && await file.length() > 0) return file;
-    await dir.create(recursive: true);
+    final cached = await cachedVideoFile(storagePath);
+    if (cached != null) return cached;
+    final file = await _cacheFileOf(storagePath);
+    await file.parent.create(recursive: true);
     final partial = File('${file.path}.part');
     try {
       await _storage().ref(storagePath).writeToFile(partial);
