@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:clippo/core/camera/clippo_camera.dart';
+import 'package:clippo/core/data/friendship.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/gesture/gesture_pipeline.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
@@ -28,14 +30,14 @@ import 'package:clippo/core/widgets/clippo_text_field.dart';
 /// Para desligar sem mexer no código: `--dart-define=COPY_TO_GALLERY=false`.
 const bool copyCapturedHighlightsToGallery = bool.fromEnvironment('COPY_TO_GALLERY', defaultValue: true);
 
-/// Amigo disponível nos chips de participantes da sessão ("Com `firstName`").
-/// 🟡 Provisório até existir o repositório de amigos em `core/data/`.
-class CaptureFriend {
-  const CaptureFriend({required this.id, required this.firstName});
-
-  final String id;
-  final String firstName;
-}
+/// Os amigos aceitos (R10, R15) a partir das amizades de `friendsRepository.watchFriendships()`:
+/// é o que alimenta os chips "Gravar com" e o "+ adicionar".
+Stream<List<Friend>> acceptedFriends(Stream<List<Friendship>> friendships) => friendships.map(
+      (list) => [
+        for (final f in list)
+          if (f.isAccepted && f.other.uid.isNotEmpty) f.other,
+      ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())),
+    );
 
 /// Highlight salvo localmente durante a gravação (R13).
 class CapturedHighlight {
@@ -73,17 +75,20 @@ enum _CameraState { checking, needsPermission, starting, running, failed }
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     super.key,
-    this.friends = const [],
+    this.friends,
     this.camera = const ClippoCamera(),
     this.highlightLength = HighlightLength.standard,
     this.pipeline,
     this.preview,
-    this.sessions,
+    this.uploads,
+    this.onOpenFriends,
     this.onSaved,
     this.onSessionCreated,
   });
 
-  final List<CaptureFriend> friends;
+  /// Os amigos aceitos do dono (veja [acceptedFriends]). Nulo ou vazio: só "Gravar sozinho".
+  final Stream<List<Friend>>? friends;
+
   final ClippoCamera camera;
 
   /// Duração inicial do trecho salvo a cada gesto (R1: 15, 30, 45 ou 60 s; padrão 30 s).
@@ -95,13 +100,17 @@ class CaptureScreen extends StatefulWidget {
   /// Substitui a `AndroidView` da câmera nos testes e no preview de emulador.
   final WidgetBuilder? preview;
 
-  /// Repositório para salvar a sessão e os lances na Cloud Function saveSession (D15).
-  final SessionsRepository? sessions;
+  /// Fila de envio (R13, D15): guarda a sessão no aparelho, chama o `saveSession` e sobe os
+  /// vídeos. Nulo (catálogo, testes sem Firebase): a sessão só existe na memória.
+  final UploadQueue? uploads;
+
+  /// "Adicione amigos…" quando ainda não há nenhum: quem abriu a Gravação leva à tela Amigos.
+  final VoidCallback? onOpenFriends;
 
   /// Chamado quando a sessão é confirmada e salva no Estado D.
   final VoidCallback? onSaved;
 
-  /// Recebe a [Session] criada no Estado D (com participantes e se é aberta ou fechada).
+  /// Recebe a [Session] criada no Estado D (com os participantes).
   final ValueChanged<Session>? onSessionCreated;
 
   @override
@@ -151,18 +160,39 @@ class _CaptureScreenState extends State<CaptureScreen> {
   late final TextEditingController _locationController;
   String? _sessionId;
   String? _nameError;
+  String? _timeError;
   String? _locationError;
+  String? _participantsError;
   String? _formError;
   bool _saving = false;
   bool _addingFriend = false;
-  bool _isClosedSession = false;
 
-  List<CaptureFriend> get _unselectedFriends =>
-      widget.friends.where((f) => !_selectedFriends.contains(f.id)).toList(growable: false);
+  /// Amigos aceitos, como chegaram do Firestore.
+  List<Friend> _friends = const [];
+  StreamSubscription<List<Friend>>? _friendsSubscription;
+
+  List<Friend> get _unselectedFriends =>
+      _friends.where((f) => !_selectedFriends.contains(f.uid)).toList(growable: false);
+
+  void _listenToFriends() {
+    _friendsSubscription = widget.friends?.listen(
+      (friends) {
+        if (!mounted) return;
+        setState(() {
+          _friends = friends;
+          // Quem deixou de ser amigo não pode continuar na sessão (R10).
+          _selectedFriends.retainAll({for (final f in friends) f.uid});
+        });
+      },
+      // Sem amigos carregados (ex.: sem internet e nada no cache): grava sozinho.
+      onError: (Object _) {},
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _listenToFriends();
     final now = DateTime.now();
     _nameController = TextEditingController(text: _defaultSessionName(now));
     _dateController = TextEditingController(text: clippoDate(now));
@@ -203,6 +233,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _controlsTimer?.cancel();
     _toastTimer?.cancel();
     _subscription?.cancel();
+    _friendsSubscription?.cancel();
     _nameController.dispose();
     _dateController.dispose();
     _timeController.dispose();
@@ -276,7 +307,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _toggleFriend(String id) {
-    setState(() => _selectedFriends.contains(id) ? _selectedFriends.remove(id) : _selectedFriends.add(id));
+    setState(() {
+      _selectedFriends.contains(id) ? _selectedFriends.remove(id) : _selectedFriends.add(id);
+      _participantsError = null;
+    });
   }
 
   void _startRecording() {
@@ -616,7 +650,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _showControls = false;
       _addingFriend = false;
       _nameError = null;
+      _timeError = null;
       _locationError = null;
+      _participantsError = null;
       _formError = null;
     });
   }
@@ -639,6 +675,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStartTime = start;
       _recordingEndTime = end;
       _dateController.text = clippoDate(start);
+      _timeError = null;
       _formError = null;
     });
   }
@@ -662,6 +699,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _recordingStartTime = newStart;
       _recordingEndTime = newEnd;
       _timeController.text = clippoTimeRange(newStart, newEnd);
+      _timeError = null;
       _formError = null;
     });
   }
@@ -694,12 +732,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   Future<void> _saveSession() async {
     if (_saving) return;
+    final participantIds = _selectedFriends.toList(growable: false);
     final nameError = validateSessionName(_nameController.text);
     final locationError = validateLocation(_locationController.text);
-    if (nameError != null || locationError != null) {
+    final participantsError = validateParticipantIds(participantIds);
+    if (nameError != null || locationError != null || participantsError != null) {
       setState(() {
         _nameError = nameError;
         _locationError = locationError;
+        _participantsError = participantsError;
         _formError = null;
       });
       return;
@@ -716,44 +757,49 @@ class _CaptureScreenState extends State<CaptureScreen> {
         : rawEnd;
     final periodError = validateSessionPeriod(start, effectiveEnd);
     if (periodError != null) {
-      setState(() => _formError = periodError);
+      setState(() {
+        _timeError = periodError;
+        _formError = null;
+      });
       return;
     }
 
     final sessionId = _sessionId ??= 'sessao-${start.millisecondsSinceEpoch}';
-    final repository = widget.sessions;
-    if (repository != null) {
+    final uploads = widget.uploads;
+    final ownerUid = uploads?.currentUid;
+    if (uploads != null) {
+      if (ownerUid == null) {
+        setState(() => _formError = 'Entre na sua conta para salvar a sessão.');
+        return;
+      }
       setState(() {
         _saving = true;
         _formError = null;
       });
       try {
-        await repository.saveSession(
+        // A fila guarda tudo no aparelho antes de tentar a rede (R13): sem internet, a
+        // sessão continua aqui e sobe sozinha depois.
+        await uploads.submit(QueuedSession(
           sessionId: sessionId,
+          ownerUid: ownerUid,
           name: normalizedName,
           startedAt: start,
           endedAt: effectiveEnd,
           location: normalizedLocation,
-          participantIds: _selectedFriends.toList(growable: false),
+          participantIds: participantIds,
           highlights: [
             for (var i = 0; i < _highlights.length; i++)
-              _highlights[i].toPendingHighlight(
+              QueuedHighlight.fromPending(_highlights[i].toPendingHighlight(
                 position: i + 1,
-                maxOffsetSeconds: effectiveEnd.difference(start).inSeconds + 60,
-              ),
+                maxOffsetSeconds: effectiveEnd.difference(start).inSeconds,
+              )),
           ],
-        );
+        ));
       } on SessionsFailure catch (e) {
         if (!mounted) return;
         setState(() {
           _saving = false;
-          if (e.code == 'name') {
-            _nameError = e.message;
-          } else if (e.code == 'location') {
-            _locationError = e.message;
-          } else {
-            _formError = e.message;
-          }
+          _showFieldError(e);
         });
         return;
       } catch (_) {
@@ -769,18 +815,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
 
     final rawDuration = effectiveEnd.difference(start);
-    final duration = rawDuration.inMinutes >= 1 ? rawDuration : const Duration(minutes: 45);
+    final duration = rawDuration.inMinutes >= 1 ? rawDuration : const Duration(minutes: 1);
+    final owner = ownerUid ?? 'voce';
     final selectedParticipants = <SessionParticipant>[
-      const SessionParticipant(uid: 'gustavo', name: 'Gustavo Alves', username: 'gustavo.alves'),
-      for (final friend in widget.friends)
-        if (_selectedFriends.contains(friend.id))
-          SessionParticipant(uid: friend.id, name: friend.firstName),
+      SessionParticipant(uid: owner, name: 'Você'),
+      for (final friend in _friends)
+        if (_selectedFriends.contains(friend.uid))
+          SessionParticipant(
+            uid: friend.uid,
+            name: friend.name,
+            username: friend.username,
+            photoUrl: friend.photoUrl,
+          ),
     ];
 
     final created = Session(
       id: sessionId,
       name: normalizedName,
-      ownerId: 'gustavo',
+      ownerId: owner,
       participantIds: [for (final p in selectedParticipants) p.uid],
       participants: selectedParticipants,
       participantCount: selectedParticipants.length,
@@ -789,20 +841,36 @@ class _CaptureScreenState extends State<CaptureScreen> {
       duration: duration,
       location: normalizedLocation == null ? null : SessionLocation(label: normalizedLocation),
       highlightCount: _highlights.length,
-      isClosed: _isClosedSession,
     );
 
+    // Os MP4 agora são da fila: ela apaga cada um depois do `uploaded` (R13).
+    _highlights.clear();
+    _sessionId = null;
     widget.onSessionCreated?.call(created);
     widget.onSaved?.call();
     if (mounted) {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop(created);
       } else {
-        _highlights.clear();
-        _sessionId = null;
         _startCamera();
         setState(() => _step = CaptureStep.preparing);
       }
+    }
+  }
+
+  /// Põe o erro do `saveSession` embaixo do campo que o servidor apontou ([SessionsFailure.code]).
+  void _showFieldError(SessionsFailure e) {
+    switch (e.code) {
+      case 'name':
+        _nameError = e.message;
+      case 'location':
+        _locationError = e.message;
+      case 'startedAt' || 'endedAt':
+        _timeError = e.message;
+      case 'participantIds':
+        _participantsError = e.message;
+      default:
+        _formError = e.message;
     }
   }
 
@@ -961,6 +1029,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ),
                 ),
               const Spacer(),
+              _recordWith(),
+              const SizedBox(height: ClippoSpace.spaceL),
               Padding(
                 padding: const EdgeInsets.only(bottom: ClippoSpace.screenBottom),
                 child: Center(
@@ -972,6 +1042,83 @@ class _CaptureScreenState extends State<CaptureScreen> {
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  /// "Gravar com": "Gravar sozinho" (padrão) e um chip por amigo aceito; dá para marcar vários
+  /// (🟡 proposta em docs/produto.md › 4.5). Sem amigos, uma frase leva à tela Amigos.
+  Widget _recordWith() {
+    final alone = _selectedFriends.isEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+          child: Text('Gravar com', style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted)),
+        ),
+        const SizedBox(height: ClippoSpace.spaceXs),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+          child: Row(
+            children: [
+              ClippoCaptureChip(
+                label: 'Gravar sozinho',
+                selected: alone,
+                onPressed: alone ? null : () => setState(_selectedFriends.clear),
+              ),
+              for (final friend in _friends) ...[
+                const SizedBox(width: ClippoSpace.spaceS),
+                ClippoCaptureChip(
+                  label: 'Com ${friend.firstName}',
+                  selected: _selectedFriends.contains(friend.uid),
+                  onPressed: () => _toggleFriend(friend.uid),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (_friends.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceXs, ClippoSpace.gutter, 0),
+            child: Semantics(
+              button: widget.onOpenFriends != null,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onOpenFriends,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Para gravar com alguém, adicione seus amigos em ',
+                            style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                          ),
+                          TextSpan(
+                            text: 'Amigos',
+                            style: ClippoText.label.copyWith(
+                              color: ClippoBrand.onWine,
+                              decoration: TextDecoration.underline,
+                              decorationColor: ClippoBrand.onWine,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '.',
+                            style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1119,6 +1266,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   controller: _timeController,
                   readOnly: true,
                   onTap: _pickTimeRange,
+                  errorText: _timeError,
                 ),
               ),
             ],
@@ -1151,12 +1299,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 selected: true,
                 onPressed: null,
               ),
-              for (final friend in widget.friends)
-                if (_selectedFriends.contains(friend.id))
+              for (final friend in _friends)
+                if (_selectedFriends.contains(friend.uid))
                   ClippoCaptureChip(
                     label: friend.firstName,
                     selected: true,
-                    onPressed: () => _toggleFriend(friend.id),
+                    onPressed: () => _toggleFriend(friend.uid),
                   ),
               if (_unselectedFriends.isNotEmpty)
                 if (_addingFriend)
@@ -1165,7 +1313,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       label: '+ ${f.firstName}',
                       selected: false,
                       onPressed: () {
-                        _toggleFriend(f.id);
+                        _toggleFriend(f.uid);
                         setState(() => _addingFriend = false);
                       },
                     ),
@@ -1178,41 +1326,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ),
             ],
           ),
-          const SizedBox(height: ClippoSpace.section),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceS),
-            child: Text(
-              'Acesso à sessão',
-              style: ClippoText.label.copyWith(color: colors.textLabel),
-            ),
-          ),
-          const SizedBox(height: ClippoSpace.spaceS),
-          Wrap(
-            spacing: ClippoSpace.spaceS,
-            runSpacing: ClippoSpace.spaceS,
-            children: [
-              ClippoCaptureChip(
-                label: 'Sessão aberta',
-                selected: !_isClosedSession,
-                onPressed: () => setState(() => _isClosedSession = false),
+          if (_participantsError != null) ...[
+            const SizedBox(height: ClippoSpace.spaceXs),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceS),
+              child: Text(
+                _participantsError!,
+                style: ClippoText.label.copyWith(color: colors.error),
               ),
-              ClippoCaptureChip(
-                label: 'Sessão fechada',
-                selected: _isClosedSession,
-                onPressed: () => setState(() => _isClosedSession = true),
-              ),
-            ],
-          ),
-          const SizedBox(height: ClippoSpace.spaceXs),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceS),
-            child: Text(
-              _isClosedSession
-                  ? 'Quem usar o código ou link pede sua permissão para entrar.'
-                  : 'Qualquer pessoa entra direto pelo código ou link.',
-              style: ClippoText.label.copyWith(color: colors.textMuted),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/friends_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_radial_nav.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
 import 'package:clippo/features/friends/screens/friends_screen.dart';
@@ -42,13 +44,6 @@ class _AppShellState extends State<AppShell> {
   /// Abas que ficam vivas ao mesmo tempo, na ordem do IndexedStack.
   static const List<int> _tabs = [_home, _friends, _profile];
 
-  static const List<CaptureFriend> _defaultCaptureFriends = [
-    CaptureFriend(id: 'rafa', firstName: 'Rafa'),
-    CaptureFriend(id: 'bruno', firstName: 'Bruno'),
-    CaptureFriend(id: 'alice', firstName: 'Alice'),
-    CaptureFriend(id: 'caio', firstName: 'Caio'),
-  ];
-
   int _current = _home;
 
   late final List<Session> _localSessions = List<Session>.of(HomeScreen.defaultDemoSessions);
@@ -65,6 +60,13 @@ class _AppShellState extends State<AppShell> {
       fromCache: false,
     );
     yield* _localSessionsController.stream;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Reenvia o que ficou na fila da Gravação (sessões e vídeos sem internet, R13).
+    if (isUserSignedIn) uploadQueue.start().catchError((Object _) {});
   }
 
   @override
@@ -95,10 +97,14 @@ class _AppShellState extends State<AppShell> {
   void _openCapture() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => CaptureScreen(
-          friends: _defaultCaptureFriends,
+        builder: (captureContext) => CaptureScreen(
+          friends: isUserSignedIn ? acceptedFriends(friendsRepository.watchFriendships()) : null,
           preview: widget.capturePreview,
-          sessions: isUserSignedIn ? sessionsRepository : null,
+          uploads: isUserSignedIn ? uploadQueue : null,
+          onOpenFriends: () {
+            Navigator.of(captureContext).pop();
+            setState(() => _current = _friends);
+          },
           onSessionCreated: (created) {
             setState(() {
               _localSessions.insert(0, created);
