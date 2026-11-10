@@ -138,3 +138,25 @@ export function normalizeSessionLocation(raw: unknown): string | null {
   }
   return location;
 }
+
+/** O que o updateProfile recebe já conferido: só os campos que vieram. */
+export interface ProfileUpdate {
+  name?: string;
+  username?: string;
+}
+
+/**
+ * Pedido do updateProfile: nome e/ou @usuário, com as mesmas regras do cadastro.
+ * Campo ausente (undefined ou null) = não mudar. Pelo menos um precisa vir.
+ */
+export function normalizeProfileUpdate(raw: unknown): ProfileUpdate {
+  const data = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const has = (key: string) => data[key] !== undefined && data[key] !== null;
+  if (!has("name") && !has("username")) {
+    throw new ValidationError("name", "Informe o nome ou o nome de usuário.");
+  }
+  const update: ProfileUpdate = {};
+  if (has("name")) update.name = normalizeName(data.name);
+  if (has("username")) update.username = normalizeUsername(data.username);
+  return update;
+}

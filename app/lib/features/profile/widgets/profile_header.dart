@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 
-/// Cabeçalho do perfil: avatar grande com iniciais, opção de editar foto, nome e @usuário.
+/// Cabeçalho do perfil: avatar grande (foto ou iniciais), opção de editar foto, nome e @usuário.
 class ProfileHeader extends StatelessWidget {
   const ProfileHeader({
     super.key,
     required this.name,
     required this.username,
+    this.photoUrl,
     this.onEditPhoto,
   });
 
   final String name;
   final String username;
+
+  /// Foto da pessoa (ex.: a da conta Google). Sem foto, ficam as iniciais.
+  final String? photoUrl;
   final VoidCallback? onEditPhoto;
 
   String get _initials {
@@ -25,6 +29,8 @@ class ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
+    final url = photoUrl;
+    final photo = url == null || url.isEmpty ? null : url;
     return Container(
       padding: const EdgeInsets.all(ClippoSpace.spaceL),
       decoration: BoxDecoration(
@@ -45,12 +51,17 @@ class ProfileHeader extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: colors.controlSoft,
                     border: Border.all(color: colors.accent, width: ClippoSize.border),
+                    image: photo != null
+                        ? DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover)
+                        : null,
                   ),
-                  child: Text(
-                    _initials,
-                    textScaler: TextScaler.noScaling,
-                    style: ClippoText.titleS.copyWith(color: colors.accent),
-                  ),
+                  child: photo != null
+                      ? null
+                      : Text(
+                          _initials,
+                          textScaler: TextScaler.noScaling,
+                          style: ClippoText.titleS.copyWith(color: colors.accent),
+                        ),
                 ),
               ),
               const SizedBox(width: ClippoSpace.spaceL),
