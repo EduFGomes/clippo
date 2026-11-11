@@ -385,4 +385,46 @@ void main() {
       );
     });
   });
+
+  group('SessionsRepository.deleteSession — validado no app e no servidor', () {
+    test('chama a Function só com o id da sessão', () async {
+      String? calledName;
+      Map<String, dynamic>? sent;
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calledName = name;
+        sent = payload;
+        return {'sessionId': 'sessao-0001'};
+      });
+      await repo.deleteSession('sessao-0001');
+      expect(calledName, 'deleteSession');
+      expect(sent, {'sessionId': 'sessao-0001'});
+    });
+
+    test('id fora do padrão nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      await expectLater(
+        repo.deleteSession('../x'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'sessionId')),
+      );
+      expect(calls, 0);
+    });
+
+    test('a recusa do servidor chega pronta para a tela', () async {
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        throw FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'Só quem gravou a sessão pode excluir.',
+        );
+      });
+      await expectLater(
+        repo.deleteSession('sessao-0001'),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.message, 'message', 'Só quem gravou a sessão pode excluir.')),
+      );
+    });
+  });
 }

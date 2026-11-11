@@ -283,6 +283,7 @@ void main() {
 
     expect(find.bySemanticsLabel('Editar sessão'), findsNothing);
     expect(find.text('Juntar com outra sessão'), findsNothing);
+    expect(find.text('Excluir sessão'), findsNothing);
     expect(find.text('Sair da sessão'), findsOneWidget);
     // Não existe mais sessão aberta/fechada nem compartilhar a sessão por link/QR.
     expect(find.text('Sessão aberta'), findsNothing);
@@ -369,6 +370,76 @@ void main() {
     // Continua na edição, com a mensagem pronta do servidor.
     expect(find.text('EDITAR\nSESSÃO.'), findsOneWidget);
     expect(find.text('O local pode ter até 80 caracteres.'), findsOneWidget);
+  });
+
+  testWidgets('dono exclui a sessão só depois de confirmar; sai da fila antes do servidor',
+      (tester) async {
+    _phone(tester);
+    final order = <String>[];
+    final calls = <(String, Map<String, dynamic>)>[];
+    final repo = SessionsRepository(callFunction: (name, payload) async {
+      order.add(name);
+      calls.add((name, payload));
+      return {'sessionId': 'quinta'};
+    });
+
+    await tester.pumpWidget(_app(Navigator(
+      onGenerateRoute: (_) => MaterialPageRoute<void>(
+        builder: (_) => SessionScreen(
+          session: _session(),
+          currentUserId: 'alice',
+          repository: repo,
+          highlights: _noHighlights(),
+          discardUploads: (id) async => order.add('discard:$id'),
+        ),
+      ),
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    expect(find.text('Excluir sessão?'), findsOneWidget);
+    expect(find.textContaining('somem para todos os participantes. Não dá para desfazer.'), findsOneWidget);
+
+    await tester.tap(find.text('Manter sessão'));
+    await tester.pumpAndSettle();
+    expect(order, isEmpty);
+
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+
+    expect(order, ['discard:quinta', 'deleteSession']);
+    expect(calls.single.$2, {'sessionId': 'quinta'});
+    expect(find.text('Sessão excluída.'), findsOneWidget);
+  });
+
+  testWidgets('se o servidor recusar a exclusão, a tela continua e diz por quê', (tester) async {
+    _phone(tester);
+    final repo = SessionsRepository(callFunction: (_, _) async {
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: 'Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.',
+      );
+    });
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      currentUserId: 'alice',
+      repository: repo,
+      highlights: _noHighlights(),
+      discardUploads: (_) async {},
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.'), findsOneWidget);
+    expect(find.text('Excluir sessão'), findsOneWidget);
   });
 
   testWidgets('participante sai da sessão só depois de confirmar', (tester) async {

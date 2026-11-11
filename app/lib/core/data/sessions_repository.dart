@@ -331,6 +331,14 @@ class SessionsRepository {
     return data['title'] as String? ?? normalized;
   }
 
+  /// O dono exclui a sessão para todos, com os lances e os vídeos (Function deleteSession).
+  /// Excluir de novo, ou uma sessão que nunca chegou ao servidor, não é erro.
+  Future<void> deleteSession(String sessionId) async {
+    _check('sessionId', validateEntityId(sessionId));
+    await _call('deleteSession', {'sessionId': sessionId},
+        fallback: 'Não foi possível excluir a sessão. Tente de novo.');
+  }
+
   Future<void> leaveSession(String sessionId) async {
     _check('sessionId', validateEntityId(sessionId));
     await _call('leaveSession', {'sessionId': sessionId},

@@ -72,8 +72,8 @@ Use exatamente assim.
 | Como funciona — passos | Apoie o celular · Em qualquer canto da quadra, de frente para o jogo. / Jogue normalmente · O Clippo guarda sempre os últimos 30 segundos. / Fez um lance bom? \ o / · Levante os dois braços para a câmera e o lance fica salvo. |
 | Como funciona — ações | Criar conta · Já tenho conta |
 | Criar conta — título | CRIAR / CONTA. · Seus lances ficam guardados na sua conta. |
-| Criar conta — campos | E-mail (voce@email.com) · Senha (mínimo de 6 caracteres) · Confirme a senha (repita a senha) |
-| Medidor de senha | 6+ caracteres → Pronto |
+| Criar conta — campos | E-mail (voce@email.com) · Senha (mínimo de 8 caracteres) · Confirme a senha (repita a senha) |
+| Medidor de senha | 8+ caracteres → falta maiúscula → falta minúscula → falta número → Pronto |
 | Confirmação diferente | Não bate |
 | Criar conta — rodapé | Criar conta · Já tem conta? Entrar |
 | Entrar — título | DE VOLTA / AO JOGO. · Seus highlights estão te esperando. |
@@ -83,7 +83,7 @@ Use exatamente assim.
 | Entrar — link enviado | Se esse e-mail tem conta, o link para criar outra senha já foi. |
 | Entrar — rodapé | Entrar · Ainda não tem conta? Criar conta |
 | Completar perfil — título | QUASE / LÁ. · Escolha como seus amigos vão te achar. |
-| Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa) |
+| Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa, digitada; teclado numérico) |
 | Completar perfil — nota da data | Não aparece no seu perfil. Usamos só para estatísticas gerais. |
 | Completar perfil — ações | Continuar · Sair |
 | Olho da senha (acessibilidade) | Mostrar senha · Ocultar senha |
@@ -94,7 +94,7 @@ Use exatamente assim.
 | Campo | Texto |
 |---|---|
 | E-mail | Informe seu e-mail. · Esse e-mail não parece válido. |
-| Senha | Informe a senha. · Use uma senha com pelo menos 6 caracteres. · A senha pode ter até 128 caracteres. |
+| Senha | Informe a senha. · Use uma senha com pelo menos 8 caracteres. · Use letra maiúscula, minúscula e número na senha. · A senha pode ter até 128 caracteres. |
 | Confirmação | Repita a senha. · As senhas não são iguais. |
 | Nome | Informe seu nome. · O nome pode ter até 50 caracteres. |
 | Nome de usuário | Escolha um nome de usuário. · O nome de usuário precisa ter de 3 a 20 caracteres. · Use só letras sem acento, números, "_" e ".". · O ponto não pode ficar no começo, no fim ou repetido. |
@@ -135,6 +135,7 @@ Use exatamente assim.
 | Fim — participante você | Você |
 | Fim — adicionar | + adicionar |
 | Fim — ações | Salvar sessão · Descartar |
+| Sessão — excluir (dono) | Excluir sessão · Excluir sessão? · Pelada de quinta e 7 highlights somem para todos os participantes. Não dá para desfazer. · Excluir sessão · Manter sessão · Sessão excluída. |
 | Amigos — botão | Convidar |
 | Amigos — busca | Buscar amigo ou usuário |
 | Amigos — linha secundária | 12 sessões juntos · nenhuma sessão ainda |
@@ -366,7 +367,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
   - **Senha** (`ClippoTextField.password`): botão do olho à direita (`control`, transparente, ícone 20 em `textLabel`) alterna mostrar/ocultar, com a semântica "Mostrar senha" / "Ocultar senha".
   - **Confirmação** (`ClippoTextField.confirmation`, recebe o controller da senha): à direita, círculo `check` em `accent` com ✓ (traço 3) em `onPrimary` quando igual à senha; "Não bate" em `label` / `error` quando o tamanho já alcançou o da senha e é diferente.
   - **Mensagem de erro geral:** `label` / `error`, abaixo dos campos.
-- **`ClippoPasswordMeter(length)`** — 6 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles; acesos (`min(length, 6)`) em `accent`, os outros em `line`; legenda à direita em `label`: "6+ caracteres" (`textMuted`) ou "Pronto" (`accent`). Fica 10 dp abaixo do campo de senha, com recuo lateral de 6. Fora da semântica (o requisito já está no hint).
+- **`ClippoPasswordMeter(password)`** — 4 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles, um por exigência da senha nova (8+ caracteres, maiúscula, minúscula, número): aceso em `accent` quando cumprida, em `line` quando não. Legenda à direita em `label`, com o que falta ("8+ caracteres", "falta maiúscula"…) em `textMuted` ou "Pronto" em `accent`; a legenda é região viva para o leitor de tela. Fica 10 dp abaixo do campo de senha, com recuo lateral de 6.
 - **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.

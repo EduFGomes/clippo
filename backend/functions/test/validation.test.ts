@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PASSWORD_POLICY,
   ValidationError,
   normalizeBirthDate,
   normalizeEmail,
@@ -141,5 +142,25 @@ describe("normalizeProfileUpdate", () => {
     })();
     expect(error).toBeInstanceOf(ValidationError);
     expect((error as ValidationError).field).toBe("username");
+  });
+});
+
+// A senha nova não passa por Function: quem confere no servidor é a política do Firebase Auth.
+// Ela precisa dizer o mesmo que validateNewPassword do app (input_validation.dart).
+describe("PASSWORD_POLICY", () => {
+  it("exige 8 a 128 caracteres com maiúscula, minúscula e número, sem símbolo obrigatório", () => {
+    expect(PASSWORD_POLICY.enforcementState).toBe("ENFORCE");
+    expect(PASSWORD_POLICY.constraints).toEqual({
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumeric: true,
+      requireNonAlphanumeric: false,
+      minLength: 8,
+      maxLength: 128,
+    });
+  });
+
+  it("não obriga quem tem senha antiga (6+) a trocar ao entrar", () => {
+    expect(PASSWORD_POLICY.forceUpgradeOnSignin).toBe(false);
   });
 });

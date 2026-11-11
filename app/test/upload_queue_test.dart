@@ -129,6 +129,26 @@ void main() {
     q.dispose();
   });
 
+  test('excluir a sessão: sai da fila, apaga o MP4 do aparelho e não volta ao servidor', () async {
+    final q = queue();
+    backend.failSave = true;
+    expect(await q.submit(_session()), SubmitOutcome.queued);
+
+    await q.discard('sessao-123456');
+    expect(q.state.value.isPending('sessao-123456'), isFalse);
+    expect(store.saved, isEmpty);
+    expect(deleted, contains('/data/highlights/highlight_1.mp4'));
+
+    // A internet volta: nada a reenviar.
+    backend.failSave = false;
+    await q.retryNow();
+    expect(backend.savedSessions, ['sessao-123456']);
+    expect(backend.uploads, isEmpty);
+
+    await q.discard('sessao-123456'); // de novo: não é erro
+    q.dispose();
+  });
+
   test('falha no envio do vídeo mantém o lance e tenta de novo sozinha', () async {
     final q = queue(retryDelays: const [Duration(milliseconds: 1)]);
     backend.failUpload = true;

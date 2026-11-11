@@ -156,7 +156,7 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
 | R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
-| R12 | Só o dono edita nome/local da sessão, renomeia os lances e adiciona ou remove participantes depois da gravação. |
+| R12 | Só o dono edita nome/local da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
 | R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) guarda os highlights já salvos numa sessão padrão; **"Descartar"** (na confirmação) joga fora todos os highlights da sessão. 🟡 Falta definir a sessão padrão (nome, quem participa) e se sessão sem nenhum highlight pode ser salva. |
 
@@ -216,13 +216,13 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 |---|---|---|---|
 | **Boas-vindas** | Primeira impressão; ensinar o gesto antes de tudo | Nome Clippo, **\ o /** grande, "Levantou os braços, / o lance está salvo." | "Começar" → Como funciona · "Já tenho conta" → Entrar |
 | **Como funciona** | O gesto em 3 passos | "Três passos. / Zero toques." e os passos: Apoie o celular · Jogue normalmente · Fez um lance bom? \ o / | Voltar → Boas-vindas · "Criar conta" → Criar conta · "Já tenho conta" → Entrar |
-| **Criar conta** | Criar conta com e-mail e senha | E-mail, Senha (com medidor de 6 caracteres), Confirme a senha (✓ quando igual, "Não bate" quando diferente) | Voltar → Como funciona · "Criar conta" → Complete seu perfil · "Já tem conta? Entrar" → Entrar |
+| **Criar conta** | Criar conta com e-mail e senha | E-mail, Senha (com medidor das exigências: 8+ caracteres, maiúscula, minúscula, número), Confirme a senha (✓ quando igual, "Não bate" quando diferente) | Voltar → Como funciona · "Criar conta" → Complete seu perfil · "Já tem conta? Entrar" → Entrar |
 | **Entrar** | Entrar com e-mail e senha | E-mail, Senha, "Esqueci a senha" 🟡 *(fluxo mínimo: manda o e-mail padrão do Firebase para o endereço digitado)* | Voltar → Boas-vindas · "Entrar" → Início · "Ainda não tem conta? Criar conta" → Criar conta |
-| **Complete seu perfil** | Dados públicos e data de nascimento | Nome, Nome de usuário (@), Data de nascimento | "Continuar" → Início · "Sair" → Boas-vindas |
+| **Complete seu perfil** | Dados públicos e data de nascimento | Nome, Nome de usuário (@), Data de nascimento (digitada, dd/mm/aaaa: as barras entram sozinhas) | "Continuar" → Início · "Sair" → Boas-vindas |
 
 **Estados**
-- **Validação:** nada é enviado sem passar pelas regras do app e, de novo, do servidor (e-mail no formato `nome@dominio.tld`; senha de 6 a 128 caracteres; nome até 50; @usuário de 3 a 20 com `a–z 0–9 _ .`; data de nascimento entre 1900 e hoje). Os erros aparecem embaixo de cada campo e somem quando a pessoa corrige.
-- **Criar conta:** o botão "Criar conta" fica desabilitado até a senha ter 6+ caracteres e a confirmação ser igual. O e-mail é conferido ao tocar no botão.
+- **Validação:** nada é enviado sem passar pelas regras do app e, de novo, do servidor (e-mail no formato `nome@dominio.tld`; senha nova de 8 a 128 caracteres, com maiúscula, minúscula e número (quem tem conta antiga entra com a senha que tem); nome até 50; @usuário de 3 a 20 com `a–z 0–9 _ .`; data de nascimento entre 1900 e hoje). Os erros aparecem embaixo de cada campo e somem quando a pessoa corrige.
+- **Criar conta:** o botão "Criar conta" fica desabilitado até a senha cumprir as quatro exigências e a confirmação ser igual. O e-mail é conferido ao tocar no botão.
 - **Erros** (e-mail já usado, senha errada, sem internet…) aparecem em português abaixo dos campos, com o texto vindo do `AuthRepository`, e o campo do erro fica marcado. Em "E-mail ou senha incorretos.", os dois campos ficam marcados. No Complete seu perfil, o erro de um campo aparece logo abaixo dele.
 - **Carregando:** o botão primário mostra que está trabalhando e não aceita um segundo toque.
 
@@ -271,6 +271,8 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | Sem miniatura | Lances antigos, miniatura que ainda não subiu ou erro ao carregar: desenho de quadra no lugar da imagem. |
 
 **Navegação:** tocar num highlight → **Player**. 🟡 Menu do dono (editar nome/local, participantes) — a desenhar.
+
+**Excluir sessão** (só o dono, no fim da tela): pergunta antes ("Excluir sessão?", com quantos lances somem), tira a sessão da fila de envio do aparelho, apaga no servidor e volta à Início. 🟡 Sessão com outra juntada (D18) ainda não pode ser excluída.
 
 ### 4.4 Player
 

@@ -145,14 +145,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.password(
             label: 'Senha',
-            hint: 'mínimo de 6 caracteres',
+            hint: 'mínimo de 8 caracteres',
             controller: _password,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.newPassword],
             errorText: _fieldErrors['password'],
             onChanged: (_) => _clearError('password'),
           ),
-          ClippoPasswordMeter(length: _password.text.length),
+          ClippoPasswordMeter(password: _password.text),
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.confirmation(
             label: 'Confirme a senha',

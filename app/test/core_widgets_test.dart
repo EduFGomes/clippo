@@ -65,11 +65,17 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('medidor diz "Pronto" a partir de 6 caracteres', (tester) async {
-    await tester.pumpWidget(_app(const Scaffold(body: ClippoPasswordMeter(length: 5))));
-    expect(find.text('6+ caracteres'), findsOneWidget);
-    await tester.pumpWidget(_app(const Scaffold(body: ClippoPasswordMeter(length: 6))));
-    expect(find.text('Pronto'), findsOneWidget);
+  testWidgets('medidor diz o que falta até a senha ficar forte', (tester) async {
+    for (final (password, caption) in [
+      ('Abc123', '8+ caracteres'),
+      ('abcd1234', 'falta maiúscula'),
+      ('ABCD1234', 'falta minúscula'),
+      ('Abcdefgh', 'falta número'),
+      ('Abcd1234', 'Pronto'),
+    ]) {
+      await tester.pumpWidget(_app(Scaffold(body: ClippoPasswordMeter(password: password))));
+      expect(find.text(caption), findsOneWidget, reason: password);
+    }
   });
 
   testWidgets('olho alterna mostrar e ocultar senha', (tester) async {

@@ -164,7 +164,10 @@ class AuthRepository {
       case 'email-already-in-use':
         return const AuthFailure('Já existe uma conta com esse e-mail. Tente entrar.', field: 'email');
       case 'weak-password':
-        return const AuthFailure('Use uma senha com pelo menos 6 caracteres.', field: 'password');
+        return const AuthFailure('Use uma senha com pelo menos 8 caracteres.', field: 'password');
+      case 'password-does-not-meet-requirements':
+        // Política de senha do Firebase Auth (PASSWORD_POLICY no backend).
+        return const AuthFailure('Use letra maiúscula, minúscula e número na senha.', field: 'password');
       case 'invalid-credential':
       case 'wrong-password':
       case 'user-not-found':

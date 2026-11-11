@@ -72,8 +72,8 @@ void main() {
     await tester.pumpWidget(_app(const SignUpScreen()));
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), 'capovill@g');
-    await tester.enterText(fields.at(1), 'abc123');
-    await tester.enterText(fields.at(2), 'abc123');
+    await tester.enterText(fields.at(1), 'Abc12345');
+    await tester.enterText(fields.at(2), 'Abc12345');
     await tester.pump();
     await tester.tap(find.text('Criar conta').last);
     await tester.pump();
@@ -123,7 +123,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('"Criar conta" só habilita com senha de 6+ e confirmação igual', (tester) async {
+  testWidgets('data de nascimento é digitada: a máscara põe as barras e a data é conferida', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const CompleteProfileScreen()));
+    final birth = find.byType(TextField).at(2);
+
+    await tester.enterText(birth, '1203');
+    await tester.pump();
+    expect(find.text('12/03'), findsOneWidget);
+
+    // Colar com ou sem barras dá o mesmo; letras e números a mais ficam de fora.
+    await tester.enterText(birth, '31/02/2001x9');
+    await tester.pump();
+    expect(find.text('31/02/2001'), findsOneWidget);
+
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(find.text('Data de nascimento inválida.'), findsOneWidget);
+
+    await tester.enterText(birth, '28022001');
+    await tester.pump();
+    expect(find.text('28/02/2001'), findsOneWidget);
+    expect(find.text('Data de nascimento inválida.'), findsNothing); // some ao corrigir
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('"Criar conta" só habilita com senha forte (8+, maiúscula, minúscula, número) e confirmação igual',
+      (tester) async {
     await tester.pumpWidget(_app(const SignUpScreen()));
     bool enabled() => tester
         .widget<ClippoPrimaryButton>(find.widgetWithText(ClippoPrimaryButton, 'Criar conta'))
@@ -131,20 +157,26 @@ void main() {
 
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), 'voce@email.com');
-    await tester.enterText(fields.at(1), 'abc12');
-    await tester.enterText(fields.at(2), 'abc12');
+    await tester.enterText(fields.at(1), 'Abc1234');
+    await tester.enterText(fields.at(2), 'Abc1234');
     await tester.pump();
-    expect(enabled(), isFalse); // só 5 caracteres
-    expect(find.text('6+ caracteres'), findsOneWidget);
+    expect(enabled(), isFalse); // só 7 caracteres
+    expect(find.text('8+ caracteres'), findsOneWidget);
 
-    await tester.enterText(fields.at(1), 'abc123');
-    await tester.enterText(fields.at(2), 'abc124');
+    await tester.enterText(fields.at(1), 'abcd1234');
+    await tester.enterText(fields.at(2), 'abcd1234');
+    await tester.pump();
+    expect(enabled(), isFalse); // sem maiúscula
+    expect(find.text('falta maiúscula'), findsOneWidget);
+
+    await tester.enterText(fields.at(1), 'Abcd1234');
+    await tester.enterText(fields.at(2), 'Abcd1235');
     await tester.pump();
     expect(enabled(), isFalse); // não bate
     expect(find.text('Não bate'), findsOneWidget);
     expect(find.text('Pronto'), findsOneWidget);
 
-    await tester.enterText(fields.at(2), 'abc123');
+    await tester.enterText(fields.at(2), 'Abcd1234');
     await tester.pump();
     expect(enabled(), isTrue);
     expect(find.bySemanticsLabel('A senha confere'), findsOneWidget);

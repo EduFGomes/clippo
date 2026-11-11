@@ -98,6 +98,11 @@ alguém ficar grande demais, vira contador.
 - Depois de salva, só o dono muda nome, local e participantes: `updateSession` (R12). Quem entra
   também precisa ser amigo do dono; quem sai perde o acesso aos vídeos na hora.
 - Um participante pode sair sozinho: `leaveSession` (o dono não sai; 🟡 decisão de produto em aberto).
+- O dono exclui a sessão para todos: `deleteSession` apaga numa transação os highlights, os
+  pedidos de juntar que citam a sessão e a própria sessão, e desconta a sessão e os lances do
+  perfil de cada participante; depois apaga a pasta `sessions/{id}/` do Storage (falha ali só vai
+  para o log). O app tira a sessão da fila de envio antes de chamar. 🟡 Sessão juntada (D18) ainda
+  não é excluída.
 - O app **não** cria sessão "aberta" nem entra por código/link: o campo `isClosed` do app não existe no
   servidor. Se o grupo quiser convite por link, entra como pedido que o dono aprova.
 
@@ -234,6 +239,7 @@ leitura do Firestore; aceite, senão toda regra com `firestore.get()` recusa.
 | **Security Rules** | Porteiro: decide cada leitura (e bloqueia escritas do app). Testadas em `backend/tests/`. |
 | **Functions chamáveis** | Ações do usuário que precisam de validação no servidor (ex.: `completeProfile`). |
 | **Funções de bloqueio do Auth** | Rodam antes de a conta ser criada e podem recusá-la (ex.: `validateNewAccount`, que confere o e-mail). |
+| **Política de senha do Auth** | Recusa criar conta (ou trocar a senha) fora da regra: 8 a 128 caracteres, com maiúscula, minúscula e número (`PASSWORD_POLICY` em `functions/src/users/validation.ts`, a mesma regra do `validateNewPassword` do app). É o lado servidor da senha, que nunca passa por uma Function. Aplicada por `node scripts/apply-password-policy.mjs <projeto>` (em `backend/functions`, depois do build). O Emulator guarda a política mas não a aplica no cadastro. |
 | **Functions de gatilho** | Efeitos colaterais de eventos: contadores, notificações, limpeza. Idempotentes. |
 
 O catálogo de funções planejadas está no [`backend/README.md`](../backend/README.md#catálogo-de-funções-rascunho).

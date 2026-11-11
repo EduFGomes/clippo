@@ -579,6 +579,29 @@ class UploadQueue {
     return SubmitOutcome.saved;
   }
 
+  /// Tira [sessionId] da fila e apaga do aparelho os MP4 e as miniaturas dela: o dono está
+  /// excluindo a sessão. Espera a passada em andamento terminar (a fila é em série), então a
+  /// sessão não volta ao servidor por um envio que estava no meio. Seguro repetir.
+  Future<void> discard(String sessionId) async {
+    await _load();
+    final removed = await _serial(() async {
+      final found = _find(sessionId);
+      if (found == null) return null;
+      _sessions = [for (final s in _sessions) if (s.sessionId != sessionId) s];
+      _stopWatching(sessionId);
+      await _persist();
+      return found;
+    });
+    for (final h in removed?.highlights ?? const <QueuedHighlight>[]) {
+      try {
+        await _deleteLocalFile(h.localPath);
+      } catch (_) {
+        // Não conseguiu apagar: o arquivo fica na pasta do app, sem sessão que o envie.
+      }
+      await _forgetThumbnail(h);
+    }
+  }
+
   /// Tenta agora tudo o que está na fila (zera a espera).
   Future<void> retryNow() {
     _failures = 0;

@@ -12,6 +12,7 @@ import {
   normalizeParticipantIds,
   normalizePeriod,
   normalizeSessionName,
+  sessionStoragePrefix,
 } from "../src/sessions/validation";
 
 // Os mesmos casos de app/test/input_validation_test.dart: as duas regras precisam concordar.
@@ -226,6 +227,18 @@ describe("mensagens de erro", () => {
     for (const m of mensagens) {
       expect(m).not.toMatch(/undefined|null|Error|Firebase|string/i);
       expect(m.endsWith(".")).toBe(true);
+    }
+  });
+});
+
+describe("pasta da sessão no Storage (deleteSession)", () => {
+  it("termina em barra, para não levar junto outra sessão de id parecido", () => {
+    expect(sessionStoragePrefix("sessao-123456")).toBe("sessions/sessao-123456/");
+  });
+
+  it("recusa id fora do padrão do app (nada de apagar a pasta inteira)", () => {
+    for (const bad of ["", "abc", "../x", "a/b/cdef", "sessao 1234", 42, null]) {
+      expect(() => sessionStoragePrefix(bad as string)).toThrow(SessionValidationError);
     }
   });
 });

@@ -123,12 +123,12 @@ class _ComponentGalleryState extends State<ComponentGallery> {
                     const SizedBox(height: ClippoSpace.spaceM),
                     ClippoTextField.password(
                       label: 'Senha',
-                      hint: 'mínimo de 6 caracteres',
+                      hint: 'mínimo de 8 caracteres',
                       controller: _password,
                     ),
                     ListenableBuilder(
                       listenable: _password,
-                      builder: (context, _) => ClippoPasswordMeter(length: _password.text.length),
+                      builder: (context, _) => ClippoPasswordMeter(password: _password.text),
                     ),
                     const SizedBox(height: ClippoSpace.spaceM),
                     ClippoTextField.confirmation(

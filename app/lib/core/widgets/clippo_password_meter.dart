@@ -1,36 +1,44 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 
-/// Medidor abaixo do campo de senha: um traço aceso por caractere, até 6.
+/// Medidor abaixo do campo de senha nova: um traço por exigência (8+ caracteres, maiúscula,
+/// minúscula e número), aceso quando ela foi cumprida. A legenda diz o que ainda falta.
 class ClippoPasswordMeter extends StatelessWidget {
-  const ClippoPasswordMeter({super.key, required this.length});
+  const ClippoPasswordMeter({super.key, required this.password});
 
-  /// Quantidade de caracteres digitados na senha.
-  final int length;
+  /// A senha digitada até agora.
+  final String password;
 
-  /// Mínimo exigido pelo Firebase Auth.
-  static const int minLength = 6;
+  /// O que falta, na ordem em que a pessoa lê, ou "Pronto".
+  static String caption(String password) {
+    final c = passwordChecks(password);
+    if (!c.length) return '$passwordMin+ caracteres';
+    if (!c.upper) return 'falta maiúscula';
+    if (!c.lower) return 'falta minúscula';
+    if (!c.number) return 'falta número';
+    return 'Pronto';
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    final lit = math.min(length, minLength);
-    final ready = length >= minLength;
+    final c = passwordChecks(password);
+    final met = [c.length, c.upper, c.lower, c.number];
+    final text = caption(password);
+    final ready = !met.contains(false);
     final duration = ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.focus;
 
-    // O requisito já está no hint do campo; o medidor é só visual.
-    return ExcludeSemantics(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(ClippoSpace.spaceS, ClippoSpace.spaceM, ClippoSpace.spaceS, 0),
-        child: Row(
-          children: [
-            Expanded(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(ClippoSpace.spaceS, ClippoSpace.spaceM, ClippoSpace.spaceS, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: ExcludeSemantics(
               child: Row(
                 children: [
-                  for (var i = 0; i < minLength; i++) ...[
+                  for (var i = 0; i < met.length; i++) ...[
                     if (i > 0) const SizedBox(width: ClippoSpace.spaceXs),
                     Expanded(
                       child: AnimatedContainer(
@@ -38,7 +46,7 @@ class ClippoPasswordMeter extends StatelessWidget {
                         curve: ClippoMotion.standard,
                         height: ClippoSize.meter,
                         decoration: BoxDecoration(
-                          color: i < lit ? colors.accent : colors.line,
+                          color: met[i] ? colors.accent : colors.line,
                           borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
                         ),
                       ),
@@ -47,13 +55,17 @@ class ClippoPasswordMeter extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: ClippoSpace.spaceM),
-            Text(
-              ready ? 'Pronto' : '6+ caracteres',
+          ),
+          const SizedBox(width: ClippoSpace.spaceM),
+          // A legenda muda enquanto a pessoa digita: o leitor de tela avisa o que falta.
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              text,
               style: ClippoText.label.copyWith(color: ready ? colors.accent : colors.textMuted),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -51,6 +51,14 @@ export function normalizeId(raw: unknown, field: SessionField): string {
   return raw;
 }
 
+/**
+ * A pasta da sessão no Storage (vídeos e miniaturas, D17). Com a barra no fim: sem ela, apagar
+ * "sessions/abc123" levaria junto "sessions/abc1234…".
+ */
+export function sessionStoragePrefix(sessionId: string): string {
+  return `sessions/${normalizeId(sessionId, "sessionId")}/`;
+}
+
 /** Tira espaços das pontas e junta espaços repetidos. */
 export function normalizeSessionName(raw: unknown): string {
   if (typeof raw !== "string") {

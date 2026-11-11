@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/format/date_input_formatter.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
@@ -26,8 +27,9 @@ class CompleteProfileScreen extends StatefulWidget {
 class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   final _name = TextEditingController();
   final _username = TextEditingController();
+  /// Digitada como "dd/mm/aaaa" (a máscara põe as barras). O seletor de calendário saiu em
+  /// 10/11/2026: para data de nascimento, caçar o ano no calendário era pior que digitar.
   final _birthDateText = TextEditingController();
-  DateTime? _birthDate;
   bool _loading = false;
 
   /// Erro de cada campo (validação do app ou resposta da Function).
@@ -44,29 +46,6 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     super.dispose();
   }
 
-  static String _iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static String _display(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  Future<void> _pickBirthDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _birthDate ?? DateTime(now.year - 20),
-      firstDate: DateTime(1900),
-      lastDate: now,
-    );
-    if (picked != null) {
-      setState(() {
-        _birthDate = picked;
-        _birthDateText.text = _display(picked);
-        _fieldErrors.remove('birthDate');
-      });
-    }
-  }
-
   void _clearError(String field) {
     if (_fieldErrors.containsKey(field) || _error != null) {
       setState(() {
@@ -80,7 +59,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     final errors = <String, String?>{
       'name': validateName(_name.text),
       'username': validateUsername(_username.text),
-      'birthDate': validateBirthDate(_birthDate),
+      'birthDate': validateBirthDateText(_birthDateText.text),
     }..removeWhere((_, error) => error == null);
     setState(() {
       _fieldErrors
@@ -95,7 +74,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       await authRepository.completeProfile(
         name: _name.text,
         username: _username.text,
-        birthDate: _iso(_birthDate!),
+        birthDate: birthDateIso(parseBirthDateText(_birthDateText.text)!),
       );
       widget.onCompleted?.call();
     } on AuthFailure catch (e) {
@@ -162,9 +141,15 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             label: 'Data de nascimento',
             hint: 'dd/mm/aaaa',
             controller: _birthDateText,
-            readOnly: true,
-            onTap: _pickBirthDate,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.birthday],
+            inputFormatters: const [DateInputFormatter()],
             errorText: _fieldErrors['birthDate'],
+            onChanged: (_) => _clearError('birthDate'),
+            onSubmitted: (_) {
+              if (!_loading) _submit();
+            },
           ),
           const SizedBox(height: ClippoSpace.spaceS),
           Padding(

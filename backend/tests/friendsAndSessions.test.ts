@@ -284,3 +284,56 @@ describe("juntar sessões: tênis com um celular de cada lado (D18)", () => {
     expect(r.error?.message).toMatch(/^Só dá para juntar sessões gravadas no mesmo jogo/);
   });
 });
+
+describe("excluir a sessão (R12)", () => {
+  const ID = "e2e-excluir-01";
+  let antes: { sessoes: number; lances: number };
+
+  beforeAll(async () => {
+    const perfil = await ler(`users/${beto.uid}`, beto);
+    antes = { sessoes: Number(stat(perfil, "sessions") ?? 0), lances: Number(stat(perfil, "highlights") ?? 0) };
+    const r = await chamar("saveSession", ana, {
+      sessionId: ID,
+      name: "Racha de domingo",
+      startedAt: "2026-11-04T10:00:00.000Z",
+      endedAt: "2026-11-04T11:00:00.000Z",
+      participantIds: [beto.uid],
+      highlights: [
+        { highlightId: "e2e-ex-lance1", offsetSeconds: 60, durationSeconds: 30 },
+        { highlightId: "e2e-ex-lance2", offsetSeconds: 600, durationSeconds: 30 },
+      ],
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it("participante não exclui", async () => {
+    const r = await chamar("deleteSession", beto, { sessionId: ID });
+    expect(r.error?.message).toBe("Só quem gravou a sessão pode excluir.");
+    expect(await ler(`sessions/${ID}`, beto)).not.toBeNull();
+  });
+
+  it("sem login, não exclui; id torto é recusado antes do banco", async () => {
+    expect((await chamar("deleteSession", null, { sessionId: ID })).error?.message)
+      .toBe("Entre na sua conta para excluir a sessão.");
+    expect((await chamar("deleteSession", ana, { sessionId: "../x" })).error?.status).toBe("INVALID_ARGUMENT");
+  });
+
+  it("o dono exclui: some para todos, com os lances, e sai do perfil de quem jogou", async () => {
+    const r = await chamar("deleteSession", ana, { sessionId: ID });
+    expect(r.status).toBe(200);
+    expect(await lerComoAdmin(`sessions/${ID}`)).toBeNull();
+    expect(await lerComoAdmin(`sessions/${ID}/highlights/e2e-ex-lance1`)).toBeNull();
+    const perfil = await ler(`users/${beto.uid}`, beto);
+    expect(Number(stat(perfil, "sessions"))).toBe(antes.sessoes);
+    expect(Number(stat(perfil, "highlights"))).toBe(antes.lances);
+  });
+
+  it("excluir de novo não é erro", async () => {
+    expect((await chamar("deleteSession", ana, { sessionId: ID })).status).toBe(200);
+  });
+
+  it("sessão com outra juntada ainda não exclui (D18)", async () => {
+    const r = await chamar("deleteSession", ana, { sessionId: "e2e-tenis-ana" });
+    expect(r.error?.message).toBe("Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.");
+  });
+});

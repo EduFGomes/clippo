@@ -55,6 +55,7 @@ class SessionScreen extends StatefulWidget {
     this.mySessions,
     this.mergeRequests,
     this.uploads,
+    this.discardUploads,
   });
 
   /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
@@ -87,6 +88,10 @@ class SessionScreen extends StatefulWidget {
   /// Lances ainda no celular de quem gravou, para assistir antes de subir (R13). No app,
   /// `uploadQueue` (com alguém logado).
   final ValueListenable<UploadQueueState>? uploads;
+
+  /// Tira a sessão da fila de envio e apaga do aparelho os vídeos que ainda não subiram, antes
+  /// de excluir no servidor. No app, `uploadQueue.discard` (com alguém logado).
+  final Future<void> Function(String sessionId)? discardUploads;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
@@ -173,6 +178,7 @@ class _SessionScreenState extends State<SessionScreen> {
   List<SessionMergeRequest> _mergeRequests = const [];
   final Set<String> _busyRequests = <String>{};
   bool _leaving = false;
+  bool _deleting = false;
 
   final List<StreamSubscription<Object?>> _subscriptions = [];
 
@@ -434,6 +440,37 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  /// O dono exclui a sessão para todos (deleteSession). Primeiro sai da fila de envio deste
+  /// aparelho (os lances que ainda não subiram não voltam a subir), depois o servidor apaga.
+  Future<void> _delete() async {
+    final name = _session.name;
+    final count = _session.highlightCount;
+    final confirmed = await confirmHomeAction(
+      context,
+      title: 'Excluir sessão?',
+      message: count == 0
+          ? '$name some para todos os participantes. Não dá para desfazer.'
+          : '$name e ${clippoHighlightCount(count)} somem para todos os participantes. '
+              'Não dá para desfazer.',
+      confirmLabel: 'Excluir sessão',
+      cancelLabel: 'Manter sessão',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      final discard = widget.discardUploads ?? (isUserSignedIn ? uploadQueue.discard : null);
+      await discard?.call(_session.id);
+      await _repository.deleteSession(_session.id);
+      if (!mounted) return;
+      showHomeMessage(context, 'Sessão excluída.');
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) showHomeMessage(context, SessionsFailure.from(e).message);
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   Future<void> _leave() async {
     final confirmed = await confirmHomeAction(
       context,
@@ -537,9 +574,14 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ),
           const SizedBox(height: ClippoSpace.section),
-          if (_isOwner)
-            ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge)
-          else if (participantsCanLeaveSession)
+          if (_isOwner) ...[
+            ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge),
+            const SizedBox(height: ClippoSpace.spaceS),
+            ClippoTextButton(
+              label: _deleting ? 'Excluindo…' : 'Excluir sessão',
+              onPressed: _deleting ? null : _delete,
+            ),
+          ] else if (participantsCanLeaveSession)
             ClippoTextButton(label: 'Sair da sessão', onPressed: _leaving ? null : _leave),
         ],
       ),

@@ -37,11 +37,28 @@ void main() {
   });
 
   group('senha', () {
-    test('nova senha: 6 a 128 caracteres', () {
-      expect(validateNewPassword(''), isNotNull);
-      expect(validateNewPassword('abc12'), isNotNull);
-      expect(validateNewPassword('abc123'), isNull);
-      expect(validateNewPassword('a' * 129), isNotNull);
+    test('nova senha: 8 a 128 caracteres, com maiúscula, minúscula e número', () {
+      expect(validateNewPassword(''), 'Informe a senha.');
+      expect(validateNewPassword('Abc1234'), 'Use uma senha com pelo menos 8 caracteres.');
+      expect(validateNewPassword('Abc12345'), isNull);
+      expect(validateNewPassword('Ab1${'a' * 125}'), isNull); // 128
+      expect(validateNewPassword('Ab1${'a' * 126}'), 'A senha pode ter até 128 caracteres.');
+      for (final weak in ['abcd1234', 'ABCD1234', 'Abcdefgh', '12345678']) {
+        expect(validateNewPassword(weak), 'Use letra maiúscula, minúscula e número na senha.', reason: weak);
+      }
+    });
+
+    test('senha de quem entra só precisa estar preenchida (contas antigas têm 6+)', () {
+      expect(validateExistingPassword(''), 'Informe a senha.');
+      expect(validateExistingPassword('abc123'), isNull);
+    });
+
+    test('o medidor sabe o que falta', () {
+      final c = passwordChecks('abcdefg1');
+      expect(c.length, isTrue);
+      expect(c.upper, isFalse);
+      expect(c.lower, isTrue);
+      expect(c.number, isTrue);
     });
 
     test('confirmação precisa ser igual', () {
@@ -86,6 +103,18 @@ void main() {
       expect(validateBirthDate(null, today: today), isNotNull);
       expect(validateBirthDate(DateTime(2027, 1, 1), today: today), isNotNull);
       expect(validateBirthDate(DateTime(1899, 12, 31), today: today), isNotNull);
+    });
+
+    test('digitada: "dd/mm/aaaa" vira a data e vai como AAAA-MM-DD', () {
+      expect(validateBirthDateText('28/02/2001', today: today), isNull);
+      expect(parseBirthDateText(' 28/02/2001 '), DateTime(2001, 2, 28));
+      expect(birthDateIso(parseBirthDateText('05/09/1990')!), '1990-09-05');
+    });
+    test('digitada: vazia pede a data; incompleta, inexistente ou futura é inválida', () {
+      expect(validateBirthDateText('  ', today: today), 'Informe a data de nascimento.');
+      for (final bad in ['12/03', '12/03/20', '31/02/2001', '00/01/2001', '12/13/2001', '01/01/2027', '31/12/1899']) {
+        expect(validateBirthDateText(bad, today: today), 'Data de nascimento inválida.', reason: bad);
+      }
     });
   });
 
