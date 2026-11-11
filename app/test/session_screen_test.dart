@@ -788,6 +788,40 @@ void main() {
       expect(find.text('Lance renomeado.'), findsOneWidget);
     });
 
+    testWidgets('o dono apaga o lance só depois de confirmar; sai da fila antes do servidor', (tester) async {
+      _phone(tester);
+      final order = <String>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        order.add('$name:${payload['highlightId']}');
+        return {'highlightId': payload['highlightId']};
+      });
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'alice',
+        repository: repo,
+        highlights: Stream.value(_fromServer(onServer())),
+        discardHighlightUpload: (session, highlight) async => order.add('discard:$session/$highlight'),
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('clippo-highlight-rename')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Apagar lance'));
+      await tester.tap(find.text('Apagar lance'));
+      await tester.pumpAndSettle();
+      expect(find.text('Apagar lance?'), findsOneWidget);
+      await tester.tap(find.text('Manter lance'));
+      await tester.pumpAndSettle();
+      expect(order, isEmpty);
+
+      await tester.tap(find.text('Apagar lance'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Apagar lance')));
+      await tester.pumpAndSettle();
+      expect(order, ['discard:quinta/lance-0001', 'deleteHighlight:lance-0001']);
+      expect(find.text('Lance apagado.'), findsOneWidget);
+    });
+
     testWidgets('quem só participa não vê o lápis', (tester) async {
       _phone(tester);
       await tester.pumpWidget(_app(SessionScreen(

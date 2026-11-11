@@ -602,6 +602,43 @@ class UploadQueue {
     }
   }
 
+  /// Tira da fila todas as sessões de [ownerUid] e apaga os vídeos delas: a conta está sendo
+  /// excluída.
+  Future<void> discardAllOf(String ownerUid) async {
+    await _load();
+    for (final id in [for (final s in _sessions) if (s.ownerUid == ownerUid) s.sessionId]) {
+      await discard(id);
+    }
+  }
+
+  /// Tira um lance da fila (o dono apagou) e apaga o MP4 e a miniatura dele do aparelho. A
+  /// sessão continua na fila com os outros lances; sem nenhum, e já salva, ela sai.
+  Future<void> discardHighlight(String sessionId, String highlightId) async {
+    await _load();
+    final removed = await _serial(() async {
+      final found = _find(sessionId);
+      if (found == null) return null;
+      final match = [for (final h in found.highlights) if (h.highlightId == highlightId) h];
+      if (match.isEmpty) return null;
+      final rest = [for (final h in found.highlights) if (h.highlightId != highlightId) h];
+      if (rest.isEmpty && found.saved) {
+        _sessions = [for (final s in _sessions) if (s.sessionId != sessionId) s];
+        _stopWatching(sessionId);
+        await _persist();
+      } else {
+        await _replace(found.copyWith(highlights: rest));
+      }
+      return match.single;
+    });
+    if (removed == null) return;
+    try {
+      await _deleteLocalFile(removed.localPath);
+    } catch (_) {
+      // Não conseguiu apagar: o arquivo fica na pasta do app, sem lance que o envie.
+    }
+    await _forgetThumbnail(removed);
+  }
+
   /// Tenta agora tudo o que está na fila (zera a espera).
   Future<void> retryNow() {
     _failures = 0;

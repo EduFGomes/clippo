@@ -252,7 +252,7 @@ String? validateHighlightRename(String? raw) {
 
 /// Ids da sessão e do lance ao renomear (espelha `normalizeHighlightRef` no servidor).
 String? validateHighlightRef(String raw) =>
-    _entityIdPattern.hasMatch(raw) ? null : 'Não foi possível renomear o lance. Tente de novo.';
+    _entityIdPattern.hasMatch(raw) ? null : 'Esse lance não foi encontrado. Tente de novo.';
 
 /// Momento do lance dentro da sessão, com 1 min de folga para o arredondamento do corte.
 String? validateHighlightOffset(int offsetSeconds, {required int sessionDurationSeconds}) {

@@ -7,7 +7,6 @@ import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/features/profile/screens/profile_screen.dart';
-import 'package:clippo/features/profile/widgets/profile_settings_tile.dart';
 
 Widget _app(Widget home, {Brightness brightness = Brightness.light, double textScale = 1}) {
   return MaterialApp(
@@ -95,7 +94,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('SEU\nPERFIL.'), findsOneWidget);
-    expect(find.text('Editar foto'), findsOneWidget);
+    // Trocar a foto e notificações ainda não existem: nada de botão que não faz nada.
+    expect(find.text('Editar foto'), findsNothing);
     expect(find.text('Laura Suzuki'), findsNWidgets(2)); // cabeçalho + linha Nome
     expect(find.text('@lasuzukii'), findsNWidgets(2));
     expect(find.text('sessões'), findsOneWidget);
@@ -104,7 +104,7 @@ void main() {
     expect(find.text('5'), findsOneWidget);
     expect(find.text('21'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
-    expect(find.text('Notificações'), findsOneWidget);
+    expect(find.text('Notificações'), findsNothing);
 
     // Em tempo real: o contador muda sem reabrir a tela.
     backend.emit(const UserProfile(
@@ -120,9 +120,47 @@ void main() {
     expect(find.text('5'), findsNothing);
     expect(find.text('6'), findsOneWidget);
 
+    // Sair pede confirmação: "Ficar" não sai; "Sair" sai.
+    await tester.ensureVisible(find.text('Sair da conta'));
     await tester.tap(find.text('Sair da conta'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Sair da conta?'), findsOneWidget);
+    await tester.tap(find.text('Ficar'));
+    await tester.pumpAndSettle();
+    expect(signedOut, isFalse);
+    await tester.tap(find.text('Sair da conta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sair'));
+    await tester.pumpAndSettle();
     expect(signedOut, isTrue);
+  });
+
+  testWidgets('excluir a conta só depois de confirmar; recusa do servidor aparece na tela', (tester) async {
+    await _phone(tester);
+    var calls = 0;
+    await tester.pumpWidget(_app(ProfileScreen(
+      profile: Stream<UserProfile?>.value(_laura),
+      deleteAccount: () async {
+        calls++;
+        throw const AuthFailure('Sem conexão. Confira a internet e tente de novo.');
+      },
+    )));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('Excluir conta'));
+    await tester.tap(find.text('Excluir conta'));
+    await tester.pumpAndSettle();
+    expect(find.text('Excluir sua conta?'), findsOneWidget);
+    await tester.tap(find.text('Manter conta'));
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+
+    await tester.tap(find.text('Excluir conta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir conta')));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.text('Sem conexão. Confira a internet e tente de novo.'), findsOneWidget);
   });
 
   testWidgets('erro ao carregar mostra a mensagem e o botão de tentar de novo', (tester) async {
@@ -148,19 +186,6 @@ void main() {
     await tester.pumpWidget(_app(ProfileScreen(profile: Stream<UserProfile?>.value(null))));
     await tester.pump();
     expect(find.text('Não achamos seu perfil.'), findsOneWidget);
-  });
-
-  testWidgets('alterna notificações ao tocar na linha', (tester) async {
-    await _phone(tester);
-    await tester.pumpWidget(_app(const ProfileScreen()));
-    await tester.pump();
-
-    bool isEnabled() => tester.widget<ProfileToggleTile>(find.byType(ProfileToggleTile)).value;
-    expect(isEnabled(), isTrue);
-
-    await tester.tap(find.text('Notificações'));
-    await tester.pumpAndSettle();
-    expect(isEnabled(), isFalse);
   });
 
   testWidgets('editar o nome valida antes de enviar e envia só o nome', (tester) async {

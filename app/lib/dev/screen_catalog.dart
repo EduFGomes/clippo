@@ -36,7 +36,7 @@ class ScreenCatalog extends StatelessWidget {
     _Entry('Início', 'home', (_) => const HomeScreen()),
     _Entry('Sessão', 'home', (_) => const SessionScreen()),
     _Entry('Player', 'home', (_) => const PlayerScreen()),
-    _Entry('Renomear lance', 'home', (_) => const RenameHighlightScreen()),
+    _Entry('Editar lance', 'home', (_) => const RenameHighlightScreen()),
     _Entry('Gravar', 'capture', (_) => CaptureScreen(friends: Stream.value(_demoFriends))),
     _Entry('Amigos', 'friends', (_) => const FriendsScreen()),
     _Entry('Perfil', 'profile', (_) => const ProfileScreen()),

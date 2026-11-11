@@ -194,6 +194,15 @@ class ClippoCamera {
   Future<void> signalSaved({bool sound = true, bool flash = true, bool vibration = false}) =>
       _call<void>('signalSaved', {'sound': sound, 'flash': flash, 'vibrate': vibration});
 
+  /// Abre a tela do Clippo nas Configurações do Android, onde a pessoa libera a câmera ou o
+  /// microfone depois de negar de vez (o Android para de perguntar).
+  Future<void> openAppSettings() => _call<void>('openAppSettings');
+
+  /// Avisa quem joga longe que o lance NÃO foi salvo: um bip duplo de recusa ([sound]) e uma
+  /// vibração mais longa ([vibration]), sem flash. Usa as mesmas chaves do [signalSaved].
+  Future<void> signalFailed({bool sound = true, bool vibration = false}) =>
+      _call<void>('signalFailed', {'sound': sound, 'vibrate': vibration});
+
   /// SÓ PARA A FASE DE TESTES: copia o MP4 de um [SavedClip] para a galeria (álbum Clippo), para
   /// o time assistir no celular. O produto guarda o highlight só na pasta do app.
   Future<void> copyToGallery(SavedClip clip) => _call<String>('copyToGallery', {'path': clip.path});

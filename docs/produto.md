@@ -127,9 +127,10 @@ Usuário ──< Participante >── Sessão ──< Highlight
 - A lista de amigos alimenta o seletor "gravar com" da tela de gravação.
 
 ### 2.6 Perfil
-- Foto (editável), nome, estatísticas rápidas: nº de sessões, nº de highlights, nº de amigos.
-- Editar nome, nome de usuário e notificações.
-- Sair da conta.
+- Foto, nome, estatísticas rápidas: nº de sessões, nº de highlights, nº de amigos.
+- Editar nome e nome de usuário. 🟡 Trocar a foto e notificações ainda não existem e não aparecem na tela.
+- Sair da conta (com confirmação).
+- Excluir a conta (LGPD): some o perfil, as amizades e as sessões que a pessoa gravou; das sessões dos outros, ela sai.
 
 ---
 
@@ -233,7 +234,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 **Objetivo:** ver as sessões de que participei e entrar numa delas.
 
 **Conteúdo**
-- Topo: saudação curta ("Boa noite, Gustavo") e o título **"Suas sessões"**; à direita, o avatar do usuário.
+- Topo: saudação curta ("Boa noite, Gustavo") e o título **"Suas sessões"**; à direita, o avatar do usuário. Ao lado do título, o atalho **"Gravar"** abre a Gravação com um toque (a roda continua; 🟡 a forma da navegação segue em aberto).
 - Lista vertical de **cards de sessão em sanfona**, mais recente primeiro:
   - **Fechado:** nome · data · nº de highlights · botão de abrir.
   - **Aberto:** local, avatares dos participantes (até 5 + "+N"), duração, nº de participantes e o botão **"Ver highlights"**.
@@ -259,7 +260,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 - **Cabeçalho de impacto** com "‹ Sessões" para voltar, nome da sessão, "data · duração", local, avatares e "10 participantes".
 - Seção **"Highlights"** com "7 lances salvos" à direita.
 - Lista de **highlights** em ordem cronológica: miniatura com play (um quadro do meio do próprio vídeo), título do lance ("Lance 3" ou o nome que o dono deu) e "00:12:40 · 30s".
-- Para o **dono**, um lápis ao lado do título abre **"Renomear lance"** (campo "Nome do lance", botão "Salvar nome"). Lances que ainda não chegaram ao servidor não dão para renomear.
+- Para o **dono**, um lápis ao lado do título abre **"Editar lance"** (campo "Nome do lance", botão "Salvar nome" e **"Apagar lance"**, que pergunta antes e apaga para todos, com o vídeo). Lances que ainda não chegaram ao servidor não dão para renomear.
 - **Sem** navegação de nível superior.
 
 **Estados** 🟡
@@ -291,7 +292,9 @@ A gravação ignora o tema claro/escuro.
 - Topo: voltar e a dica **"Apoie o celular e enquadre o campo"**.
 - Embaixo, rótulo **"Gravar com"** e uma fileira rolável de chips: **"Gravar sozinho"** (padrão) e **"Com Rafa"**, **"Com Bruno"**… (amigos). 🟡 **Proposta, revisar em grupo:** os chips deixam marcar **vários amigos** (R10); "Gravar sozinho" vem marcado e desmarca quando alguém é escolhido. Na "Confirme a sessão" dá para acrescentar quem faltou, e depois de salva só o dono muda os participantes (R12). Os participantes não precisam aceitar: a sessão aparece na Início deles, porque já são amigos (R15).
 - **Botão de gravar** grande e a legenda "Iniciar detecção de gesto \ o /".
-- Sem permissão de câmera 🟡: explicar por que é necessária + botão para permitir.
+- Sem permissão de câmera: explicar por que é necessária + botão para permitir; se o Android não perguntar mais, **"Abrir configurações"** leva à tela do Clippo nas Configurações e, na volta, a câmera é conferida de novo.
+- Sem microfone: o aviso **"Sem microfone · toque para permitir"** pede o microfone ou, negado de vez, abre as Configurações.
+- Voltou da "Confirme a sessão" com lances salvos: o botão vira **"Continuar a sessão · N highlights"** e a gravação segue na mesma sessão (mesmo início; os lances novos no momento certo). Encerrar sem querer não perde nada.
 
 **Estado B — Gravando (standby)**
 - Tela **preta pura** (nunca cinza escuro: em telas OLED o pixel desliga e economiza bateria), **nenhum** elemento além de um **pequeno ponto pulsando** no centro (ciclo lento de 2,6 s). A barra de status também fica preta.
@@ -300,13 +303,14 @@ A gravação ignora o tema claro/escuro.
 - Sair da Gravação com highlights ainda não salvos (voltou da "Confirme a sessão" para a câmera) pergunta antes: **"Voltar e salvar"** ou **"Sair e descartar"**.
 
 **Estado C — Highlight salvo**
-- Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
+- Gesto reconhecido: sobe **"Salvando o lance…"** · "gesto \ o / detectado"; quando o MP4 fica pronto, vira ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
+- Se o corte falhar: o aviso mostra o erro e "Faça \ o / de novo para tentar outra vez.", e quem está longe ouve um **bip duplo de falha** (e vibração mais longa, se ligada), sem flash.
 - Some sozinho após **~2,6 s** e volta ao Estado B. Não exige toque.
 - Aviso de highlight salvo para quem está longe do celular: **bip**, **flash curto da lanterna** e **vibração leve**, cada um com liga/desliga (padrão: bip e flash ligados; vibração desligada para não derrubar o celular apoiado). 🟡 O bip é o do sistema até o design definir o som; onde ficam as chaves ainda não foi desenhado.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
-- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local · sugerido por GPS**, **Participantes** (inclui "Você") + "+ adicionar".
+- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; 🟡 sugerir pelo GPS segue em aberto), **Participantes** (inclui "Você") + "+ adicionar".
 - Botão primário **"Salvar sessão"** → volta à **Início**, com a nova sessão no topo.
 - Link **"Descartar"** → descarta a sessão e todos os highlights dela e volta à câmera (R14).
 
@@ -327,10 +331,10 @@ A gravação ignora o tema claro/escuro.
 **Objetivo:** ver meu resumo e ajustar minha conta.
 
 **Conteúdo**
-- **Avatar grande** com opção de editar, nome e @usuário.
+- **Avatar grande**, nome e @usuário (🟡 trocar a foto ainda não existe).
 - **Três estatísticas**: sessões · highlights · amigos.
-- Linhas: **Nome ›**, **Usuário ›**, **Notificações** (liga/desliga).
-- **"Sair da conta"**, no fim.
+- Linhas: **Nome ›**, **Usuário ›** (🟡 notificações entram quando existirem).
+- **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 
 ### Prioridade para a demo

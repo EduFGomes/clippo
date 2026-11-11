@@ -339,6 +339,14 @@ class SessionsRepository {
         fallback: 'Não foi possível excluir a sessão. Tente de novo.');
   }
 
+  /// O dono apaga um lance para todos, com o vídeo e a miniatura (Function deleteHighlight).
+  Future<void> deleteHighlight({required String sessionId, required String highlightId}) async {
+    _check('sessionId', validateHighlightRef(sessionId));
+    _check('highlightId', validateHighlightRef(highlightId));
+    await _call('deleteHighlight', {'sessionId': sessionId, 'highlightId': highlightId},
+        fallback: 'Não foi possível apagar o lance. Tente de novo.');
+  }
+
   Future<void> leaveSession(String sessionId) async {
     _check('sessionId', validateEntityId(sessionId));
     await _call('leaveSession', {'sessionId': sessionId},

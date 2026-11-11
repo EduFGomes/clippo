@@ -78,6 +78,22 @@ class AuthRepository {
     }
   }
 
+  /// Exclui a conta e os dados da pessoa (Function deleteMyAccount, LGPD) e sai do app.
+  ///
+  /// Nada digitado vai junto: o servidor exclui quem chamou. Lança [AuthFailure] com a frase
+  /// da tela (ex.: sessão juntada que ainda trava a exclusão).
+  Future<void> deleteMyAccount() async {
+    try {
+      await _functions.httpsCallable('deleteMyAccount').call<Map<String, dynamic>>(<String, dynamic>{});
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        throw const AuthFailure('Sem conexão. Confira a internet e tente de novo.');
+      }
+      throw AuthFailure(e.message ?? 'Não foi possível excluir a conta. Tente de novo.');
+    }
+    await _auth.signOut();
+  }
+
   Future<void> signOut() => _auth.signOut();
 
   /// O perfil existe? Se não, a pessoa criou a conta mas ainda não completou o perfil.

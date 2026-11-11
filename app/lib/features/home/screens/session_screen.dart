@@ -56,6 +56,7 @@ class SessionScreen extends StatefulWidget {
     this.mergeRequests,
     this.uploads,
     this.discardUploads,
+    this.discardHighlightUpload,
   });
 
   /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
@@ -92,6 +93,9 @@ class SessionScreen extends StatefulWidget {
   /// Tira a sessão da fila de envio e apaga do aparelho os vídeos que ainda não subiram, antes
   /// de excluir no servidor. No app, `uploadQueue.discard` (com alguém logado).
   final Future<void> Function(String sessionId)? discardUploads;
+
+  /// Tira um lance da fila de envio antes de apagar no servidor (repassado à tela do lance).
+  final Future<void> Function(String sessionId, String highlightId)? discardHighlightUpload;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
@@ -325,17 +329,20 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _canRename(Highlight highlight) => _isOwner && (highlight.videoPath ?? '').isNotEmpty;
 
   Future<void> _openRename(Highlight highlight) async {
-    final renamed = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
+    final result = await Navigator.of(context).push<Object>(
+      MaterialPageRoute<Object>(
         builder: (_) => RenameHighlightScreen(
           sessionId: _session.id,
           highlight: highlight,
           repository: _repository,
+          discardUpload: widget.discardHighlightUpload,
         ),
       ),
     );
-    // O Firestore atualiza o card sozinho; aqui só o aviso.
-    if (renamed != null && mounted) showHomeMessage(context, 'Lance renomeado.');
+    // O Firestore atualiza a lista sozinho; aqui só o aviso.
+    if (!mounted) return;
+    if (result is HighlightDeleted) showHomeMessage(context, 'Lance apagado.');
+    if (result is String) showHomeMessage(context, 'Lance renomeado.');
   }
 
   Future<Session?> _openEditSession() async {
@@ -454,6 +461,7 @@ class _SessionScreenState extends State<SessionScreen> {
               'Não dá para desfazer.',
       confirmLabel: 'Excluir sessão',
       cancelLabel: 'Manter sessão',
+      destructive: true,
     );
     if (!confirmed || !mounted) return;
     setState(() => _deleting = true);

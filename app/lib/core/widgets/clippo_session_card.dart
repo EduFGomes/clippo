@@ -140,11 +140,13 @@ class ClippoSessionCard extends StatelessWidget {
           ),
           const SizedBox(height: ClippoSpace.spaceM),
         ],
-        if (info != null && info.isNotEmpty) ...[
+        if (info != null && info.isNotEmpty)
           Text(info, style: ClippoText.label.copyWith(color: colors.textMuted)),
+        // Sem ação (ex.: perfil de amigo aberto fora da Início), sem botão que não faz nada.
+        if (onAction != null) ...[
           const SizedBox(height: ClippoSpace.spaceL),
+          ClippoPrimaryButton(label: actionLabel, onPressed: onAction),
         ],
-        ClippoPrimaryButton(label: actionLabel, onPressed: onAction ?? () {}),
       ],
     );
   }

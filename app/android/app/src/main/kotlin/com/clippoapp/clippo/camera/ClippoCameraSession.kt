@@ -3,6 +3,7 @@ package com.clippoapp.clippo.camera
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.MediaCodec
@@ -10,10 +11,12 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import android.view.OrientationEventListener
 import android.view.WindowManager
@@ -201,6 +204,15 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
+            // Permissão negada de vez: só a tela do app nas Configurações do Android devolve.
+            "openAppSettings" -> {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", activity.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(intent)
+                result.success(null)
+            }
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
             "startPreview" -> startPreview(
                 recordAudio = call.argument<Boolean>("recordAudio") ?: true,
@@ -226,6 +238,13 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                     flash = call.argument<Boolean>("flash") ?: false,
                     vibrate = call.argument<Boolean>("vibrate") ?: false,
                     camera = boundCamera,
+                )
+                result.success(null)
+            }
+            "signalFailed" -> {
+                signal.fail(
+                    sound = call.argument<Boolean>("sound") ?: false,
+                    vibrate = call.argument<Boolean>("vibrate") ?: false,
                 )
                 result.success(null)
             }

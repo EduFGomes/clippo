@@ -108,6 +108,7 @@ Use exatamente assim.
 |---|---|
 | Início — saudação | Boa noite, Gustavo *(Bom dia / Boa tarde / Boa noite + primeiro nome)* |
 | Início — título | Suas sessões |
+| Início — atalho ao lado do título | Gravar *(leitor de tela: Gravar uma sessão)* |
 | Card de sessão | 11 set 2026 · 7 highlights |
 | Card aberto — botão | Ver highlights |
 | Participantes | 10 participantes |
@@ -118,8 +119,11 @@ Use exatamente assim.
 | Gravação — rótulo dos chips | Gravar com |
 | Chip padrão | Gravar sozinho |
 | Chip de amigo | Com Rafa *(primeiro nome)* |
-| Legenda do botão de gravar | Iniciar detecção de gesto \ o / |
-| Aviso ao salvar | **Highlight salvo** · últimos 30s · gesto \ o / detectado |
+| Legenda do botão de gravar | Iniciar detecção de gesto \ o / *(voltou da confirmação com lances: Continuar a sessão · 2 highlights)* |
+| Aviso ao salvar | **Salvando o lance…** · gesto \ o / detectado → **Highlight salvo** · últimos 30s · gesto \ o / detectado |
+| Aviso de falha ao salvar | *(o erro, ex.: Não foi possível salvar o lance.)* · Faça \ o / de novo para tentar outra vez. |
+| Sem microfone (sobre a câmera) | Sem microfone · toque para permitir |
+| Microfone negado (configurações da gravação) | Sem permissão. Toque aqui para liberar nas configurações. |
 | Standby — ao ligar (some sozinho) | Detecção ligada. Toque na tela para encerrar. |
 | Controles do standby | Encerrar sessão · Cancelar gravação |
 | Cancelar gravação — aviso | Cancelar gravação? · Você perde 3 highlights desta gravação. Para guardar, continue e toque em "Encerrar sessão". · Parar e descartar · Continuar gravando *(sem lances: A gravação para e você volta para a câmera. · Parar gravação)* |
@@ -127,11 +131,13 @@ Use exatamente assim.
 | Fim — voltar | Voltar à câmera |
 | Fim — resumo | Gravação encerrada · 4 highlights |
 | Fim — título | Confirme a sessão |
-| Renomear lance — título | RENOMEAR / LANCE. · Todos da sessão veem o nome novo. |
-| Renomear lance — campo e botão | Nome do lance · Ex.: Voleio do Rafa · Salvar nome |
+| Editar lance — título | EDITAR / LANCE. · Todos da sessão veem o nome novo. |
+| Editar lance — campo e botões | Nome do lance · Ex.: Voleio do Rafa · Salvar nome · Apagar lance |
+| Apagar lance | Apagar lance? · Lance 3 some para todos da sessão, com o vídeo. Não dá para desfazer. · Apagar lance · Manter lance · Lance apagado. |
 | Renomear lance — confirmação | Lance renomeado. |
 | Renomear lance — erros | Dê um nome ao lance. · O nome do lance pode ter até 50 caracteres. · Só quem gravou a sessão renomeia os lances. |
-| Fim — rótulos | Nome da sessão · Data · Horário · Local · sugerido por GPS · Participantes |
+| Fim — rótulos | Nome da sessão · Data · Horário · Local (Ex.: Quadra do Parque) · Participantes |
+| Fim — seletores | Data da sessão · Começou às · Terminou às *(Material em PT-BR: Cancelar · OK, relógio de 24 h)* |
 | Fim — participante você | Você |
 | Fim — adicionar | + adicionar |
 | Fim — ações | Salvar sessão · Descartar |
@@ -140,8 +146,9 @@ Use exatamente assim.
 | Amigos — busca | Buscar amigo ou usuário |
 | Amigos — linha secundária | 12 sessões juntos · nenhuma sessão ainda |
 | Perfil — estatísticas | sessões · highlights · amigos |
-| Perfil — linhas | Nome · Usuário · Notificações |
-| Sair | Sair da conta |
+| Perfil — linhas | Nome · Usuário |
+| Sair | Sair da conta · Sair da conta? · Lances que ainda não subiram ficam guardados neste celular e sobem quando você entrar de novo. · Sair · Ficar |
+| Excluir conta | Excluir conta · Excluir sua conta? · Seu perfil, suas amizades e as sessões que você gravou somem para todo mundo, com os lances. Das sessões dos outros, você sai. Não dá para desfazer. · Excluir conta · Manter conta |
 
 **Estados** 🟡
 
@@ -158,7 +165,7 @@ Use exatamente assim.
 | Erro genérico | Algo deu errado. |
 | Botão de erro | Tentar de novo |
 | Amigos vazio | Adicione quem joga com você |
-| Permissão de câmera | O Clippo precisa da câmera para gravar os lances. |
+| Permissão de câmera | O Clippo precisa da câmera para gravar os lances. · Permitir câmera *(negada de vez: Abrir configurações)* |
 | Permissão de localização | Usamos sua localização só para sugerir o local da sessão. |
 | Frase-assinatura | Levantou os braços, o lance está salvo. |
 
@@ -361,6 +368,9 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoBackButton`** — círculo `control` com fundo `controlSoft` e chevron para a esquerda (traço 1,8, 22 dp, `text`). Área de toque `minTouchTarget`. Semântica "Voltar".
 - **`ClippoScreenTitle(line1, line2, subtitle?)`** — `displayL` em MAIÚSCULAS, linha 1 em `text`, linha 2 em `accent`; subtítulo em `bodyL` / `textMuted` 12 dp abaixo. Fica `section` abaixo do voltar.
 - **`ClippoPrimaryButton(label, onPressed, enabled, loading)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. `loading` mostra um indicador e ignora toques. Variante `ClippoPrimaryButton.onWine` para a boas-vindas: fundo `peach` (pressionado `peachPressed`), texto `onPeach`.
+- **`ClippoPrimaryButton.danger(label, onPressed)`** — o mesmo botão com fundo `error` e texto `onPrimary` (pressionado: `error` a 85 %). Só para confirmar o que apaga ou não tem volta ("Excluir sessão", "Remover", "Apagar lance"); a saída segura fica no `ClippoTextButton` embaixo. Adotado em 10/11/2026.
+- **`ClippoPillButton(label, icon, onPressed)`** — atalho em pílula ao lado do título da tela: contorno 1,5 e texto `label` em `accent` sobre `accentSoft`, ícone `checkIcon`, toque `minTouchTarget`. "Convidar" em Amigos, "Gravar" na Início.
+- **`showClippoConfirm(title, message, confirmLabel, cancelLabel, destructive)`** — diálogo de confirmação sobre `surface` com `radiusField`: título `titleS`, mensagem `body` / `textMuted`, ação principal (`ClippoPrimaryButton`, ou `.danger` com `destructive`) e saída em `ClippoTextButton`. Devolve true só se a pessoa confirmou.
 - **`ClippoTextButton(label)`** — sem fundo, altura `textButtonHeight`, `link` em `text` a 85 % (na boas-vindas, `ClippoTextButton.onWine`: `onWine` a 85 %).
 - **`ClippoLinkLine(prefix, action, onPressed)`** — centralizado, altura `textButtonHeight`: `prefix` em `bodyL` / `textMuted` + `action` em `linkStrong` / `accent`. A linha inteira é tocável. Ex.: "Já tem conta?" + "Entrar".
 - **`ClippoTextField(label, hint, …)`** — bloco `surface`, `radiusField`, padding 12 · 18 (direita 8 quando há botão), sem borda em repouso, borda 1,5 em `accent` com foco (`focus`), em `error` com erro. Rótulo `label` / `textLabel` em cima; valor `input` / `text` 3 dp abaixo; hint em `placeholder`; cursor `accent`. Também aceita `prefixText` (o "@" do usuário), `readOnly` + `onTap` (campo que abre o seletor de data), `hasError` (só a borda) e `errorText` (borda + mensagem em `label` / `error` logo abaixo).
@@ -371,7 +381,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
-- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
+- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"; sem `onAction`, o botão não aparece); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
 - **`ClippoHighlightTile(title, timing, onTap, thumbnail?, uploading, onRename?)`** — um card de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura com altura `thumbnailHeight` em cima, com botão de play circular (`playBadge`) sobreposto; embaixo, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`). `thumbnail` é um `ImageProvider` (no app, um `FileImage` da miniatura no aparelho); sem ele, enquanto carrega ou se a imagem não abrir, aparece o desenho de quadra. `onRename` (só o dono da sessão) mostra o ícone `edit` em `textMuted` ao lado do título, com área de toque `minTouchTarget`, e uma ação "Renomear lance" para o leitor de tela.
 - **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.

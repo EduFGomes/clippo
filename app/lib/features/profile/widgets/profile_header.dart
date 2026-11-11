@@ -79,33 +79,36 @@ class ProfileHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: ClippoSpace.spaceM),
-          Semantics(
-            button: true,
-            label: 'Editar foto',
-            excludeSemantics: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onEditPhoto,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ClippoSpace.spaceL,
-                  vertical: ClippoSpace.fieldPaddingV,
-                ),
-                decoration: BoxDecoration(
-                  color: colors.controlSoft,
-                  borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Editar foto',
-                  textAlign: TextAlign.center,
-                  style: ClippoText.label.copyWith(color: colors.accent),
+          // Trocar a foto ainda não existe: sem [onEditPhoto], o botão não aparece.
+          if (onEditPhoto != null) ...[
+            const SizedBox(height: ClippoSpace.spaceM),
+            Semantics(
+              button: true,
+              label: 'Editar foto',
+              excludeSemantics: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onEditPhoto,
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ClippoSpace.spaceL,
+                    vertical: ClippoSpace.fieldPaddingV,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.controlSoft,
+                    borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Editar foto',
+                    textAlign: TextAlign.center,
+                    style: ClippoText.label.copyWith(color: colors.accent),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

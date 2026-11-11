@@ -35,7 +35,7 @@ class ClippoHighlightTile extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  /// "Renomear lance": um lápis ao lado do título. Só para o dono da sessão; nulo esconde.
+  /// "Editar lance" (renomear ou apagar): um lápis ao lado do título. Só para o dono da sessão; nulo esconde.
   final VoidCallback? onRename;
 
   @override
@@ -49,7 +49,7 @@ class ClippoHighlightTile extends StatelessWidget {
       label: '$title, $timing',
       customSemanticsActions: rename == null
           ? null
-          : {const CustomSemanticsAction(label: 'Renomear lance'): rename},
+          : {const CustomSemanticsAction(label: 'Editar lance'): rename},
       child: ExcludeSemantics(
         child: Material(
           color: colors.surface,

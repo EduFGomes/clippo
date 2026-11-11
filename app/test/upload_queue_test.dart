@@ -149,6 +149,27 @@ void main() {
     q.dispose();
   });
 
+  test('apagar um lance: só ele sai da fila e do aparelho; os outros continuam subindo', () async {
+    final q = queue();
+    backend.failSave = true;
+    await q.submit(_session(highlights: 2));
+    await q.discardHighlight('sessao-123456', 'highlight_1');
+    expect(store.saved.single.highlights.map((h) => h.highlightId), ['highlight_2']);
+    expect(deleted, contains('/data/highlights/highlight_1.mp4'));
+    expect(deleted, isNot(contains('/data/highlights/highlight_2.mp4')));
+    q.dispose();
+  });
+
+  test('excluir a conta: todas as sessões da pessoa saem da fila; as de outra conta ficam', () async {
+    final q = queue();
+    backend.failSave = true;
+    await q.submit(_session(id: 'sessao-aaaaaa'));
+    await q.submit(_session(id: 'sessao-bbbbbb', owner: 'outra'));
+    await q.discardAllOf('dono');
+    expect(store.saved.map((s) => s.sessionId), ['sessao-bbbbbb']);
+    q.dispose();
+  });
+
   test('falha no envio do vídeo mantém o lance e tenta de novo sozinha', () async {
     final q = queue(retryDelays: const [Duration(milliseconds: 1)]);
     backend.failUpload = true;

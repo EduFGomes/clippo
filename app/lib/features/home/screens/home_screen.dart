@@ -11,6 +11,7 @@ import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
+import 'package:clippo/core/widgets/clippo_pill_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -254,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Heading(profile: _profile),
+          _Heading(profile: _profile, onRecord: widget.onRecord),
           for (final request in _incomingRequests) ...[
             const SizedBox(height: ClippoSpace.spaceL),
             MergeRequestCard(
@@ -339,9 +340,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Saudação, título da tela e o avatar de quem está logado.
 class _Heading extends StatelessWidget {
-  const _Heading({required this.profile});
+  const _Heading({required this.profile, this.onRecord});
 
   final Stream<UserProfile?> profile;
+
+  /// "Gravar" ao lado do título: a ação principal do app a um toque, sem abrir a roda.
+  final VoidCallback? onRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -371,7 +375,21 @@ class _Heading extends StatelessWidget {
               ],
             ),
             const SizedBox(height: ClippoSpace.titleToSubtitle),
-            const ClippoScreenTitle(line1: 'Suas', line2: 'sessões.'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: ClippoScreenTitle(line1: 'Suas', line2: 'sessões.')),
+                if (onRecord != null) ...[
+                  const SizedBox(width: ClippoSpace.spaceM),
+                  ClippoPillButton(
+                    label: 'Gravar',
+                    icon: 'capture',
+                    semanticLabel: 'Gravar uma sessão',
+                    onPressed: onRecord,
+                  ),
+                ],
+              ],
+            ),
           ],
         );
       },

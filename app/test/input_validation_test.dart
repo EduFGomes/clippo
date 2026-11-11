@@ -280,7 +280,7 @@ void main() {
     test('renomear: aceita os ids que o app gera e recusa o resto', () {
       expect(validateHighlightRef('lance-0001'), isNull);
       for (final ruim in ['curto', '../lance-0001', '']) {
-        expect(validateHighlightRef(ruim), 'Não foi possível renomear o lance. Tente de novo.');
+        expect(validateHighlightRef(ruim), 'Esse lance não foi encontrado. Tente de novo.');
       }
     });
 

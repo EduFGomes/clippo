@@ -121,6 +121,22 @@ void main() {
     expect(gravou, 1);
   });
 
+  testWidgets('"Gravar" ao lado do título abre a Gravação, mesmo com sessões na lista', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var gravou = 0;
+    await tester.pumpWidget(_app(HomeScreen(
+      sessions: Stream.value(_fromServer([_session('quinta', name: 'Pelada de quinta')])),
+      profile: Stream<UserProfile?>.value(null),
+      onRecord: () => gravou++,
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Gravar uma sessão'));
+    expect(gravou, 1);
+  });
+
   testWidgets('erro de rede vira frase amigável, não código técnico', (tester) async {
     await tester.pumpWidget(_app(_home(Stream<SessionsSnapshot>.error(FirebaseException(plugin: 'cloud_firestore', code: 'unavailable')))));
     await tester.pumpAndSettle();

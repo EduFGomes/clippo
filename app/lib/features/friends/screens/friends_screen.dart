@@ -14,6 +14,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_pill_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -473,7 +474,7 @@ Future<bool> _confirmRemoval(BuildContext context, Friend friend) async {
               style: ClippoText.body.copyWith(color: colors.textMuted),
             ),
             const SizedBox(height: ClippoSpace.spaceL),
-            ClippoPrimaryButton(
+            ClippoPrimaryButton.danger(
               label: 'Remover',
               onPressed: () => Navigator.of(sheetContext).pop(true),
             ),
@@ -497,7 +498,6 @@ class _TopHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = ClippoColors.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -505,36 +505,11 @@ class _TopHeader extends StatelessWidget {
           child: ClippoScreenTitle(line1: 'Seus', line2: 'amigos.'),
         ),
         const SizedBox(width: ClippoSpace.spaceM),
-        Semantics(
-          button: true,
-          label: 'Convidar amigo',
-          child: ExcludeSemantics(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onInvite,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.accentSoft,
-                  borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-                  border: Border.all(color: colors.accent, width: ClippoSize.border),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ClippoSpace.spaceL,
-                    vertical: ClippoSpace.spaceM,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClippoSvgIcon('plus', size: ClippoSize.checkIcon, color: colors.accent),
-                      const SizedBox(width: ClippoSpace.spaceS),
-                      Text('Convidar', style: ClippoText.label.copyWith(color: colors.accent)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+        ClippoPillButton(
+          label: 'Convidar',
+          icon: 'plus',
+          semanticLabel: 'Convidar amigo',
+          onPressed: onInvite,
         ),
       ],
     );

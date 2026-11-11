@@ -7,6 +7,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
+import 'package:clippo/core/widgets/clippo_pill_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -49,6 +50,31 @@ void main() {
     )));
     expect(find.text('CRIAR\nCONTA.'), findsOneWidget);
     expect(find.text('Seus lances ficam guardados na sua conta.'), findsOneWidget);
+  });
+
+  testWidgets('botão destrutivo usa a cor de erro do tema e responde ao toque', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_app(Scaffold(
+      body: ClippoPrimaryButton.danger(label: 'Excluir', onPressed: () => taps++),
+    )));
+    final box = tester.widget<Container>(
+      find.descendant(of: find.byType(ClippoPrimaryButton), matching: find.byType(Container)).first,
+    );
+    expect((box.decoration as BoxDecoration).color, ClippoColors.light.error);
+    await tester.tap(find.text('Excluir'));
+    expect(taps, 1);
+  });
+
+  testWidgets('pílula tem 48 dp de toque, rótulo próprio e avisa ao tocar', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_app(Scaffold(
+      body: Center(
+        child: ClippoPillButton(label: 'Gravar', icon: 'capture', semanticLabel: 'Gravar uma sessão', onPressed: () => taps++),
+      ),
+    )));
+    expect(tester.getSize(find.byType(ClippoPillButton)).height, greaterThanOrEqualTo(ClippoSize.minTouchTarget));
+    await tester.tap(find.bySemanticsLabel('Gravar uma sessão'));
+    expect(taps, 1);
   });
 
   testWidgets('botão primário desabilitado não responde', (tester) async {

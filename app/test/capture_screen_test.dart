@@ -43,8 +43,19 @@ class _FakeCamera extends ClippoCamera {
   @override
   Future<bool> hasMicrophonePermission() async => withSound;
 
+  /// O que o Android responde ao pedir o microfone.
+  bool grantMic = true;
+  int micRequests = 0;
+  int settingsOpened = 0;
+
   @override
-  Future<bool> requestMicrophonePermission() async => true;
+  Future<bool> requestMicrophonePermission() async {
+    micRequests++;
+    return grantMic;
+  }
+
+  @override
+  Future<void> openAppSettings() async => settingsOpened++;
 
   /// Ordem das fases pedidas: 'preview' (só a imagem) ou 'start' (análise e buffer, sem imagem).
   final List<String> phases = [];
@@ -82,6 +93,7 @@ class _FakeCamera extends ClippoCamera {
   Future<SavedClip> saveHighlight({required Duration until, Duration length = HighlightLength.standard}) async {
     saves.add(until);
     savedLengths.add(length);
+    await saveGate?.future;
     if (failSave) throw const CameraFailure('Não foi possível salvar o lance.');
     return SavedClip(path: '/highlights/1.mp4', duration: length);
   }
@@ -91,6 +103,14 @@ class _FakeCamera extends ClippoCamera {
     signals++;
     lastSignal = (sound: sound, flash: flash, vibration: vibration);
   }
+
+  int failSignals = 0;
+
+  @override
+  Future<void> signalFailed({bool sound = true, bool vibration = false}) async => failSignals++;
+
+  /// Corte lento: o `saveHighlight` só responde quando o teste completar.
+  Completer<void>? saveGate;
 
   CaptureSettings settings = const CaptureSettings();
 
@@ -214,6 +234,27 @@ void main() {
     await tester.tap(find.text('Permitir câmera'));
     await tester.pump();
     expect(find.textContaining('Configurações › Apps › Clippo'), findsOneWidget);
+  });
+
+  testWidgets('câmera negada de vez: um botão abre as Configurações do Android', (tester) async {
+    final camera = _FakeCamera(permission: false);
+    await open(tester, camera: camera);
+    expect(find.text('Abrir configurações'), findsNothing); // antes de pedir, só "Permitir"
+    await tester.tap(find.text('Permitir câmera'));
+    await tester.pump();
+    await tester.tap(find.text('Abrir configurações'));
+    await tester.pump();
+    expect(camera.settingsOpened, 1);
+  });
+
+  testWidgets('sem microfone: tocar no aviso pede o microfone; negado de vez, abre as Configurações',
+      (tester) async {
+    final camera = _FakeCamera(withSound: false)..grantMic = false;
+    await open(tester, camera: camera);
+    await tester.tap(find.text('Sem microfone · toque para permitir'));
+    await tester.pump();
+    expect(camera.micRequests, 1);
+    expect(camera.settingsOpened, 1);
   });
 
   testWidgets('preparar: chips Gravar com mostram os amigos reais', (tester) async {
@@ -421,7 +462,32 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Não foi possível salvar o lance.'), findsOneWidget);
+    expect(find.text(r'Faça \ o / de novo para tentar outra vez.'), findsOneWidget);
     expect(find.text('Highlight salvo'), findsNothing);
+    // Quem está longe ouve o bip duplo de falha, não o de salvo.
+    final camera = tester.state(find.byType(CaptureScreen)).widget as CaptureScreen;
+    expect((camera.camera as _FakeCamera).failSignals, 1);
+    expect((camera.camera as _FakeCamera).signals, 0);
+    await tester.pump(ClippoMotion.savedBanner);
+  });
+
+  testWidgets('enquanto o corte não volta, o aviso diz "Salvando o lance…", não "salvo"', (tester) async {
+    final camera = _FakeCamera()..saveGate = Completer<void>();
+    final pipeline = _FakePipeline();
+    await open(tester, camera: camera, pipeline: pipeline);
+    await tester.tap(find.bySemanticsLabel(startLabel));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 5), triggered: true);
+    await tester.pump();
+    expect(find.text('Salvando o lance…'), findsOneWidget);
+    expect(find.text('Highlight salvo'), findsNothing);
+    expect(camera.signals, 0);
+
+    camera.saveGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Highlight salvo'), findsOneWidget);
+    expect(camera.signals, 1);
     await tester.pump(ClippoMotion.savedBanner);
   });
 
@@ -494,6 +560,23 @@ void main() {
     await tapSave(tester);
     expect(saved, isTrue);
     expect(createdSession?.name, 'Pelada de quarta');
+  });
+
+  testWidgets('confirmação: local começa vazio e o horário pergunta início e fim, em português', (tester) async {
+    await open(tester, camera: _FakeCamera());
+    await finish(tester);
+    expect(find.text('Quadra local (GPS)'), findsNothing);
+    expect(find.text('Ex.: Quadra do Parque'), findsOneWidget);
+
+    await tester.tap(find.text('Horário'));
+    await tester.pumpAndSettle();
+    expect(find.text('Começou às'), findsOneWidget);
+    expect(find.text('Cancelar'), findsOneWidget); // texto do Material em PT-BR
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Terminou às'), findsOneWidget);
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('confirmação: voltar à câmera preserva highlights e reabre câmera', (tester) async {
@@ -587,6 +670,40 @@ void main() {
     expect(camera.deletedClips, isEmpty);
   });
 
+  testWidgets('encerrou sem querer: voltar à câmera continua a mesma sessão, com os lances', (tester) async {
+    final camera = _FakeCamera();
+    final pipeline = _FakePipeline();
+    await open(tester, camera: camera, pipeline: pipeline);
+    await tester.tap(find.bySemanticsLabel(startLabel));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 15), triggered: true);
+    await tester.pump();
+    await tester.pump(ClippoMotion.savedBanner);
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Voltar à câmera'));
+    await tester.pump();
+    await tester.pump();
+
+    // O botão diz que a sessão continua, e o lance já salvo segue nela.
+    expect(find.text('Continuar a sessão · 1 highlight'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Continuar a sessão · 1 highlight'));
+    await tester.pump();
+    pipeline.frame(const Duration(seconds: 100), triggered: true);
+    await tester.pump();
+    await tester.pump(ClippoMotion.savedBanner);
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.tap(find.text('Encerrar sessão'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Gravação encerrada · 2 highlights'), findsOneWidget);
+    expect(camera.deletedClips, isEmpty);
+  });
+
   testWidgets('confirmação: descartar pede confirmação, limpa highlights e volta a preparar', (tester) async {
     final camera = _FakeCamera();
     final pipeline = _FakePipeline();
@@ -616,7 +733,7 @@ void main() {
   testWidgets('sem microfone, avisa uma vez que os highlights saem sem som (R17)', (tester) async {
     final camera = _FakeCamera(withSound: false);
     await open(tester, camera: camera);
-    expect(find.text('Sem microfone · os highlights saem sem som'), findsOneWidget);
+    expect(find.text('Sem microfone · toque para permitir'), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel(startLabel));
     await tester.pump();
@@ -629,7 +746,7 @@ void main() {
     await tester.tap(find.text('Voltar à câmera'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Sem microfone · os highlights saem sem som'), findsNothing);
+    expect(find.text('Sem microfone · toque para permitir'), findsNothing);
   });
 
   testWidgets('confirmação: adicionar amigo aos participantes', (tester) async {

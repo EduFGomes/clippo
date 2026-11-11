@@ -9,6 +9,7 @@ import 'package:clippo/core/widgets/clippo_ghost_button.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_link_line.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
+import 'package:clippo/core/widgets/clippo_pill_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_pulse_dot.dart';
 import 'package:clippo/core/widgets/clippo_radial_nav.dart';
@@ -72,6 +73,13 @@ class _ComponentGalleryState extends State<ComponentGallery> {
                     ClippoPrimaryButton(label: 'Desabilitado', onPressed: () {}, enabled: false),
                     const SizedBox(height: ClippoSpace.spaceS),
                     ClippoPrimaryButton(label: 'Carregando', onPressed: () {}, loading: true),
+                    const SizedBox(height: ClippoSpace.spaceS),
+                    ClippoPrimaryButton.danger(label: 'Destrutivo', onPressed: () {}),
+                    const SizedBox(height: ClippoSpace.spaceS),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: ClippoPillButton(label: 'Gravar', icon: 'capture', onPressed: () {}),
+                    ),
                     const SizedBox(height: ClippoSpace.spaceS),
                     ClippoTextButton(label: 'Botão de texto', onPressed: () {}),
                     ClippoLinkLine(prefix: 'Já tem conta?', action: 'Entrar', onPressed: () {}),

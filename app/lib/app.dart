@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
@@ -22,6 +23,10 @@ class ClippoApp extends StatelessWidget {
       theme: clippoTheme(Brightness.light),
       darkTheme: clippoTheme(Brightness.dark),
       themeMode: ThemeMode.system,
+      // Calendário, relógio e botões do sistema em PT-BR, com hora de 24 h (regra 1 do AGENTS.md).
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [Locale('pt', 'BR')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: home ?? const AuthGate(),
     );
   }

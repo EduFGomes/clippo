@@ -427,4 +427,22 @@ void main() {
       );
     });
   });
+
+  group('SessionsRepository.deleteHighlight — validado no app e no servidor', () {
+    test('chama a Function com a sessão e o lance; ids tortos nem saem do app', () async {
+      final calls = <(String, Map<String, dynamic>)>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        return const {};
+      });
+      await repo.deleteHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001');
+      expect(calls.single.$1, 'deleteHighlight');
+      expect(calls.single.$2, {'sessionId': 'sessao-0001', 'highlightId': 'lance-0001'});
+      await expectLater(
+        repo.deleteHighlight(sessionId: 'sessao-0001', highlightId: '../x'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'highlightId')),
+      );
+      expect(calls, hasLength(1));
+    });
+  });
 }
