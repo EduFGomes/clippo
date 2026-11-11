@@ -18,6 +18,7 @@ import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -449,7 +450,10 @@ class _SessionScreenState extends State<SessionScreen> {
 
   /// O dono exclui a sessão para todos (deleteSession). Primeiro sai da fila de envio deste
   /// aparelho (os lances que ainda não subiram não voltam a subir), depois o servidor apaga.
-  Future<void> _delete() async {
+  ///
+  /// Com [localOnly] (a sessão ainda não subiu), tirar da fila já basta: o servidor é chamado
+  /// mesmo assim, para o caso de o envio ter chegado agora, mas sem internet isso não é erro.
+  Future<void> _delete({bool localOnly = false}) async {
     final name = _session.name;
     final count = _session.highlightCount;
     final confirmed = await confirmHomeAction(
@@ -468,7 +472,11 @@ class _SessionScreenState extends State<SessionScreen> {
     try {
       final discard = widget.discardUploads ?? (isUserSignedIn ? uploadQueue.discard : null);
       await discard?.call(_session.id);
-      await _repository.deleteSession(_session.id);
+      try {
+        await _repository.deleteSession(_session.id);
+      } catch (_) {
+        if (!localOnly) rethrow;
+      }
       if (!mounted) return;
       showHomeMessage(context, 'Sessão excluída.');
       Navigator.of(context).maybePop();
@@ -502,10 +510,25 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  /// A sessão ainda não chegou ao servidor (gravada sem internet, R13): o Firestore não tem o
+  /// documento, então ler os lances lá dá "sem permissão". O que vale é o que está na fila.
+  bool _onlyOnThisPhone(UploadQueueState queue) {
+    final queued = queue.sessionOf(_session.id);
+    return queued != null && !queued.saved;
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<UploadQueueState>(
+      valueListenable: _uploads,
+      builder: (context, queue, _) => _buildWith(queue),
+    );
+  }
+
+  Widget _buildWith(UploadQueueState queue) {
     final session = _session;
     final requests = _requestsHere;
+    final localOnly = _onlyOnThisPhone(queue);
 
     return ClippoScreenGround(
       child: Column(
@@ -514,7 +537,8 @@ class _SessionScreenState extends State<SessionScreen> {
           Row(
             children: [
               const Expanded(child: ClippoBackButton(label: 'Sessões')),
-              if (_isOwner)
+              // Editar chama o servidor, que ainda não conhece a sessão.
+              if (_isOwner && !localOnly)
                 _HeaderIconButton(
                   icon: 'edit',
                   semanticLabel: 'Editar sessão',
@@ -535,9 +559,7 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ],
           const SizedBox(height: ClippoSpace.section),
-          ValueListenableBuilder<UploadQueueState>(
-            valueListenable: _uploads,
-            builder: (context, queue, _) => StreamBuilder<HighlightsSnapshot>(
+          StreamBuilder<HighlightsSnapshot>(
             stream: _highlights,
             builder: (context, snapshot) {
               final data = snapshot.data;
@@ -553,6 +575,8 @@ class _SessionScreenState extends State<SessionScreen> {
                   onRename: _openRename,
                 );
               }
+              // Só neste celular e sem lance nenhum: não há o que buscar no servidor.
+              if (localOnly) return const _Empty(localOnly: true);
               if (snapshot.hasError) {
                 return _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry);
               }
@@ -579,15 +603,17 @@ class _SessionScreenState extends State<SessionScreen> {
                 onRename: _openRename,
               );
             },
-            ),
           ),
           const SizedBox(height: ClippoSpace.section),
           if (_isOwner) ...[
-            ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge),
-            const SizedBox(height: ClippoSpace.spaceS),
+            // Juntar também depende do servidor; volta quando a sessão subir.
+            if (!localOnly) ...[
+              ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge),
+              const SizedBox(height: ClippoSpace.spaceS),
+            ],
             ClippoTextButton(
               label: _deleting ? 'Excluindo…' : 'Excluir sessão',
-              onPressed: _deleting ? null : _delete,
+              onPressed: _deleting ? null : () => _delete(localOnly: localOnly),
             ),
           ] else if (participantsCanLeaveSession)
             ClippoTextButton(label: 'Sair da sessão', onPressed: _leaving ? null : _leave),
@@ -615,8 +641,7 @@ class _HeaderIconButton extends StatelessWidget {
       button: true,
       label: semanticLabel,
       child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: ClippoPressable(
           onTap: onPressed,
           child: SizedBox.square(
             dimension: ClippoSize.minTouchTarget,
@@ -936,7 +961,10 @@ class _Loading extends StatelessWidget {
 
 /// Sessão sem lances salvos (docs/produto.md › 4.3).
 class _Empty extends StatelessWidget {
-  const _Empty();
+  const _Empty({this.localOnly = false});
+
+  /// A sessão ainda está só neste celular (sobe quando conectar).
+  final bool localOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -952,6 +980,13 @@ class _Empty extends StatelessWidget {
           'Na próxima vez, olhe para a câmera e faça \\ o / quando rolar um lance bom.',
           style: ClippoText.body.copyWith(color: colors.textMuted),
         ),
+        if (localOnly) ...[
+          const SizedBox(height: ClippoSpace.spaceM),
+          Text(
+            'A sessão está guardada neste celular e sobe quando você conectar.',
+            style: ClippoText.label.copyWith(color: colors.textMuted),
+          ),
+        ],
       ],
     );
   }
@@ -1256,30 +1291,38 @@ class _EditableParticipantPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
         border: Border.all(color: isOwner ? colors.accent : colors.outline, width: ClippoSize.border),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL, vertical: ClippoSpace.spaceM),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                isOwner ? '${participant.firstName} (Criador)' : participant.firstName,
-                style: ClippoText.label.copyWith(color: isOwner ? colors.accent : colors.text),
-              ),
-            ),
-            if (!isOwner) ...[
-              const SizedBox(width: ClippoSpace.spaceS),
-              Semantics(
-                button: true,
-                label: 'Remover ${participant.name}',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onRemove,
-                  child: ClippoSvgIcon('close', size: ClippoSize.checkIcon, color: colors.textMuted),
+      // O ✕ ocupa 48 × 48 dp no fim da pílula (antes era só o ícone de 16): a pílula cresce
+      // até essa altura, e o nome fica com o mesmo respiro de antes à esquerda.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+        child: Padding(
+          padding: EdgeInsetsDirectional.only(start: ClippoSpace.spaceL, end: isOwner ? ClippoSpace.spaceL : 0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  isOwner ? '${participant.firstName} (Criador)' : participant.firstName,
+                  style: ClippoText.label.copyWith(color: isOwner ? colors.accent : colors.text),
                 ),
               ),
+              if (!isOwner)
+                Semantics(
+                  button: true,
+                  label: 'Remover ${participant.name}',
+                  excludeSemantics: true,
+                  child: ClippoPressable(
+                    onTap: onRemove,
+                    child: SizedBox.square(
+                      dimension: ClippoSize.minTouchTarget,
+                      child: Center(
+                        child: ClippoSvgIcon('close', size: ClippoSize.checkIcon, color: colors.textMuted),
+                      ),
+                    ),
+                  ),
+                ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1557,11 +1600,15 @@ class _AddFriendChip extends StatelessWidget {
       button: true,
       enabled: !sending,
       label: sending ? 'Enviando pedido para $participantName' : 'Adicionar amigo $participantName',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Enviando: o toque fica no botão (não abre o perfil da linha) e não faz nada.
+      // Enviando: o toque fica no botão (não abre o perfil da linha) e não faz nada. A área de
+      // toque tem 48 dp de altura; o desenho da pílula continua do tamanho de antes.
+      child: ClippoPressable(
         onTap: sending ? () {} : onPressed,
-        child: DecoratedBox(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+          child: Center(
+            widthFactor: 1,
+            child: DecoratedBox(
           decoration: BoxDecoration(
             color: colors.accentSoft,
             borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
@@ -1582,6 +1629,8 @@ class _AddFriendChip extends StatelessWidget {
                 const SizedBox(width: ClippoSpace.spaceXs),
                 Text(sending ? 'Enviando…' : 'Adicionar', style: ClippoText.label.copyWith(color: colors.accent)),
               ],
+            ),
+          ),
             ),
           ),
         ),

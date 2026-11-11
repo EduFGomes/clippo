@@ -17,6 +17,7 @@ import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_capture_toast.dart';
 import 'package:clippo/core/widgets/clippo_ghost_button.dart';
 import 'package:clippo/core/widgets/clippo_icon.dart';
+import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_pulse_dot.dart';
 import 'package:clippo/core/widgets/clippo_record_button.dart';
@@ -38,6 +39,23 @@ Stream<List<Friend>> acceptedFriends(Stream<List<Friendship>> friendships) => fr
           if (f.isAccepted && f.other.uid.isNotEmpty) f.other,
       ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())),
     );
+
+/// O aviso depois do "Salvar sessão": diz que deu certo e onde os lances estão agora.
+/// [outcome] nulo = sem fila de envio (catálogo, testes sem login).
+/// Diz "Sessão", não o nome dela: "Vôlei de terça salva" soaria errado.
+String savedSessionMessage(int highlights, SubmitOutcome? outcome) {
+  if (highlights == 0) {
+    return outcome == SubmitOutcome.queued
+        ? 'Sessão guardada no celular. Sobe quando você conectar.'
+        : 'Sessão salva.';
+  }
+  final count = clippoHighlightCount(highlights);
+  return switch (outcome) {
+    SubmitOutcome.queued => 'Sessão guardada no celular com $count. Sobe quando você conectar.',
+    SubmitOutcome.saved => 'Sessão salva. Enviando $count…',
+    null => 'Sessão salva com $count.',
+  };
+}
 
 /// Highlight salvo localmente durante a gravação (R13).
 class CapturedHighlight {
@@ -901,6 +919,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final sessionId = _sessionId ??= 'sessao-${start.millisecondsSinceEpoch}';
     final uploads = widget.uploads;
     final ownerUid = uploads?.currentUid;
+    SubmitOutcome? outcome;
     if (uploads != null) {
       if (ownerUid == null) {
         setState(() => _formError = 'Entre na sua conta para salvar a sessão.');
@@ -913,7 +932,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       try {
         // A fila guarda tudo no aparelho antes de tentar a rede (R13): sem internet, a
         // sessão continua aqui e sobe sozinha depois.
-        await uploads.submit(QueuedSession(
+        outcome = await uploads.submit(QueuedSession(
           sessionId: sessionId,
           ownerUid: ownerUid,
           name: normalizedName,
@@ -978,11 +997,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
 
     // Os MP4 agora são da fila: ela apaga cada um depois do `uploaded` (R13).
+    final savedCount = _highlights.length;
     _highlights.clear();
     _sessionId = null;
     widget.onSessionCreated?.call(created);
     widget.onSaved?.call();
     if (mounted) {
+      // A confirmação aparece na Início (o aviso fica no app, não nesta rota que está saindo).
+      showClippoMessage(context, savedSessionMessage(savedCount, outcome));
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop(created);
       } else {
@@ -1246,7 +1268,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-          child: Text('Gravar com', style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted)),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _scrim(Text('Gravar com', style: ClippoText.label.copyWith(color: ClippoBrand.onWine))),
+          ),
         ),
         const SizedBox(height: ClippoSpace.spaceXs),
         SingleChildScrollView(
@@ -1282,7 +1307,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
                   child: Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: Text.rich(
+                    child: _scrim(Text.rich(
                       TextSpan(
                         children: [
                           TextSpan(
@@ -1303,13 +1328,25 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           ),
                         ],
                       ),
-                    ),
+                    )),
                   ),
                 ),
               ),
             ),
           ),
       ],
+    );
+  }
+
+  /// Fundo atrás de um texto pequeno sobre a câmera: sem ele, some num gramado claro ou no sol.
+  Widget _scrim(Widget child) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceM, vertical: ClippoSpace.spaceXs),
+      decoration: BoxDecoration(
+        color: ClippoBrand.captureScrim,
+        borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+      ),
+      child: child,
     );
   }
 

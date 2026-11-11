@@ -805,6 +805,8 @@ void main() {
     // Enviado, mas o vídeo local continua até o Firestore marcar uploaded.
     expect(camera.deletedClips, isEmpty);
     expect(queue.state.value.isPending(created!.id), isTrue);
+    // Confirmação depois de salvar (antes a tela só fechava).
+    expect(find.text('Sessão salva. Enviando 1 highlight…'), findsOneWidget);
   });
 
   testWidgets('salvar sem internet: a sessão fica na fila e a tela segue para a Início', (tester) async {
@@ -818,6 +820,14 @@ void main() {
 
     expect(created, isNotNull);
     expect(queue.state.value.unsavedSessions.single.sessionId, created!.id);
+    expect(find.textContaining('guardada no celular'), findsOneWidget);
+  });
+
+  test('o aviso do Salvar sessão diz onde os lances estão', () {
+    expect(savedSessionMessage(2, SubmitOutcome.saved), 'Sessão salva. Enviando 2 highlights…');
+    expect(savedSessionMessage(1, SubmitOutcome.queued), 'Sessão guardada no celular com 1 highlight. Sobe quando você conectar.');
+    expect(savedSessionMessage(0, SubmitOutcome.queued), 'Sessão guardada no celular. Sobe quando você conectar.');
+    expect(savedSessionMessage(0, null), 'Sessão salva.');
   });
 
   testWidgets('erro do saveSession aparece no campo certo (participantes, nome)', (tester) async {

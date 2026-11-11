@@ -219,6 +219,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 |---|---|---|
 | `captureBackground` | `#000000` | Estados B e C. **Preto puro** — em telas OLED o pixel desliga. Nunca cinza escuro. |
 | `captureOverlay` | `#141013` a 60 % | Voltar e dica flutuando sobre a câmera |
+| `captureScrim` | `#141013` a 85 % | Fundo de rótulo pequeno sobre a câmera ("Gravar com", aviso de amigos): 4,5:1 até sobre imagem branca. Desde 11/11/2026 |
 | `captureChip` / `captureChipBorder` | `onWine` a 12 % / 22 % | Chip não selecionado sobre a câmera |
 | `captureTextMuted` | `onWine` a 70 % | Legendas sobre a câmera |
 | `captureRecordRing` | `onWine` a 35 % | Anel do botão de gravar |
@@ -234,7 +235,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `text` | `#FFF1E8` | `#241014` | Texto principal e ícones |
 | `textMuted` | `#FFF1E8` a 62 % | `#241014` a 64 % | Subtítulos e descrições |
 | `textLabel` | `#FFF1E8` a 55 % | `#241014` a 58 % | Rótulo dentro do campo, ícone do olho |
-| `placeholder` | `#FFF1E8` a 32 % | `#241014` a 36 % | Texto de exemplo no campo |
+| `placeholder` | `#FFF1E8` a 50 % | `#241014` a 60 % | Texto de exemplo no campo (4,8:1 sobre `surface`; era 32 % / 36 %, abaixo de 3:1, até 11/11/2026) |
 | `accent` | `#FFC6A8` | `#741A2F` | 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓ |
 | `accentSoft` | `accent` a 18 % | `accent` a 14 % | Sem uso no momento (era a fatia acesa da roda de navegação) |
 | `primary` | `#FFC6A8` | `#741A2F` | Fundo do botão primário |
@@ -308,7 +309,7 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
 | `icon` | 24 | Ícone da marca (grade 24) |
-| `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel da cor do fundo em volta dele |
+| `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel em volta dele: da cor do fundo no tema claro, `accent` no escuro (vinho sobre o fundo escuro tem ~1,8:1) |
 | `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
 | `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
 | `navMagnetRange` · `navMagnetPull` | 110 · 10 | Roda: até onde o dedo atrai e amplia as seções (até +16 %) · quanto a seção acesa é puxada na direção do dedo |
@@ -325,7 +326,7 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 
 Espaços ficam em `ClippoSpace` (`spaceXs`…`screenBottom` e os demais respiros), raios em `ClippoRadius` (`radiusField`, `radiusPill`) e tamanhos em `ClippoSize`.
 
-**Opacidades** (`ClippoOpacity`): `disabled` 45 % (controle desabilitado) · `textButton` 85 % (botão de texto).
+**Opacidades** (`ClippoOpacity`): `disabled` 45 % (controle desabilitado) · `textButton` 85 % (botão de texto) · `pressed` 60 % (chip, pílula, voltar e ícone enquanto o dedo está em cima, no `ClippoPressable`).
 
 Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background` e do degradê do topo.
 
@@ -340,6 +341,7 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `enable` | 200 ms | Botão desabilitado → habilitado |
 | `wheelOpen` · `wheelClose` | 360 ms · 180 ms | Roda de navegação abrindo · fechando |
 | `navPreview` | 90 ms | Balão acima da seção surgindo na roda (com a curva `pop`) |
+| `press` | 80 ms | Apagar ao tocar (`ClippoPressable`) |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
@@ -365,6 +367,8 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por componente. Os componentes do onboarding foram feitos pelo Gabriel; em 20/10/2026 ele passou os das telas internas para quem estiver fazendo cada tela. Vale a mesma regra de sempre: **procure antes de criar**, e componente novo nasce aqui, nunca dentro de uma feature. A seção 5 é o padrão que quem cria componentes segue.
 
 - **`ClippoScreenGround`** — fundo de toda tela depois da boas-vindas: degradê vertical de `backgroundGlow` para `background` nos primeiros `glowHeight`, depois `background` liso. Padding `gutter` nas laterais, `sectionL` no topo (abaixo da área segura) e `screenBottom` + área segura embaixo. Com `enterFromWelcome: true`, uma camada `wine` cobre a tela e some em 700 ms (`standard`), sem bloquear toques. Recebe o conteúdo em `child` e a pilha de ações em `footer`, que fica presa no rodapé e rola junto quando não cabe (fonte grande, teclado aberto). Já inclui o `Scaffold` e a cor dos ícones da barra de status.
+- **`ClippoPressable(onTap, child)`** — base de tudo que é tocável e não é botão primário (chips, pílulas, voltar, ✕, ícones do Player): enquanto o dedo está em cima, o conteúdo fica a `pressed` (60 %), em `press`. O app é plano, sem ripple; é assim que a pessoa vê que o toque pegou. Quem usa garante a área de `minTouchTarget`. Adotado em 11/11/2026.
+- **`showClippoMessage(message)`** — o aviso depois de uma ação, em todas as telas fora da Gravação: faixa `wine` no rodapé com texto `label` / `onWine`, some em `savedBanner`; um aviso novo troca o anterior. Região viva para o leitor de tela. Ver **Avisos** abaixo. Adotado em 11/11/2026 (antes, Início, Perfil e Amigos avisavam cada uma de um jeito).
 - **`ClippoBackButton`** — círculo `control` com fundo `controlSoft` e chevron para a esquerda (traço 1,8, 22 dp, `text`). Área de toque `minTouchTarget`. Semântica "Voltar".
 - **`ClippoScreenTitle(line1, line2, subtitle?)`** — `displayL` em MAIÚSCULAS, linha 1 em `text`, linha 2 em `accent`; subtítulo em `bodyL` / `textMuted` 12 dp abaixo. Fica `section` abaixo do voltar.
 - **`ClippoPrimaryButton(label, onPressed, enabled, loading)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. `loading` mostra um indicador e ignora toques. Variante `ClippoPrimaryButton.onWine` para a boas-vindas: fundo `peach` (pressionado `peachPressed`), texto `onPeach`.
@@ -381,7 +385,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
-- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"; sem `onAction`, o botão não aparece); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
+- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"; sem `onAction`, o botão não aparece); o chevron gira meia volta. Com `onAction`, tocar no card já faz a ação (um toque da Início até os highlights) e o chevron vira um botão próprio de `minTouchTarget` ("Mostrar detalhes de …") que abre e fecha; sem `onAction`, o card inteiro abre e fecha. Desde 11/11/2026. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
 - **`ClippoHighlightTile(title, timing, onTap, thumbnail?, uploading, onRename?)`** — um card de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura com altura `thumbnailHeight` em cima, com botão de play circular (`playBadge`) sobreposto; embaixo, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`). `thumbnail` é um `ImageProvider` (no app, um `FileImage` da miniatura no aparelho); sem ele, enquanto carrega ou se a imagem não abrir, aparece o desenho de quadra. `onRename` (só o dono da sessão) mostra o ícone `edit` em `textMuted` ao lado do título, com área de toque `minTouchTarget`, e uma ação "Renomear lance" para o leitor de tela.
 - **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
@@ -400,6 +404,16 @@ Para ver todos os componentes nos dois temas: catálogo do app › **Componentes
 🟡 **Componentes das telas internas que ainda faltam** (cabeçalho de impacto da Sessão, linha de highlight, chips fora da gravação, switch, estatísticas): desenhe na direção C, nesta pasta, seguindo a seção 5. Card de sessão, avatares, a roda de navegação e os componentes da gravação já estão prontos. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
 
 ---
+
+### Avisos
+
+Três lugares, cada um para uma coisa:
+
+- **Resultado de uma ação** ("Pedido enviado.", "Lance apagado.", erro do servidor numa ação): `showClippoMessage`, no rodapé. Nunca uma linha no topo da lista.
+- **Erro de formulário**: embaixo do campo (`ClippoTextField.errorText`), e o erro geral embaixo do botão de enviar.
+- **Gravação**: `ClippoCaptureToast` sobre o preto, porque a pessoa está longe do celular.
+
+Um estado que continua valendo (sem internet, lista que não carregou) não é aviso: fica na própria tela, no lugar do conteúdo.
 
 ## 5. Como criar um componente no padrão Clippo
 

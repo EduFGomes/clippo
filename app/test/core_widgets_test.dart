@@ -214,9 +214,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(actions, 1);
 
+    // Com ação, tocar no card já faz a ação; o chevron é quem abre e fecha.
+    await tester.tap(find.text('Pelada de quinta'));
+    await tester.pumpAndSettle();
+    expect(actions, 2);
+    expect(toggles, 0);
+
+    await tester.tap(find.bySemanticsLabel('Esconder detalhes de Pelada de quinta'));
+    await tester.pumpAndSettle();
+    expect(toggles, 1);
+    expect(tester.getSize(find.bySemanticsLabel('Esconder detalhes de Pelada de quinta')),
+        const Size.square(ClippoSize.minTouchTarget));
+  });
+
+  testWidgets('card sem ação abre e fecha pelo toque no card inteiro', (tester) async {
+    await _setPhoneSize(tester);
+    var toggles = 0;
+    await tester.pumpWidget(_app(ClippoSessionCard(
+      title: 'Pelada de quinta',
+      summary: '11 set 2026 · 7 highlights',
+      expanded: false,
+      onToggle: () => toggles++,
+    )));
+
     await tester.tap(find.text('Pelada de quinta'));
     await tester.pumpAndSettle();
     expect(toggles, 1);
+    expect(find.bySemanticsLabel(RegExp('detalhes de')), findsNothing);
+  });
+
+  testWidgets('chip, pílula e voltar apagam enquanto o dedo está em cima', (tester) async {
+    await _setPhoneSize(tester);
+    var taps = 0;
+    await tester.pumpWidget(_app(ClippoPillButton(label: 'Gravar', icon: 'capture', onPressed: () => taps++)));
+
+    double opacity() => tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
+    expect(opacity(), 1);
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Gravar')));
+    await tester.pumpAndSettle();
+    expect(opacity(), ClippoOpacity.pressed);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(opacity(), 1);
+    expect(taps, 1);
   });
 
   testWidgets('linha de highlight mostra título, momento e avisa ao tocar', (tester) async {

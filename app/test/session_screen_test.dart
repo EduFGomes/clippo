@@ -224,6 +224,54 @@ void main() {
     expect(find.text('00:20:00 · enviando…'), findsOneWidget);
   });
 
+  testWidgets('sessão só no celular e sem lances abre vazia, sem erro de carregamento',
+      (tester) async {
+    _phone(tester);
+    final calls = <(String, Map<String, dynamic>)>[];
+    final discarded = <String>[];
+    final queue = ValueNotifier(UploadQueueState(sessions: [
+      QueuedSession(
+        sessionId: 'quinta',
+        ownerUid: 'alice',
+        name: 'Pelada de quinta',
+        startedAt: DateTime(2026, 9, 11, 19, 30),
+        endedAt: DateTime(2026, 9, 11, 21, 12),
+      ),
+    ]));
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(highlightCount: 0),
+      currentUserId: 'alice',
+      // O Firestore não tem a sessão: ler os lances lá dá "sem permissão".
+      highlights: Stream.error(FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied')),
+      uploads: queue,
+      repository: SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        throw FirebaseFunctionsException(code: 'unavailable', message: 'offline');
+      }),
+      discardUploads: (id) async {
+        discarded.add(id);
+        queue.value = const UploadQueueState();
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nenhum lance salvo nessa sessão'), findsOneWidget);
+    expect(find.text('A sessão está guardada neste celular e sobe quando você conectar.'), findsOneWidget);
+    expect(find.text('Tentar de novo'), findsNothing);
+    // Editar e juntar dependem do servidor.
+    expect(find.bySemanticsLabel('Editar sessão'), findsNothing);
+    expect(find.text('Juntar com outra sessão'), findsNothing);
+
+    // Excluir sem internet: sair da fila basta.
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+    expect(discarded, ['quinta']);
+    expect(find.text('Sessão excluída.'), findsOneWidget);
+  });
+
   testWidgets('lances do servidor e os que só estão no celular aparecem juntos, em ordem',
       (tester) async {
     _phone(tester);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 
 /// Chip de escolha sobre a câmera ("Gravar sozinho", "Com Rafa") e nos participantes da sessão.
 class ClippoCaptureChip extends StatelessWidget {
@@ -20,8 +21,7 @@ class ClippoCaptureChip extends StatelessWidget {
       selected: selected,
       label: label,
       excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: ClippoPressable(
         onTap: onPressed,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),

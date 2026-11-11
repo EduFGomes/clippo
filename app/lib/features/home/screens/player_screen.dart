@@ -11,6 +11,7 @@ import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 
@@ -692,8 +693,7 @@ class _CircleAction extends StatelessWidget {
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          child: ClippoPressable(
             onTap: enabled ? onPressed : null,
             child: SizedBox.square(
               dimension: ClippoSize.minTouchTarget,
@@ -742,8 +742,7 @@ class _PlayPauseButton extends StatelessWidget {
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          child: ClippoPressable(
             onTap: enabled ? onPressed : null,
             child: Container(
               width: ClippoSize.playerPlayButton,
@@ -794,9 +793,10 @@ class _ProgressBar extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTapDown: seek == null ? null : (details) => seek(details.localPosition.dx / width),
               onHorizontalDragUpdate: seek == null ? null : (details) => seek(details.localPosition.dx / width),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: ClippoSpace.spaceM),
-                child: ClipRRect(
+              // 48 dp de altura para o dedo (eram 24); o traço continua fino no meio.
+              child: SizedBox(
+                height: ClippoSize.minTouchTarget,
+                child: Center(child: ClipRRect(
                   borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
                   child: SizedBox(
                     height: ClippoSize.meter,
@@ -820,7 +820,7 @@ class _ProgressBar extends StatelessWidget {
                       ],
                     ),
                   ),
-                ),
+                )),
               ),
             );
           },

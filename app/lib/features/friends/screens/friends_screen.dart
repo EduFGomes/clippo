@@ -14,7 +14,9 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_pill_button.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -124,7 +126,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   /// Uids com uma ação em andamento (aceitar, recusar, cancelar, remover).
   final Set<String> _busy = <String>{};
-  _Feedback? _feedback;
 
   late final String _myUid = widget.myUid ?? _signedInUid();
 
@@ -186,24 +187,22 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
-  void _setFeedback(_Feedback? feedback) {
-    if (!mounted) return;
-    setState(() => _feedback = feedback);
+  /// O resultado de uma ação vai para o aviso do rodapé, como no resto do app (antes ficava
+  /// no topo da lista, longe de onde a pessoa tocou).
+  void _tell(String message) {
+    if (mounted) showClippoMessage(context, message);
   }
 
   /// Roda uma ação do repositório marcando a pessoa como ocupada. true = deu certo.
   Future<bool> _run(String uid, Future<void> Function() action, String success) async {
     if (_busy.contains(uid)) return false;
-    setState(() {
-      _busy.add(uid);
-      _feedback = null;
-    });
+    setState(() => _busy.add(uid));
     try {
       await action();
-      _setFeedback(_Feedback(success));
+      _tell(success);
       return true;
     } catch (error) {
-      _setFeedback(_Feedback(FriendsFailure.from(error).message, isError: true));
+      _tell(FriendsFailure.from(error).message);
       return false;
     } finally {
       if (mounted) setState(() => _busy.remove(uid));
@@ -369,10 +368,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
           textInputAction: TextInputAction.search,
           onChanged: (_) => setState(() {}),
         ),
-        if (_feedback != null) ...[
-          const SizedBox(height: ClippoSpace.spaceM),
-          _FeedbackLine(feedback: _feedback!),
-        ],
         if (data.failure != null) ...[
           // Já tinha uma lista e a leitura caiu: mostra o aviso e mantém o que tinha.
           const SizedBox(height: ClippoSpace.spaceM),
@@ -645,8 +640,7 @@ class _Pill extends StatelessWidget {
       enabled: enabled,
       label: semanticsLabel,
       child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: ClippoPressable(
           onTap: onTap,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
@@ -761,8 +755,7 @@ class _RequestTile extends StatelessWidget {
                 enabled: !busy,
                 label: 'Recusar convite de ${person.name}',
                 child: ExcludeSemantics(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  child: ClippoPressable(
                     onTap: busy ? null : onDecline,
                     child: SizedBox.square(
                       dimension: ClippoSize.minTouchTarget,
@@ -786,7 +779,8 @@ class _RequestTile extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: ClippoSpace.spaceXs),
+              // Longe o bastante do "Aceitar" para não recusar sem querer.
+              const SizedBox(width: ClippoSpace.spaceM),
               _Pill(
                 label: 'Aceitar',
                 semanticsLabel: 'Aceitar convite de ${person.name}',
@@ -874,8 +868,7 @@ class _FriendRowTile extends StatelessWidget {
               Semantics(
                 button: true,
                 label: 'Opções de ${friend.name}',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                child: ClippoPressable(
                   onTap: onMore,
                   child: SizedBox.square(
                     dimension: ClippoSize.minTouchTarget,

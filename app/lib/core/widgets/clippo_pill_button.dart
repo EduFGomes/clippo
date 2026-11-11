@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 
 /// Atalho em pílula ao lado do título da tela ("Convidar" em Amigos, "Gravar" na Início):
@@ -32,8 +33,7 @@ class ClippoPillButton extends StatelessWidget {
       enabled: enabled,
       label: semanticLabel ?? label,
       excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: ClippoPressable(
         onTap: onPressed,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),

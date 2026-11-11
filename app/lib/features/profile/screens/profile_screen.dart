@@ -9,6 +9,7 @@ import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
+import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -138,14 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await authRepository.deleteMyAccount();
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        backgroundColor: ClippoBrand.wine,
-        content: Text(message, style: ClippoText.label.copyWith(color: ClippoBrand.onWine)),
-      ));
-  }
+  void _showError(String message) => showClippoMessage(context, message);
 
   Future<void> _save({String? name, String? username}) async {
     final saver = widget.saveProfile;

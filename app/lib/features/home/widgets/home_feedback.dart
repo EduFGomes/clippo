@@ -1,24 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
+import 'package:clippo/core/widgets/clippo_message.dart';
 
-/// Aviso curto no rodapé ("Lance salvo na galeria."), no mesmo vinho usado nas
-/// outras telas do app.
-void showHomeMessage(BuildContext context, String message) {
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        backgroundColor: ClippoBrand.wine,
-        content: Text(
-          message,
-          style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
-        ),
-        duration: ClippoMotion.savedBanner,
-      ),
-    );
-}
+/// Aviso curto no rodapé ("Lance salvo na galeria."). Ver [showClippoMessage], o mesmo de
+/// todas as telas.
+void showHomeMessage(BuildContext context, String message) => showClippoMessage(context, message);
 
 /// Pergunta antes de uma ação que não dá para desfazer sozinho. Ver [showClippoConfirm].
 Future<bool> confirmHomeAction(

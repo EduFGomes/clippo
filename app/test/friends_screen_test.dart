@@ -207,6 +207,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, ['acceptFriendRequest:diego']);
     expect(find.text('Agora você e Diego são amigos.'), findsOneWidget);
+    // O resultado vai para o aviso do rodapé, como no resto do app (não mais no topo da lista).
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Agora você e Diego são amigos.')), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('Recusar convite de Diego Souza'));
     await tester.pumpAndSettle();

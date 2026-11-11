@@ -92,11 +92,30 @@ void main() {
     ])))));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Vôlei de sábado'));
+    await tester.tap(find.bySemanticsLabel('Mostrar detalhes de Vôlei de sábado'));
     await tester.pumpAndSettle();
 
     // Só um card aberto por vez: uma ação na tela, não duas.
     expect(find.text('Ver highlights'), findsOneWidget);
+    expect(find.bySemanticsLabel('Esconder detalhes de Vôlei de sábado'), findsOneWidget);
+  });
+
+  testWidgets('um toque num card fechado já abre a sessão', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(_home(Stream.value(_fromServer([
+      _session('quinta', name: 'Pelada de quinta'),
+      _session('sabado', name: 'Vôlei de sábado'),
+    ])))));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Vôlei de sábado'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeScreen), findsNothing);
+    expect(find.text('Highlights'), findsOneWidget);
   });
 
   testWidgets('sem sessões, convida a gravar a primeira', (tester) async {

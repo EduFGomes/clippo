@@ -36,6 +36,10 @@ class ClippoBrand {
   /// Preto puro (OLED): o pixel desliga. Nunca cinza escuro.
   static const Color captureBackground = Color(0xFF000000);
   static const Color captureOverlay = Color(0x99141013); // #141013 a 60 %
+
+  /// Fundo de rótulo e aviso sobre a câmera: forte o bastante para ler no sol (4,5:1 até sobre
+  /// uma imagem branca).
+  static const Color captureScrim = Color(0xD9141013); // #141013 a 85 %
   static const Color captureChip = Color(0x1FFFF1E8); // onWine a 12 %
   static const Color captureChipBorder = Color(0x38FFF1E8); // onWine a 22 %
   static const Color captureTextMuted = Color(0xB3FFF1E8); // onWine a 70 %
@@ -120,7 +124,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     text: Color(0xFFFFF1E8),
     textMuted: Color(0x9EFFF1E8), // 62 %
     textLabel: Color(0x8CFFF1E8), // 55 %
-    placeholder: Color(0x52FFF1E8), // 32 %
+    placeholder: Color(0x80FFF1E8), // 50 % (4,8:1 sobre surface)
     accent: ClippoBrand.peach,
     accentSoft: Color(0x2EFFC6A8), // peach a 18 %
     primary: ClippoBrand.peach,
@@ -139,7 +143,7 @@ class ClippoColors extends ThemeExtension<ClippoColors> {
     text: Color(0xFF241014),
     textMuted: Color(0xA3241014), // 64 %
     textLabel: Color(0x94241014), // 58 %
-    placeholder: Color(0x5C241014), // 36 %
+    placeholder: Color(0x99241014), // 60 % (4,8:1 sobre surface)
     accent: ClippoBrand.wine,
     accentSoft: Color(0x24741A2F), // wine a 14 %
     primary: ClippoBrand.wine,
@@ -343,6 +347,7 @@ class ClippoOpacity {
   ClippoOpacity._();
   static const double disabled = 0.45; // controle desabilitado
   static const double textButton = 0.85; // botão de texto
+  static const double pressed = 0.6; // chip, pílula, voltar e ícone enquanto o dedo está em cima
 }
 
 class ClippoMotion {
@@ -371,6 +376,7 @@ class ClippoMotion {
   static const Duration wheelOpen = Duration(milliseconds: 360); // roda abrindo
   static const Duration wheelClose = Duration(milliseconds: 180); // roda fechando
   static const Duration navPreview = Duration(milliseconds: 90); // balão acima da seção surgindo
+  static const Duration press = Duration(milliseconds: 80); // apagar ao tocar (ClippoPressable)
 
   /// Sem animação quando o sistema pede "reduzir movimento".
   static bool reduced(BuildContext context) => MediaQuery.of(context).disableAnimations;
