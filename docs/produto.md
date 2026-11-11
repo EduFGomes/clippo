@@ -217,7 +217,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | **Boas-vindas** | Primeira impressão; ensinar o gesto antes de tudo | Nome Clippo, **\ o /** grande, "Levantou os braços, / o lance está salvo." | "Começar" → Como funciona · "Já tenho conta" → Entrar |
 | **Como funciona** | O gesto em 3 passos | "Três passos. / Zero toques." e os passos: Apoie o celular · Jogue normalmente · Fez um lance bom? \ o / | Voltar → Boas-vindas · "Criar conta" → Criar conta · "Já tenho conta" → Entrar |
 | **Criar conta** | Criar conta com e-mail e senha | E-mail, Senha (com medidor de 6 caracteres), Confirme a senha (✓ quando igual, "Não bate" quando diferente) | Voltar → Como funciona · "Criar conta" → Complete seu perfil · "Já tem conta? Entrar" → Entrar |
-| **Entrar** | Entrar com e-mail e senha | E-mail, Senha, "Esqueci a senha" 🟡 *(recuperação de senha ainda não existe)* | Voltar → Boas-vindas · "Entrar" → Início · "Ainda não tem conta? Criar conta" → Criar conta |
+| **Entrar** | Entrar com e-mail e senha | E-mail, Senha, "Esqueci a senha" 🟡 *(fluxo mínimo: manda o e-mail padrão do Firebase para o endereço digitado)* | Voltar → Boas-vindas · "Entrar" → Início · "Ainda não tem conta? Criar conta" → Criar conta |
 | **Complete seu perfil** | Dados públicos e data de nascimento | Nome, Nome de usuário (@), Data de nascimento | "Continuar" → Início · "Sair" → Boas-vindas |
 
 **Estados**
@@ -247,6 +247,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | Vazio | "Nenhuma sessão ainda", uma frase sobre o gesto e botão "Gravar primeira sessão". |
 | Erro | Frase curta + "Tentar de novo". |
 | Highlight enviando | No card, "enviando…" na linha de informações (ver R13). |
+| Sessão ainda só no aparelho | Salva sem internet: aparece na lista assim mesmo, com "sobe quando conectar" (R13). |
 
 **Navegação:** tocar no card alterna aberto/fechado; **"Ver highlights" → Sessão**.
 
@@ -290,7 +291,9 @@ A gravação ignora o tema claro/escuro.
 
 **Estado B — Gravando (standby)**
 - Tela **preta pura** (nunca cinza escuro: em telas OLED o pixel desliga e economiza bateria), **nenhum** elemento além de um **pequeno ponto pulsando** no centro (ciclo lento de 2,6 s). A barra de status também fica preta.
-- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A; os highlights já salvos ficam numa sessão padrão, R14).
+- Logo depois de ligar, a frase **"Detecção ligada. Toque na tela para encerrar."** aparece embaixo do ponto por alguns segundos e some sozinha, para quem grava pela primeira vez não achar que o app travou.
+- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A; os highlights já salvos ficam numa sessão padrão, R14). 🟡 Enquanto a sessão padrão não existe, "Cancelar gravação" **descarta** os highlights, e o aviso de confirmação diz quantos se perdem.
+- Sair da Gravação com highlights ainda não salvos (voltou da "Confirme a sessão" para a câmera) pergunta antes: **"Voltar e salvar"** ou **"Sair e descartar"**.
 
 **Estado C — Highlight salvo**
 - Sobre o mesmo preto, sobe o aviso ✓ **"Highlight salvo"** · "últimos 30s · gesto \ o / detectado".
@@ -341,7 +344,7 @@ Início → Sessão → Gravação (A–D) são o núcleo da proposta e precisam
 | Participantes na gravação | Revisar em grupo a proposta da Gravação › Estado A (vários amigos nos chips, sem aceite). |
 | Permissões de sessão | Participantes podem sair de uma sessão? (Só o dono edita, R12.) |
 | Menu de amigo | Quais ações ficam no ⋮ da lista de amigos? |
-| Recuperação de senha | "Esqueci a senha" aparece no Entrar, mas o fluxo ainda não existe. |
+| Recuperação de senha | "Esqueci a senha" manda o e-mail padrão do Firebase (10/11/2026). Falta decidir o texto do e-mail e se a nova senha é criada dentro do app. |
 | Tela de permissões | Quando e como pedir câmera e localização. |
 | Telas internas | Início, Sessão, Player, Gravação, Amigos e Perfil ainda vão ser redesenhadas na direção C. |
 | Entrega final | Data de 04/12/2026 depende de aprovação do orientador. |

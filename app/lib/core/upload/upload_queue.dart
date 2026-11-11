@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
+import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 
 /// Um lance esperando para subir (R13): o MP4 na pasta interna do app e, depois que o
@@ -150,6 +151,27 @@ class QueuedSession {
   /// tentativa). A fila para de tentar sozinha e guarda tudo até alguém resolver.
   final bool blocked;
 
+  /// A sessão como a Início a desenha enquanto ela só existe no aparelho (R13): quem gravou
+  /// aparece como "Você"; os amigos escolhidos entram só na contagem, porque a fila guarda
+  /// os uids, não os nomes.
+  Session toSession() {
+    final length = endedAt.difference(startedAt);
+    final place = location;
+    return Session(
+      id: sessionId,
+      name: name,
+      ownerId: ownerUid,
+      participantIds: [ownerUid, for (final uid in participantIds) if (uid != ownerUid) uid],
+      participants: [SessionParticipant(uid: ownerUid, name: 'Você')],
+      participantCount: 1 + participantIds.where((uid) => uid != ownerUid).length,
+      startedAt: startedAt,
+      endedAt: endedAt,
+      duration: length.isNegative ? Duration.zero : length,
+      location: place == null || place.isEmpty ? null : SessionLocation(label: place),
+      highlightCount: highlights.length,
+    );
+  }
+
   QueuedSession copyWith({
     List<QueuedHighlight>? highlights,
     bool? saved,
@@ -215,6 +237,15 @@ class UploadQueueState {
 
   /// Sessões que ainda não chegaram ao servidor (a Início pode listá-las a partir daqui).
   List<QueuedSession> get unsavedSessions => [for (final s in sessions) if (!s.saved) s];
+
+  /// O que a Início escreve no card de uma sessão que ainda tem algo na fila, ou nulo.
+  String? noteFor(String sessionId) {
+    final queued = sessionOf(sessionId);
+    if (queued == null) return null;
+    if (queued.blocked) return 'envio parado';
+    if (queued.attempts > 0) return 'sobe quando conectar';
+    return 'enviando…';
+  }
 
   /// Os lances da sessão com o MP4 do celular de quem gravou, para assistir antes de subir.
   ///

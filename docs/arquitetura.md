@@ -353,7 +353,7 @@ alerta de orçamento; e o que está 🟡 abaixo (retenção de vídeos, idade m�
 | Participante pode sair sozinho da sessão (`leaveSession` já existe)? Participante precisa aceitar entrar? | Grupo |
 | Sessão aberta/fechada e entrada por código ou link (o app tem `isClosed`; o servidor não) | Grupo |
 | Login com Google (precisa do projeto real) | Back-end |
-| Recuperação de senha ("Esqueci a senha" já aparece no Entrar) | Back-end |
+| Recuperação de senha ("Esqueci a senha" manda o e-mail padrão do Firebase desde 10/11/2026, por `AuthRepository.sendPasswordReset`; falta o texto do e-mail e a nova senha dentro do app) | Back-end |
 | Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
 | Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
 | Várias pessoas no quadro: escolhido o **detector de pessoas (MediaPipe, EfficientDet-Lite0, numa thread à parte) + um ML Kit em modo stream para cada pessoa**, sempre ligado no laboratório desde 28/10/2026. Escolhido por licença (Apache 2.0 e ML Kit podem ir para a Play Store; o YOLO-pose é AGPL) e por manter a regra e o z do nariz. A medir: tempo com 3–6 pessoas e acerto de longe. Alternativa a comparar: MediaPipe Pose Landmarker no lugar do ML Kit (mesmos 33 pontos, sem beta, pode usar a GPU) | Visão computacional |

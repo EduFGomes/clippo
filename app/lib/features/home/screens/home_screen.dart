@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
@@ -8,6 +9,7 @@ import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
@@ -29,6 +31,7 @@ class HomeScreen extends StatefulWidget {
     this.mergeRequests,
     this.repository,
     this.currentUserId,
+    this.uploads,
   });
 
   /// Fonte das sessões. Os testes passam um stream próprio, sem Firebase;
@@ -52,6 +55,10 @@ class HomeScreen extends StatefulWidget {
 
   /// UID de quem está logado. Nulo = o do Firebase Auth.
   final String? currentUserId;
+
+  /// A fila de envio (R13): as sessões que ainda só existem neste aparelho entram na lista e
+  /// os cards dizem "enviando…". No app, `uploadQueue.state` (com alguém logado).
+  final ValueListenable<UploadQueueState>? uploads;
 
   static final List<Session> defaultDemoSessions = [
     Session(
@@ -191,6 +198,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// A fila de envio: sem ela (catálogo, testes sem login), nenhuma sessão esperando.
+  ValueListenable<UploadQueueState> get _uploads =>
+      widget.uploads ?? (isUserSignedIn ? uploadQueue.state : _noUploads);
+  static final ValueNotifier<UploadQueueState> _noUploads = ValueNotifier(const UploadQueueState());
+
+  /// As minhas sessões que ainda não chegaram ao servidor e, por isso, não estão em [remote].
+  List<Session> _waitingSessions(UploadQueueState queue, List<Session> remote) {
+    final me = _viewerId;
+    final known = {for (final s in remote) s.id};
+    return [
+      for (final q in queue.unsavedSessions)
+        if (!known.contains(q.sessionId) && (me == null || q.ownerUid == me)) q.toSession(),
+    ];
+  }
+
   /// Qual card está aberto. Null = nenhum; o primeiro da lista começa aberto.
   String? _openId;
   bool _touchedACard = false;
@@ -244,9 +266,25 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
           const SizedBox(height: ClippoSpace.section),
-          StreamBuilder<SessionsSnapshot>(
+          ValueListenableBuilder<UploadQueueState>(
+            valueListenable: _uploads,
+            builder: (context, queue, _) => StreamBuilder<SessionsSnapshot>(
             stream: _sessions,
             builder: (context, snapshot) {
+              // As sessões que ainda só existem neste aparelho aparecem mesmo sem internet (R13):
+              // quem gravou na quadra sem sinal precisa ver que a sessão está guardada.
+              final remote = snapshot.data?.sessions ?? const <Session>[];
+              final waiting = _waitingSessions(queue, remote);
+              if (waiting.isNotEmpty) {
+                return _List(
+                  sessions: [...waiting, ...remote]..sort((a, b) => b.startedAt.compareTo(a.startedAt)),
+                  offline: snapshot.data?.fromCache ?? false,
+                  queue: queue,
+                  isOpen: _isOpen,
+                  onToggle: _toggle,
+                  onOpen: _openSession,
+                );
+              }
               if (snapshot.hasError) {
                 return _Problem(
                   failure: SessionsFailure.from(snapshot.error!),
@@ -273,11 +311,13 @@ class _HomeScreenState extends State<HomeScreen> {
               return _List(
                 sessions: data.sessions,
                 offline: data.fromCache,
+                queue: queue,
                 isOpen: _isOpen,
                 onToggle: _toggle,
                 onOpen: _openSession,
               );
             },
+            ),
           ),
         ],
       ),
@@ -343,12 +383,16 @@ class _List extends StatelessWidget {
   const _List({
     required this.sessions,
     required this.offline,
+    required this.queue,
     required this.isOpen,
     required this.onToggle,
     required this.onOpen,
   });
 
   final List<Session> sessions;
+
+  /// Diz quais sessões ainda têm algo para enviar ("enviando…", R13).
+  final UploadQueueState queue;
 
   /// Mostrando o que estava guardado no aparelho: avisa, sem atrapalhar.
   final bool offline;
@@ -376,6 +420,7 @@ class _List extends StatelessWidget {
             summary: clippoDotList([
               clippoDate(sessions[i].startedAt),
               clippoHighlightCount(sessions[i].highlightCount),
+              ?queue.noteFor(sessions[i].id),
             ]),
             location: sessions[i].location?.label,
             details: clippoDotList([

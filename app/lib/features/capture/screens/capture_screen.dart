@@ -130,6 +130,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// diz que está ligando, em vez de mostrar a detecção como já ligada.
   bool _analysisStarting = false;
 
+  /// A frase que explica a tela preta já apareceu nesta gravação (ou um lance já foi salvo).
+  bool _standbyExplained = false;
+
   // Configurações do modo de gravação (menu no canto superior direito).
   late Duration _length = widget.highlightLength;
   VideoResolution _resolution = VideoResolution.hd720;
@@ -325,6 +328,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _showControls = false;
       _micWarned = true;
       _analysisStarting = true;
+      _standbyExplained = false;
     });
     // A tela já ficou preta (R7): troca a imagem pela análise do gesto e pelo buffer.
     try {
@@ -379,6 +383,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() {
       _step = CaptureStep.saved;
       _saveError = error;
+      _standbyExplained = true;
     });
     _toastTimer = Timer(ClippoMotion.savedBanner, () {
       if (mounted && _step == CaptureStep.saved) setState(() => _step = CaptureStep.recording);
@@ -592,6 +597,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
     required String message,
     required String confirmLabel,
     required String cancelLabel,
+  }) async =>
+      await _askAction(
+        title: title,
+        message: message,
+        confirmLabel: confirmLabel,
+        cancelLabel: cancelLabel,
+      ) ??
+      false;
+
+  /// O diálogo de duas saídas: true no botão principal, false no de texto e nulo se a pessoa
+  /// fechou sem escolher (toque fora, "Voltar" do Android).
+  Future<bool?> _askAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required String cancelLabel,
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -635,15 +656,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
         );
       },
     );
-    return confirmed ?? false;
+    return confirmed;
   }
 
+  /// "Cancelar gravação" joga fora os lances já salvos: o aviso diz isso, com a quantidade, e
+  /// aponta o caminho para guardar. 🟡 A R14 prevê guardá-los numa sessão padrão, ainda não
+  /// definida (docs/produto.md › 5); quando for, troque o descarte aqui.
   Future<void> _confirmCancelRecording() async {
     _controlsTimer?.cancel();
+    final saved = _highlights.length;
     final confirmed = await _confirmAction(
       title: 'Cancelar gravação?',
-      message: 'Tem certeza que quer interromper a gravação atual?',
-      confirmLabel: 'Sim, cancelar',
+      message: saved == 0
+          ? 'A gravação para e você volta para a câmera.'
+          : 'Você perde ${clippoHighlightCount(saved)} desta gravação. '
+              'Para guardar, continue e toque em "Encerrar sessão".',
+      confirmLabel: saved == 0 ? 'Parar gravação' : 'Parar e descartar',
       cancelLabel: 'Continuar gravando',
     );
     if (!mounted) return;
@@ -740,6 +768,28 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void _backToCamera() {
     _startCamera();
     setState(() => _step = CaptureStep.preparing);
+  }
+
+  /// Sair da Gravação com lances ainda não salvos (voltou da "Confirme a sessão" para a
+  /// câmera): pergunta antes, com guardar como a saída principal. Fechar o aviso não faz nada.
+  Future<void> _confirmLeaveWithHighlights() async {
+    final keep = await _askAction(
+      title: 'Sair sem salvar?',
+      message: 'Você perde ${clippoHighlightCount(_highlights.length)} desta sessão.',
+      confirmLabel: 'Voltar e salvar',
+      cancelLabel: 'Sair e descartar',
+    );
+    if (!mounted || keep == null) return;
+    if (keep) {
+      widget.camera.stop().catchError((Object _) {});
+      setState(() => _step = CaptureStep.finishing);
+      return;
+    }
+    _discardHighlights();
+    setState(() {});
+    // `pop` direto: o PopScope ainda guarda o "não pode sair" até o próximo quadro.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) navigator.pop();
   }
 
   Future<void> _confirmDiscardSession() async {
@@ -923,9 +973,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
         ),
         child: PopScope(
           // Durante a gravação, o "Voltar" do Android apenas revela os controles para evitar saída acidental.
-          canPop: !recording,
+          // No Preparar com lances ainda não salvos, sair pergunta antes (eles se perderiam).
+          canPop: !recording && _highlights.isEmpty,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _revealControls();
+            if (didPop) return;
+            recording ? _revealControls() : _confirmLeaveWithHighlights();
           },
           child: Scaffold(
             backgroundColor: ClippoBrand.captureBackground,
@@ -1034,25 +1086,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ],
                 ),
               ),
+              // O que fazer nesta tela (docs/produto.md › 4.5, Estado A).
+              _overlayNote('Apoie o celular e enquadre o campo'),
               if (_recordAudio && !_withSound && !_micWarned)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceS, ClippoSpace.gutter, 0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ClippoSpace.spaceL,
-                      vertical: ClippoSpace.spaceS,
-                    ),
-                    decoration: BoxDecoration(
-                      color: ClippoBrand.captureOverlay,
-                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
-                    ),
-                    child: Text(
-                      'Sem microfone · os highlights saem sem som',
-                      style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
+                _overlayNote('Sem microfone · os highlights saem sem som'),
               const Spacer(),
               _recordWith(),
               const SizedBox(height: ClippoSpace.spaceL),
@@ -1060,6 +1097,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 padding: const EdgeInsets.only(bottom: ClippoSpace.screenBottom),
                 child: Center(
                   child: ClippoRecordButton(
+                    caption: r'Iniciar detecção de gesto \ o /',
                     onPressed: _startRecording,
                   ),
                 ),
@@ -1068,6 +1106,25 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Aviso curto flutuando sobre a imagem da câmera, com fundo para ler no sol.
+  Widget _overlayNote(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(ClippoSpace.gutter, ClippoSpace.spaceS, ClippoSpace.gutter, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL, vertical: ClippoSpace.spaceS),
+        decoration: BoxDecoration(
+          color: ClippoBrand.captureOverlay,
+          borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+        ),
+        child: Text(
+          text,
+          style: ClippoText.label.copyWith(color: ClippoBrand.onWine),
+          textAlign: TextAlign.center,
+        ),
+      ),
     );
   }
 
@@ -1191,6 +1248,34 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         )
                       : const ClippoPulseDot(),
             ),
+            // Logo depois de ligar, uma frase explica a tela preta e some sozinha: sem ela,
+            // quem grava pela primeira vez acha que o app travou. Depois, só o ponto (R7).
+            if (!saved && !_analysisStarting && !_standbyExplained)
+              Align(
+                alignment: const Alignment(0, 0.2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 1, end: 0),
+                    duration: ClippoMotion.stopControls * 2,
+                    curve: const Interval(0.8, 1),
+                    onEnd: () {
+                      if (mounted) setState(() => _standbyExplained = true);
+                    },
+                    builder: (context, opacity, child) => Opacity(opacity: opacity, child: child),
+                    // Nó próprio: sem isso a frase se junta ao rótulo do ponto pulsante.
+                    child: Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        'Detecção ligada. Toque na tela para encerrar.',
+                        textAlign: TextAlign.center,
+                        style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_showControls)
               Align(
                 alignment: Alignment.bottomCenter,

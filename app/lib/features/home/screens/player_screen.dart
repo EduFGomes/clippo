@@ -107,6 +107,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late int _currentIndex =
       _items.isEmpty ? 0 : widget.initialIndex.clamp(0, _items.length - 1);
   late final PageController _pageController = PageController(initialPage: _currentIndex);
+  final GlobalKey _pagesKey = GlobalKey();
 
   _Stage _stage = _Stage.loading;
   String? _message;
@@ -501,12 +502,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final canFetch = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _topBar(counter: '${_currentIndex + 1} de ${_items.length}'),
-        Expanded(
-          child: PageView.builder(
+    final counter = '${_currentIndex + 1} de ${_items.length}';
+    // A mesma chave nos dois desenhos: virar o celular não recria as páginas nem perde o lance.
+    final pages = PageView.builder(
+            key: _pagesKey,
             controller: _pageController,
             itemCount: _items.length,
             onPageChanged: _onPageChanged,
@@ -548,8 +547,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               );
             },
+          );
+    final bar = _ProgressBar(
+      progress: progress,
+      buffered: buffered,
+      elapsedLabel: clippoPlayerProgress(position),
+      totalLabel: clippoPlayerProgress(total),
+      onSeek: ready ? _seekToFraction : null,
+    );
+
+    // Celular deitado: o vídeo ocupa a tela toda (é o gesto natural para ver um lance gravado
+    // na horizontal). Ficam só fechar, o contador e a barra, por cima; tocar no vídeo pausa.
+    // Baixar, compartilhar e as setas voltam ao levantar o celular; deslizar troca de lance.
+    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          pages,
+          Align(alignment: Alignment.topCenter, child: _topBar(counter: counter)),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+              child: bar,
+            ),
           ),
-        ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _topBar(counter: counter),
+        Expanded(child: pages),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             ClippoSpace.gutter,
@@ -604,13 +635,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
               const SizedBox(height: ClippoSpace.spaceM),
-              _ProgressBar(
-                progress: progress,
-                buffered: buffered,
-                elapsedLabel: clippoPlayerProgress(position),
-                totalLabel: clippoPlayerProgress(total),
-                onSeek: ready ? _seekToFraction : null,
-              ),
+              bar,
               const SizedBox(height: ClippoSpace.spaceL),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

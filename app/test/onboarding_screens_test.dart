@@ -95,6 +95,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('"Esqueci a senha" pede um e-mail válido antes de enviar', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const SignInScreen()));
+    await tester.tap(find.text('Esqueci a senha'));
+    await tester.pump();
+    expect(find.text('Informe seu e-mail.'), findsOneWidget);
+    expect(find.text('Informe a senha.'), findsNothing); // só o e-mail importa aqui
+
+    await tester.enterText(find.byType(TextField).first, 'capovill@g');
+    await tester.tap(find.text('Esqueci a senha'));
+    await tester.pump();
+    expect(find.text('Esse e-mail não parece válido.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Complete seu perfil confere os três campos antes de enviar', (tester) async {
     await _phone(tester);
     await tester.pumpWidget(_app(const CompleteProfileScreen()));

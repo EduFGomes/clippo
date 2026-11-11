@@ -9,6 +9,7 @@ import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
 
 // A Início abre sem Firebase: os streams vêm pelo construtor, como o `home` de app.dart.
@@ -142,6 +143,76 @@ void main() {
       find.text('Sem internet. Suas sessões aparecem assim que você conectar.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('sessão salva sem internet aparece na Início, mesmo sem nada do servidor (R13)', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final queue = ValueNotifier(UploadQueueState(sessions: [
+      QueuedSession(
+        sessionId: 'sessao-123456',
+        ownerUid: 'alice',
+        name: 'Pelada de hoje',
+        startedAt: DateTime(2026, 9, 12, 19, 30),
+        endedAt: DateTime(2026, 9, 12, 20, 30),
+        participantIds: const ['bob'],
+        highlights: const [
+          QueuedHighlight(
+            highlightId: 'lance-0001',
+            localPath: '/highlights/1.mp4',
+            offset: Duration(minutes: 3),
+            duration: Duration(seconds: 30),
+          ),
+        ],
+        attempts: 1,
+      ),
+    ]));
+    addTearDown(queue.dispose);
+
+    // Sem internet e sem cache: antes, a tela só dizia "Sem internet" e a sessão sumia.
+    await tester.pumpWidget(_app(HomeScreen(
+      sessions: Stream.value(_fromCache(const <Session>[])),
+      profile: Stream<UserProfile?>.value(null),
+      currentUserId: 'alice',
+      uploads: queue,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pelada de hoje'), findsOneWidget);
+    expect(find.text('12 set 2026 · 1 highlight · sobe quando conectar'), findsOneWidget);
+    expect(find.text('1h · 2 participantes'), findsOneWidget);
+    expect(find.text('Nenhuma sessão ainda'), findsNothing);
+
+    // Chegou ao servidor: sai da fila e fica só a do Firestore, sem repetir.
+    queue.value = const UploadQueueState();
+    await tester.pumpAndSettle();
+    expect(find.text('Pelada de hoje'), findsNothing);
+  });
+
+  testWidgets('sessão de outra conta na fila não aparece para quem está logado', (tester) async {
+    final queue = ValueNotifier(UploadQueueState(sessions: [
+      QueuedSession(
+        sessionId: 'sessao-123456',
+        ownerUid: 'bob',
+        name: 'Pelada do Bob',
+        startedAt: DateTime(2026, 9, 12, 19, 30),
+        endedAt: DateTime(2026, 9, 12, 20, 30),
+      ),
+    ]));
+    addTearDown(queue.dispose);
+
+    await tester.pumpWidget(_app(HomeScreen(
+      sessions: Stream.value(_fromServer(const <Session>[])),
+      profile: Stream<UserProfile?>.value(null),
+      currentUserId: 'alice',
+      uploads: queue,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pelada do Bob'), findsNothing);
+    expect(find.text('Nenhuma sessão ainda'), findsOneWidget);
   });
 
   testWidgets('offline com sessões guardadas mostra a lista e avisa', (tester) async {

@@ -79,7 +79,8 @@ Use exatamente assim.
 | Entrar — título | DE VOLTA / AO JOGO. · Seus highlights estão te esperando. |
 | Entrar — campos | E-mail (voce@email.com) · Senha (sua senha) |
 | Entrar — erro | E-mail ou senha incorretos. |
-| Entrar — link | Esqueci a senha |
+| Entrar — link | Esqueci a senha *(enviando: Enviando…)* |
+| Entrar — link enviado | Se esse e-mail tem conta, o link para criar outra senha já foi. |
 | Entrar — rodapé | Entrar · Ainda não tem conta? Criar conta |
 | Completar perfil — título | QUASE / LÁ. · Escolha como seus amigos vão te achar. |
 | Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa) |
@@ -119,7 +120,10 @@ Use exatamente assim.
 | Chip de amigo | Com Rafa *(primeiro nome)* |
 | Legenda do botão de gravar | Iniciar detecção de gesto \ o / |
 | Aviso ao salvar | **Highlight salvo** · últimos 30s · gesto \ o / detectado |
+| Standby — ao ligar (some sozinho) | Detecção ligada. Toque na tela para encerrar. |
 | Controles do standby | Encerrar sessão · Cancelar gravação |
+| Cancelar gravação — aviso | Cancelar gravação? · Você perde 3 highlights desta gravação. Para guardar, continue e toque em "Encerrar sessão". · Parar e descartar · Continuar gravando *(sem lances: A gravação para e você volta para a câmera. · Parar gravação)* |
+| Sair com lances não salvos — aviso | Sair sem salvar? · Você perde 3 highlights desta sessão. · Voltar e salvar · Sair e descartar |
 | Fim — voltar | Voltar à câmera |
 | Fim — resumo | Gravação encerrada · 4 highlights |
 | Fim — título | Confirme a sessão |
@@ -143,6 +147,7 @@ Use exatamente assim.
 | Início vazio — botão | Gravar primeira sessão |
 | Sessão sem highlights | Nenhum lance salvo nessa sessão |
 | Highlight ainda subindo | enviando… |
+| Card de sessão ainda no aparelho | 11 set 2026 · 7 highlights · enviando… *(sem internet: sobe quando conectar; recusada pelo servidor: envio parado)* |
 | Sem internet | Sem internet. Seus highlights sobem quando conectar. |
 | Erro genérico | Algo deu errado. |
 | Botão de erro | Tentar de novo |
@@ -370,7 +375,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 
 - **`ClippoRecordButton(caption, onPressed)`** — círculo `recordButton` em `wine` (pressionado `wineDeep`) com o ícone `capture` em `onWine` (`recordIcon`), anel `recordRing` em `captureRecordRing`; legenda em `label` / `captureTextMuted` `spaceM` abaixo. A legenda é o rótulo de acessibilidade.
 - **`ClippoCaptureChip(label, selected, onPressed)`** — pílula de altura `captureChip` (toque `minTouchTarget`), texto `label`. Não selecionado: `captureChip` com borda 1,5 em `captureChipBorder`, texto `onWine`. Selecionado: `peach`, texto `onPeach`. A troca anima em `focus`. Semântica com o estado "selecionado".
-- **`ClippoPulseDot()`** — ponto `pulseDot` em `wine` que acende e apaga num ciclo de `standbyPulse` (de 45 % a 100 %). Parado com "reduzir movimento". Semântica "Detecção do gesto ligada".
+- **`ClippoPulseDot()`** — ponto `pulseDot` em `peach` que acende e apaga num ciclo de `standbyPulse` (de 45 % a 100 %). Era `wine` até 10/11/2026; vinho sobre o preto tem contraste de ~1,9:1 e sumia no sol. Parado com "reduzir movimento". Semântica "Detecção do gesto ligada".
 - **`ClippoCaptureToast(title, detail?, success)`** — aviso centralizado: círculo `check` em `peach` com ✓ em `onPeach` (só quando `success`), título em `titleS` / `onWine`, detalhe em `label` / `captureTextMuted`. Região viva para o leitor de tela. Sem fundo nem tarja.
 - **`ClippoGhostButton(label, onPressed)`** — pílula contornada de altura `buttonHeight`, borda 1,5 em `captureGhostBorder`, texto `button` em `onWine` a 85 %. Ação que desfaz sobre o preto ("Cancelar gravação"); a ação principal ao lado é o `ClippoPrimaryButton.onWine`.
 

@@ -63,6 +63,21 @@ class AuthRepository {
     }
   }
 
+  /// "Esqueci a senha": o Firebase Auth manda um e-mail com o link para criar outra senha.
+  ///
+  /// Não diz se existe conta com o e-mail (quem pergunta não deve descobrir quem tem conta):
+  /// "conta não encontrada" termina igual a "enviado". 🟡 Fluxo mínimo; o texto do e-mail e a
+  /// tela de nova senha são os padrões do Firebase (docs/arquitetura.md › Decisões em aberto).
+  Future<void> sendPasswordReset({required String email}) async {
+    _check('email', validateEmail(email));
+    try {
+      await _auth.sendPasswordResetEmail(email: normalizeEmail(email));
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') return;
+      throw _translateAuthError(e);
+    }
+  }
+
   Future<void> signOut() => _auth.signOut();
 
   /// O perfil existe? Se não, a pessoa criou a conta mas ainda não completou o perfil.

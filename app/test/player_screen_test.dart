@@ -101,6 +101,34 @@ class _HangingController extends VideoPlayerController {
 }
 
 void main() {
+  testWidgets('celular deitado: o vídeo ocupa a tela, sem cortar, e o lance continua o mesmo', (tester) async {
+    _phone(tester);
+    await tester.pumpWidget(_app(PlayerScreen(
+      sessionName: 'Pelada de quinta',
+      highlights: _highlights(),
+      initialIndex: 1,
+      loadVideo: _neverLoads,
+    )));
+    await tester.pump();
+    expect(find.text('2 de 2'), findsOneWidget);
+    expect(find.text('Baixar'), findsOneWidget);
+
+    tester.view.physicalSize = const Size(915, 412);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('2 de 2'), findsOneWidget);
+    expect(find.bySemanticsLabel('Fechar'), findsOneWidget);
+    expect(find.text('Carregando o lance…'), findsOneWidget);
+    // Só o essencial por cima do vídeo.
+    expect(find.text('Baixar'), findsNothing);
+
+    tester.view.physicalSize = const Size(412, 915);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('2 de 2'), findsOneWidget);
+    expect(find.text('Baixar'), findsOneWidget);
+  });
+
   testWidgets('mostra a sessão, o lance e carrega o vídeo pelo repositório', (tester) async {
     _phone(tester);
     final pedidos = <String>[];

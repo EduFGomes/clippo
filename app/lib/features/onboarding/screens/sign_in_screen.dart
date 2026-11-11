@@ -37,6 +37,12 @@ class _SignInScreenState extends State<SignInScreen> {
   /// "E-mail ou senha incorretos.": os dois campos ficam marcados.
   bool _credentialsError = false;
 
+  /// Aviso na mesma linha, quando não é erro (o link de nova senha foi enviado).
+  String? _notice;
+
+  /// Pedindo o e-mail de nova senha: o link mostra que está enviando e não aceita outro toque.
+  bool _resetting = false;
+
   @override
   void dispose() {
     _email.dispose();
@@ -45,12 +51,46 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _clearError(String field) {
-    if (_fieldErrors.containsKey(field) || _error != null) {
+    if (_fieldErrors.containsKey(field) || _error != null || _notice != null) {
       setState(() {
         _fieldErrors.remove(field);
         _error = null;
+        _notice = null;
         _credentialsError = false;
       });
+    }
+  }
+
+  /// "Esqueci a senha": usa o e-mail já digitado no campo. Sem e-mail válido, o erro aparece
+  /// embaixo dele e nada é enviado.
+  Future<void> _resetPassword() async {
+    final emailError = validateEmail(_email.text);
+    setState(() {
+      _fieldErrors.clear();
+      if (emailError != null) _fieldErrors['email'] = emailError;
+      _error = null;
+      _notice = null;
+      _credentialsError = false;
+    });
+    if (emailError != null) return; // nada vai para o Firebase sem passar na validação
+
+    setState(() => _resetting = true);
+    try {
+      await authRepository.sendPasswordReset(email: _email.text);
+      if (mounted) {
+        setState(() => _notice = 'Se esse e-mail tem conta, o link para criar outra senha já foi.');
+      }
+    } on AuthFailure catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (e.field == 'email') {
+          _fieldErrors['email'] = e.message;
+        } else {
+          _error = e.message;
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _resetting = false);
     }
   }
 
@@ -64,6 +104,7 @@ class _SignInScreenState extends State<SignInScreen> {
         ..clear()
         ..addAll(errors.cast<String, String>());
       _error = null;
+      _notice = null;
       _credentialsError = false;
     });
     if (errors.isNotEmpty) return; // nada vai para o Firebase sem passar na validação
@@ -150,13 +191,38 @@ class _SignInScreenState extends State<SignInScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: _error == null
-                    ? const SizedBox.shrink()
-                    : Text(_error!, style: ClippoText.errorInline.copyWith(color: colors.error)),
+                child: Semantics(
+                  liveRegion: true,
+                  child: _error != null
+                      ? Text(_error!, style: ClippoText.errorInline.copyWith(color: colors.error))
+                      : _notice != null
+                          ? Text(_notice!, style: ClippoText.errorInline.copyWith(color: colors.text))
+                          : const SizedBox.shrink(),
+                ),
               ),
               const SizedBox(width: ClippoSpace.spaceM),
-              // 🟡 A recuperação de senha ainda não existe (docs/arquitetura.md › Decisões em aberto).
-              Text('Esqueci a senha', style: ClippoText.linkS.copyWith(color: colors.accent)),
+              // 🟡 Fluxo mínimo de recuperação de senha (docs/arquitetura.md › Decisões em aberto).
+              Semantics(
+                button: true,
+                enabled: !_resetting,
+                label: 'Esqueci a senha',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _resetting ? null : _resetPassword,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+                    child: Align(
+                      alignment: AlignmentDirectional.topEnd,
+                      widthFactor: 1,
+                      child: Text(
+                        _resetting ? 'Enviando…' : 'Esqueci a senha',
+                        style: ClippoText.linkS.copyWith(color: colors.accent),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ],
