@@ -90,7 +90,7 @@ describe("normalizeHighlightRef", () => {
     expect(normalizeHighlightRef("lance-0001", "highlightId")).toBe("lance-0001");
     for (const ruim of ["curto", "../lance-0001", "", null, 7]) {
       expect(() => normalizeHighlightRef(ruim, "sessionId")).toThrowError(
-        "Não foi possível renomear o lance. Tente de novo.",
+        "Esse lance não foi encontrado. Tente de novo.",
       );
     }
   });

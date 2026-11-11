@@ -103,6 +103,13 @@ alguém ficar grande demais, vira contador.
   perfil de cada participante; depois apaga a pasta `sessions/{id}/` do Storage (falha ali só vai
   para o log). O app tira a sessão da fila de envio antes de chamar. 🟡 Sessão juntada (D18) ainda
   não é excluída.
+- O dono apaga um lance: `deleteHighlight` (domínio `highlights/`) apaga o documento, desconta 1
+  do `highlightCount` da sessão e do perfil de cada participante e apaga o vídeo e a miniatura
+  no Storage. Lance copiado de uma sessão juntada (`sourceSessionId`) é da outra pessoa e não sai.
+- A pessoa exclui a conta: `deleteMyAccount` (domínio `users/`, LGPD) exclui as sessões que ela
+  gravou (`deleteSessionAs`), tira ela das dos outros (`leaveSessionAs`), apaga amizades, pedidos,
+  perfil, `usernames/` e `userPrivate/`, e por último a conta do Auth. Seguro repetir. 🟡 Dona de
+  sessão juntada ainda não consegue excluir pelo app.
 - O app **não** cria sessão "aberta" nem entra por código/link: o campo `isClosed` do app não existe no
   servidor. Se o grupo quiser convite por link, entra como pedido que o dono aprova.
 

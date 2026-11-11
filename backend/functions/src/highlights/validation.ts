@@ -77,7 +77,7 @@ const HIGHLIGHT_ID_PATTERN = /^[A-Za-z0-9_-]{6,64}$/;
 /** Ids da sessão e do lance: os mesmos que o app gera. */
 export function normalizeHighlightRef(raw: unknown, field: "sessionId" | "highlightId"): string {
   if (typeof raw !== "string" || !HIGHLIGHT_ID_PATTERN.test(raw)) {
-    throw new HighlightValidationError(field, "Não foi possível renomear o lance. Tente de novo.");
+    throw new HighlightValidationError(field, "Esse lance não foi encontrado. Tente de novo.");
   }
   return raw;
 }

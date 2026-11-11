@@ -40,60 +40,68 @@ export const deleteSession = onCall<{ sessionId: string }, Promise<{ sessionId: 
       throw e;
     }
 
-    const sessionRef = db().doc(`sessions/${sessionId}`);
-    const requests = db().collection("sessionMergeRequests");
-
-    const deleted = await db().runTransaction(async (tx) => {
-      const snap = await tx.get(sessionRef);
-      if (!snap.exists) return false;
-      if (snap.get("ownerId") !== uid) {
-        throw new HttpsError("permission-denied", "Só quem gravou a sessão pode excluir.");
-      }
-      if (mergedIntoOf(snap)) {
-        throw new HttpsError("failed-precondition", "Essa sessão foi juntada a outra. Exclua pela principal.");
-      }
-      if (mergedFromOf(snap).length > 0) {
-        throw new HttpsError(
-          "failed-precondition",
-          "Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.",
-        );
-      }
-
-      // Leituras primeiro (regra da transação do Firestore).
-      const participantIds = participantIdsOf(snap);
-      const [highlights, asInto, asFrom, userSnaps] = await Promise.all([
-        tx.get(sessionRef.collection("highlights")),
-        tx.get(requests.where("intoSessionId", "==", sessionId)),
-        tx.get(requests.where("fromSessionId", "==", sessionId)),
-        participantIds.length > 0
-          ? tx.getAll(...participantIds.map((id) => db().doc(`users/${id}`)))
-          : Promise.resolve([]),
-      ]);
-
-      const highlightCount = (snap.get("highlightCount") as number | undefined) ?? 0;
-      for (const userSnap of userSnaps) {
-        if (!userSnap.exists) continue;
-        tx.update(userSnap.ref, {
-          "stats.sessions": FieldValue.increment(-1),
-          "stats.highlights": FieldValue.increment(-highlightCount),
-        });
-      }
-      for (const doc of [...highlights.docs, ...asInto.docs, ...asFrom.docs]) tx.delete(doc.ref);
-      tx.delete(sessionRef);
-      return true;
-    });
-
-    if (deleted) {
-      try {
-        await bucket().deleteFiles({ prefix: sessionStoragePrefix(sessionId) });
-      } catch (e) {
-        logger.error("deleteSession: a sessão saiu do banco, mas os arquivos ficaram no Storage", {
-          sessionId,
-          error: String(e),
-        });
-      }
-    }
+    await deleteSessionAs(uid, sessionId);
 
     return { sessionId };
   },
 );
+
+/**
+ * Exclui a sessão [sessionId] de [uid] (usada pelo deleteSession e pelo deleteMyAccount).
+ * Só o dono; sessão juntada (D18) fica de fora; sessão que não existe não é erro.
+ */
+export async function deleteSessionAs(uid: string, sessionId: string): Promise<void> {
+  const sessionRef = db().doc(`sessions/${sessionId}`);
+  const requests = db().collection("sessionMergeRequests");
+
+  const deleted = await db().runTransaction(async (tx) => {
+    const snap = await tx.get(sessionRef);
+    if (!snap.exists) return false;
+    if (snap.get("ownerId") !== uid) {
+      throw new HttpsError("permission-denied", "Só quem gravou a sessão pode excluir.");
+    }
+    if (mergedIntoOf(snap)) {
+      throw new HttpsError("failed-precondition", "Essa sessão foi juntada a outra. Exclua pela principal.");
+    }
+    if (mergedFromOf(snap).length > 0) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.",
+      );
+    }
+
+    // Leituras primeiro (regra da transação do Firestore).
+    const participantIds = participantIdsOf(snap);
+    const [highlights, asInto, asFrom, userSnaps] = await Promise.all([
+      tx.get(sessionRef.collection("highlights")),
+      tx.get(requests.where("intoSessionId", "==", sessionId)),
+      tx.get(requests.where("fromSessionId", "==", sessionId)),
+      participantIds.length > 0
+        ? tx.getAll(...participantIds.map((id) => db().doc(`users/${id}`)))
+        : Promise.resolve([]),
+    ]);
+
+    const highlightCount = (snap.get("highlightCount") as number | undefined) ?? 0;
+    for (const userSnap of userSnaps) {
+      if (!userSnap.exists) continue;
+      tx.update(userSnap.ref, {
+        "stats.sessions": FieldValue.increment(-1),
+        "stats.highlights": FieldValue.increment(-highlightCount),
+      });
+    }
+    for (const doc of [...highlights.docs, ...asInto.docs, ...asFrom.docs]) tx.delete(doc.ref);
+    tx.delete(sessionRef);
+    return true;
+  });
+
+  if (deleted) {
+    try {
+      await bucket().deleteFiles({ prefix: sessionStoragePrefix(sessionId) });
+    } catch (e) {
+      logger.error("deleteSession: a sessão saiu do banco, mas os arquivos ficaram no Storage", {
+        sessionId,
+        error: String(e),
+      });
+    }
+  }
+}

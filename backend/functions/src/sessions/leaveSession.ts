@@ -34,42 +34,50 @@ export const leaveSession = onCall<{ sessionId: string }, Promise<{ sessionId: s
       throw e;
     }
 
-    const sessionRef = db().doc(`sessions/${sessionId}`);
-    await db().runTransaction(async (tx) => {
-      const snap = await tx.get(sessionRef);
-      if (!snap.exists) return;
-      if (mergedIntoOf(snap)) {
-        throw new HttpsError("failed-precondition", "Essa sessão foi juntada a outra. Saia pela principal.");
-      }
-      const before = participantIdsOf(snap);
-      if (!before.includes(uid)) return;
-      if (snap.get("ownerId") === uid) {
-        throw new HttpsError("failed-precondition", "Quem gravou a sessão não pode sair dela.");
-      }
-
-      const participantIds = before.filter((id) => id !== uid);
-      const preview = await readPreview(tx, participantIds);
-      const meSnap = await tx.get(db().doc(`users/${uid}`));
-      const now = FieldValue.serverTimestamp();
-
-      tx.update(sessionRef, {
-        participantIds,
-        participantCount: participantIds.length,
-        participantsPreview: preview,
-        updatedAt: now,
-      });
-      for (const fromId of mergedFromOf(snap)) {
-        tx.update(db().doc(`sessions/${fromId}`), { participantIds, updatedAt: now });
-      }
-      if (meSnap.exists) {
-        const highlightCount = (snap.get("highlightCount") as number | undefined) ?? 0;
-        tx.update(meSnap.ref, {
-          "stats.sessions": FieldValue.increment(-1),
-          "stats.highlights": FieldValue.increment(-highlightCount),
-        });
-      }
-    });
+    await leaveSessionAs(uid, sessionId);
 
     return { sessionId };
   },
 );
+
+/**
+ * Tira [uid] da sessão [sessionId] (usada pelo leaveSession e pelo deleteMyAccount). Recusa o
+ * dono e a sessão juntada a outra; quem já não participa, ou sessão que não existe, não é erro.
+ */
+export async function leaveSessionAs(uid: string, sessionId: string): Promise<void> {
+  const sessionRef = db().doc(`sessions/${sessionId}`);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(sessionRef);
+    if (!snap.exists) return;
+    if (mergedIntoOf(snap)) {
+      throw new HttpsError("failed-precondition", "Essa sessão foi juntada a outra. Saia pela principal.");
+    }
+    const before = participantIdsOf(snap);
+    if (!before.includes(uid)) return;
+    if (snap.get("ownerId") === uid) {
+      throw new HttpsError("failed-precondition", "Quem gravou a sessão não pode sair dela.");
+    }
+
+    const participantIds = before.filter((id) => id !== uid);
+    const preview = await readPreview(tx, participantIds);
+    const meSnap = await tx.get(db().doc(`users/${uid}`));
+    const now = FieldValue.serverTimestamp();
+
+    tx.update(sessionRef, {
+      participantIds,
+      participantCount: participantIds.length,
+      participantsPreview: preview,
+      updatedAt: now,
+    });
+    for (const fromId of mergedFromOf(snap)) {
+      tx.update(db().doc(`sessions/${fromId}`), { participantIds, updatedAt: now });
+    }
+    if (meSnap.exists) {
+      const highlightCount = (snap.get("highlightCount") as number | undefined) ?? 0;
+      tx.update(meSnap.ref, {
+        "stats.sessions": FieldValue.increment(-1),
+        "stats.highlights": FieldValue.increment(-highlightCount),
+      });
+    }
+  });
+}
