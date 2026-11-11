@@ -58,4 +58,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Gustavo Rocha'), findsWidgets);
   });
+
+  testWidgets('a lista rola até o fim da tela, por trás da roda, sem faixa cortando', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(const AppShell()));
+    await tester.pumpAndSettle();
+
+    // A área rolável vai até a base da tela; a folga da roda é espaço no fim da lista.
+    final scroll = find.byType(SingleChildScrollView).first;
+    expect(tester.getBottomLeft(scroll).dy, 915);
+    final padding = tester.widget<SingleChildScrollView>(scroll).padding! as EdgeInsets;
+    expect(padding.bottom, ClippoSpace.screenBottom + ClippoSize.navClearance);
+  });
+
+  testWidgets('com o teclado aberto a roda some e a folga dela também', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(const AppShell()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(ClippoRadialNav.buttonKey), findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(ClippoRadialNav.buttonKey), findsNothing);
+    final scroll = find.byType(SingleChildScrollView).first;
+    final padding = tester.widget<SingleChildScrollView>(scroll).padding! as EdgeInsets;
+    expect(padding.bottom, ClippoSpace.screenBottom);
+    // O conteúdo termina em cima do teclado, não numa faixa vazia.
+    expect(tester.getBottomLeft(scroll).dy, 915 - 300);
+  });
 }

@@ -78,7 +78,11 @@ class _ClippoScreenGroundState extends State<ClippoScreenGround> with SingleTick
                 ),
               ),
             ),
-            SafeArea(child: _content()),
+            // Embaixo, a área segura (barra do Android e a folga da roda, no AppShell) vira
+            // espaço no fim da rolagem, não um corte: a lista passa por trás da roda até o fim
+            // da tela, e o último item ainda dá para subir acima dela. Antes, o SafeArea cortava
+            // a rolagem e sobrava uma faixa lisa da cor do fundo na frente do conteúdo.
+            SafeArea(bottom: false, child: _content(MediaQuery.paddingOf(context).bottom)),
             AnimatedBuilder(
               animation: _wineOpacity,
               builder: (context, _) {
@@ -96,12 +100,12 @@ class _ClippoScreenGroundState extends State<ClippoScreenGround> with SingleTick
     );
   }
 
-  Widget _content() {
-    const padding = EdgeInsets.fromLTRB(
+  Widget _content(double bottomInset) {
+    final padding = EdgeInsets.fromLTRB(
       ClippoSpace.gutter,
       ClippoSpace.sectionL,
       ClippoSpace.gutter,
-      ClippoSpace.screenBottom,
+      ClippoSpace.screenBottom + bottomInset,
     );
     final footer = widget.footer;
     if (footer == null) {
