@@ -127,6 +127,10 @@ Use exatamente assim.
 | Fim — voltar | Voltar à câmera |
 | Fim — resumo | Gravação encerrada · 4 highlights |
 | Fim — título | Confirme a sessão |
+| Renomear lance — título | RENOMEAR / LANCE. · Todos da sessão veem o nome novo. |
+| Renomear lance — campo e botão | Nome do lance · Ex.: Voleio do Rafa · Salvar nome |
+| Renomear lance — confirmação | Lance renomeado. |
+| Renomear lance — erros | Dê um nome ao lance. · O nome do lance pode ter até 50 caracteres. · Só quem gravou a sessão renomeia os lances. |
 | Fim — rótulos | Nome da sessão · Data · Horário · Local · sugerido por GPS · Participantes |
 | Fim — participante você | Você |
 | Fim — adicionar | + adicionar |
@@ -147,6 +151,7 @@ Use exatamente assim.
 | Início vazio — botão | Gravar primeira sessão |
 | Sessão sem highlights | Nenhum lance salvo nessa sessão |
 | Highlight ainda subindo | enviando… |
+| Nome padrão do lance | Lance 3 *(pela ordem na sessão; antes, o app sorteava nomes "criativos", que trocavam de lance quando a lista mudava)* |
 | Card de sessão ainda no aparelho | 11 set 2026 · 7 highlights · enviando… *(sem internet: sobe quando conectar; recusada pelo servidor: envio parado)* |
 | Sem internet | Sem internet. Seus highlights sobem quando conectar. |
 | Erro genérico | Algo deu errado. |
@@ -366,7 +371,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
 - **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
-- **`ClippoHighlightTile(title, timing, onTap, thumbnailUrl?, uploading)`** — uma linha de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura `thumbnailWidth` × `thumbnailHeight` à esquerda com botão de play circular (`playBadge`) sobreposto; à direita, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`).
+- **`ClippoHighlightTile(title, timing, onTap, thumbnail?, uploading, onRename?)`** — um card de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura com altura `thumbnailHeight` em cima, com botão de play circular (`playBadge`) sobreposto; embaixo, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`). `thumbnail` é um `ImageProvider` (no app, um `FileImage` da miniatura no aparelho); sem ele, enquanto carrega ou se a imagem não abrir, aparece o desenho de quadra. `onRename` (só o dono da sessão) mostra o ícone `edit` em `textMuted` ao lado do título, com área de toque `minTouchTarget`, e uma ação "Renomear lance" para o leitor de tela.
 - **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
@@ -6,7 +7,7 @@ import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 /// Card de highlight na tela Sessão (docs/produto.md › 4.3).
 ///
 /// Pensado para grade de 2 colunas (para ver mais takes ao mesmo tempo):
-/// miniatura no topo com botão de play centralizado e, abaixo, o título criativo
+/// miniatura no topo com botão de play centralizado e, abaixo, o título
 /// do lance e o momento na sessão ("00:12:40 · 30s" ou "00:12:40 · enviando…").
 class ClippoHighlightTile extends StatelessWidget {
   const ClippoHighlightTile({
@@ -14,32 +15,41 @@ class ClippoHighlightTile extends StatelessWidget {
     required this.title,
     required this.timing,
     required this.onTap,
-    this.thumbnailUrl,
+    this.thumbnail,
     this.uploading = false,
+    this.onRename,
   });
 
-  /// Título curto e criativo do lance ("Jogada de cinema", "Ponto antológico").
+  /// Título curto do lance ("Lance 3", ou o nome que o dono deu).
   final String title;
 
   /// Momento e duração formatados ("00:12:40 · 30s" ou "00:12:40 · enviando…").
   final String timing;
 
-  /// URL da miniatura, quando já disponível. Sem ela, desenha o quadro da quadra.
-  final String? thumbnailUrl;
+  /// O quadro do vídeo, quando já disponível (um `FileImage` da miniatura no aparelho ou já
+  /// baixada). Sem ele, ou se a imagem não abrir, desenha o quadro da quadra.
+  final ImageProvider? thumbnail;
 
   /// Destaca a linha de tempo quando o vídeo ainda está subindo (R13).
   final bool uploading;
 
   final VoidCallback onTap;
 
+  /// "Renomear lance": um lápis ao lado do título. Só para o dono da sessão; nulo esconde.
+  final VoidCallback? onRename;
+
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
     final timingColor = uploading ? colors.accent : colors.textMuted;
 
+    final rename = onRename;
     return Semantics(
       button: true,
       label: '$title, $timing',
+      customSemanticsActions: rename == null
+          ? null
+          : {const CustomSemanticsAction(label: 'Renomear lance'): rename},
       child: ExcludeSemantics(
         child: Material(
           color: colors.surface,
@@ -58,7 +68,7 @@ class ClippoHighlightTile extends StatelessWidget {
                     ClippoSpace.spaceS,
                     0,
                   ),
-                  child: _Thumbnail(thumbnailUrl: thumbnailUrl),
+                  child: _Thumbnail(image: thumbnail),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(ClippoSpace.spaceM),
@@ -66,11 +76,32 @@ class ClippoHighlightTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: ClippoText.titleS.copyWith(color: colors.text),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: ClippoText.titleS.copyWith(color: colors.text),
+                            ),
+                          ),
+                          if (rename != null)
+                            GestureDetector(
+                              key: const ValueKey('clippo-highlight-rename'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: rename,
+                              // Área de toque do tamanho mínimo; o lápis fica no canto, alinhado ao título.
+                              child: SizedBox.square(
+                                dimension: ClippoSize.minTouchTarget,
+                                child: Align(
+                                  alignment: Alignment.topRight,
+                                  child: ClippoSvgIcon('edit', size: ClippoSize.checkIcon, color: colors.textMuted),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: ClippoSpace.spaceXs),
                       Row(
@@ -107,34 +138,37 @@ class ClippoHighlightTile extends StatelessWidget {
 }
 
 class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({this.thumbnailUrl});
+  const _Thumbnail({this.image});
 
-  final String? thumbnailUrl;
+  final ImageProvider? image;
 
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    final photo = thumbnailUrl;
+    final photo = image;
+    final court = CustomPaint(painter: _CourtPreviewPainter(lineColor: colors.outline));
 
     return SizedBox(
       height: ClippoSize.thumbnailHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.backgroundGlow,
-          borderRadius: BorderRadius.circular(ClippoRadius.radiusField - ClippoSpace.spaceXs),
-          image: photo == null || photo.isEmpty
-              ? null
-              : DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover),
-        ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(ClippoRadius.radiusField - ClippoSpace.spaceXs),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (photo == null || photo.isEmpty)
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _CourtPreviewPainter(lineColor: colors.outline),
-                ),
-              ),
+            Positioned.fill(child: ColoredBox(color: colors.backgroundGlow)),
+            Positioned.fill(
+              child: photo == null
+                  ? court
+                  : Image(
+                      image: photo,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      // Enquanto a imagem não chega, e se ela não abrir: o desenho de quadra.
+                      frameBuilder: (_, child, frame, loadedNow) =>
+                          frame == null && !loadedNow ? court : child,
+                      errorBuilder: (_, _, _) => court,
+                    ),
+            ),
             Container(
               width: ClippoSize.playBadge,
               height: ClippoSize.playBadge,

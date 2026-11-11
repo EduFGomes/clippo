@@ -57,7 +57,8 @@ class HighlightVideoStream {
 /// pessoa, sem login, e furaria a R11. Para assistir, o player busca o vídeo aos poucos
 /// ([videoStream]) com o login e o App Check de quem pede, e as regras valem para cada
 /// pedaço. Para baixar e compartilhar, o SDK (que também passa pelas regras) baixa o arquivo
-/// inteiro para uma pasta de cache do app ([videoFile]).
+/// inteiro para uma pasta de cache do app ([videoFile]). A miniatura vem do mesmo jeito
+/// ([thumbnailFile]).
 class HighlightMediaRepository {
   HighlightMediaRepository({
     FirebaseStorage? storage,
@@ -156,6 +157,37 @@ class HighlightMediaRepository {
     final cached = await cachedVideoFile(storagePath);
     if (cached != null) return cached;
     final file = await _cacheFileOf(storagePath);
+    await file.parent.create(recursive: true);
+    final partial = File('${file.path}.part');
+    try {
+      await _storage().ref(storagePath).writeToFile(partial);
+      return await partial.rename(file.path);
+    } catch (e) {
+      if (await partial.exists()) await partial.delete();
+      throw HighlightMediaFailure.from(e);
+    }
+  }
+
+  final Map<String, Future<File>> _thumbnailLoads = {};
+
+  /// A miniatura do lance como arquivo local, baixada uma vez e guardada no cache.
+  ///
+  /// Como o vídeo, **sem `getDownloadURL()`**: o SDK baixa com o login e o App Check de quem
+  /// pede, e as regras do Storage (D17) decidem. Falha (com [HighlightMediaFailure]) quando a
+  /// miniatura ainda não subiu ou o lance é antigo e não tem uma: a tela mostra o desenho de
+  /// quadra no lugar.
+  Future<File> thumbnailFile(String storagePath) {
+    checkPath(storagePath, expectedFile: 'thumb.jpg');
+    // Vários cards pedindo a mesma miniatura ao mesmo tempo dividem um download só.
+    // (Bloco, e não `=>`: o `remove` devolve este mesmo Future, e o whenComplete esperaria por ele.)
+    return _thumbnailLoads[storagePath] ??= _loadThumbnail(storagePath).whenComplete(() {
+      _thumbnailLoads.remove(storagePath);
+    });
+  }
+
+  Future<File> _loadThumbnail(String storagePath) async {
+    final file = File('${(await _cacheDir()).path}/clippo-thumbs/${storagePath.replaceAll('/', '_')}');
+    if (await file.exists() && await file.length() > 0) return file;
     await file.parent.create(recursive: true);
     final partial = File('${file.path}.part');
     try {

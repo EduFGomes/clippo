@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  HIGHLIGHT_TITLE_MAX,
+  HighlightValidationError,
   MAX_VIDEO_BYTES,
+  normalizeHighlightRef,
+  normalizeHighlightRename,
   parseHighlightVideoPath,
   validateUploadedVideo,
 } from "../src/highlights/validation";
@@ -51,5 +55,43 @@ describe("validateUploadedVideo", () => {
     expect(
       validateUploadedVideo({ contentType: "video/mp4", size: MAX_VIDEO_BYTES + 1 }).valid,
     ).toBe(false);
+  });
+});
+
+// Os mesmos casos de app/test/input_validation_test.dart (validateHighlightRename).
+describe("normalizeHighlightRename", () => {
+  it("normaliza espaços e aceita até o limite", () => {
+    expect(normalizeHighlightRename("  Voleio  do Rafa ")).toBe("Voleio do Rafa");
+    expect(normalizeHighlightRename("a".repeat(HIGHLIGHT_TITLE_MAX))).toBe("a".repeat(HIGHLIGHT_TITLE_MAX));
+  });
+
+  it("recusa nome vazio, só espaços ou que não é texto", () => {
+    for (const ruim of [undefined, null, "", "   ", 42, {}]) {
+      expect(() => normalizeHighlightRename(ruim)).toThrowError("Dê um nome ao lance.");
+    }
+  });
+
+  it("recusa nome acima do limite, apontando o campo", () => {
+    try {
+      normalizeHighlightRename("a".repeat(HIGHLIGHT_TITLE_MAX + 1));
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(HighlightValidationError);
+      expect((e as HighlightValidationError).field).toBe("title");
+      expect((e as Error).message).toBe(
+        `O nome do lance pode ter até ${HIGHLIGHT_TITLE_MAX} caracteres.`,
+      );
+    }
+  });
+});
+
+describe("normalizeHighlightRef", () => {
+  it("aceita os ids que o app gera e recusa o resto", () => {
+    expect(normalizeHighlightRef("lance-0001", "highlightId")).toBe("lance-0001");
+    for (const ruim of ["curto", "../lance-0001", "", null, 7]) {
+      expect(() => normalizeHighlightRef(ruim, "sessionId")).toThrowError(
+        "Não foi possível renomear o lance. Tente de novo.",
+      );
+    }
   });
 });

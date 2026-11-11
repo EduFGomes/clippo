@@ -55,7 +55,7 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 | `sessionMergeRequests/{intoId__fromId}` — pedido para juntar sessões (D18) | `uids` [quem pediu, dono da outra] · `intoSessionId` · `fromSessionId` · `requestedBy` · `requestedTo` · `intoName` · `fromName` · `createdAt` | Só as duas pessoas | Só Functions (`requestSessionMerge`, `acceptSessionMerge`, `cancelSessionMerge`) |
 | `userPrivate/{uid}` — dados privados | `birthDate` string `AAAA-MM-DD` · `createdAt` timestamp | Só o dono | Só Functions (`completeProfile`) |
 | `sessions/{sessionId}` — um jogo gravado | `name` string · `ownerId` string · `participantIds` string[] (inclui o dono, R9) · `participantsPreview` [{`uid`, `name`, `photoUrl`}] até 5 · `participantCount` número · `startedAt` timestamp · `endedAt` timestamp · `durationSeconds` número · `location` {`label`, `lat`?, `lng`?}\|null · `highlightCount` número · `mergedInto` string\|null (D18: esta sessão foi juntada àquela) · `mergedFrom` string[] (D18: sessões juntadas a esta) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes | Só Functions (`saveSession`, `updateSession`, `leaveSession`, `acceptSessionMerge`; `updateProfile` regrava o nome em `participantsPreview`) |
-| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `sourceSessionId` string\|null (D18: de qual sessão o lance veio) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`, `acceptSessionMerge`; `onVideoUploaded` marca `uploaded`, D15) |
+| `sessions/{sessionId}/highlights/{highlightId}` — trecho salvo pelo gesto | `title` string · `offsetSeconds` número · `durationSeconds` número (~30) · `savedAt` timestamp · `createdBy` string · `videoPath` string\|null · `thumbnailPath` string\|null · `status` `pending`\|`uploaded`\|`failed` (R13) · `sourceSessionId` string\|null (D18: de qual sessão o lance veio) · `createdAt` timestamp · `updatedAt` timestamp | Só os participantes da sessão | Só Functions (`saveSession`, `acceptSessionMerge`, `renameHighlight` troca o `title`; `onVideoUploaded` marca `uploaded`, D15) |
 
 Regras de modelagem:
 - O **e-mail fica só no Firebase Auth**, nunca no Firestore.
@@ -93,6 +93,8 @@ alguém ficar grande demais, vira contador.
 - No "Salvar sessão", o dono escolhe os participantes **entre os amigos** (R10, conferido no `saveSession`).
   Eles **não precisam aceitar**: a sessão aparece na Início deles (proposta da Gravação › Estado A).
 - Todo participante vê, assiste e **baixa** todos os highlights (R11). Download = ler o vídeo pelo Storage.
+- Depois de salva, só o dono renomeia um lance: `renameHighlight` (domínio `highlights/`; o
+  nome nasce "Lance N" no `saveSession`).
 - Depois de salva, só o dono muda nome, local e participantes: `updateSession` (R12). Quem entra
   também precisa ser amigo do dono; quem sai perde o acesso aos vídeos na hora.
 - Um participante pode sair sozinho: `leaveSession` (o dono não sai; 🟡 decisão de produto em aberto).
@@ -205,6 +207,15 @@ URL assinada por Function (latência e mais código).
 | Assistir no Player | **Streaming**: o player busca o arquivo aos poucos na mesma API que o SDK usa (`/v0/b/{bucket}/o/{caminho}?alt=media`), com os cabeçalhos `Authorization: Firebase <token do login>` e `X-Firebase-AppCheck`. Começa a tocar sem esperar o download inteiro. Sem login ou App Check, o Storage recusa. Se o streaming falhar, o Player baixa o arquivo inteiro e toca |
 | Baixar e compartilhar | O SDK baixa o arquivo inteiro para o cache do app (que também serve para tocar de novo na hora) |
 | Quem gravou, antes de subir | O MP4 da pasta do app (`Highlight.localPath`, vindo da fila de envio), sem internet |
+| Miniatura no card da Sessão | O SDK baixa o `thumb.jpg` para o cache do app (`thumbnailFile`, pelas regras, sem `getDownloadURL()`). Quem gravou, antes de subir: o JPEG da pasta do app (`Highlight.localThumbnailPath`) |
+
+**Como a miniatura nasce:** a fila de envio (`core/upload/upload_queue.dart`), e não o gesto (R2),
+pede ao nativo (`extractThumbnail` no canal `clippo/camera`, `MediaMetadataRetriever`) um quadro
+do meio do MP4, em JPEG de até 640 px (dezenas de KB), gravado ao lado do vídeo em
+`filesDir/highlights/`. Assim que a sessão existe no servidor, a fila envia o JPEG para o
+`thumbnailPath` do lance. Isso roda numa fila à parte: falhar ou demorar (teto de 30 s por lance)
+nunca atrasa o vídeo nem segura o lance; a próxima passada tenta de novo. O JPEG local sai junto
+com o MP4 quando o lance fica `uploaded`. Lances gravados antes disso não têm miniatura.
 
 O `MediaMuxer` grava o índice (`moov`) no fim do MP4; ao salvar o highlight, o app o move para o
 começo ("faststart", `Mp4FastStart.kt`), para o streaming tocar com o primeiro pedaço. Lances

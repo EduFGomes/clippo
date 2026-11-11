@@ -330,4 +330,59 @@ void main() {
       );
     });
   });
+
+  group('SessionsRepository.renameHighlight — validado no app e no servidor', () {
+    test('normaliza o nome e chama a Function com sessão e lance', () async {
+      String? calledName;
+      Map<String, dynamic>? sent;
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calledName = name;
+        sent = payload;
+        return {'title': 'Voleio do Rafa'};
+      });
+      final saved = await repo.renameHighlight(
+        sessionId: 'sessao-0001',
+        highlightId: 'lance-0001',
+        title: '  Voleio  do Rafa ',
+      );
+      expect(saved, 'Voleio do Rafa');
+      expect(calledName, 'renameHighlight');
+      expect(sent, {'sessionId': 'sessao-0001', 'highlightId': 'lance-0001', 'title': 'Voleio do Rafa'});
+    });
+
+    test('nome vazio ou longo demais nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      for (final ruim in ['   ', 'a' * (highlightTitleMax + 1)]) {
+        await expectLater(
+          repo.renameHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001', title: ruim),
+          throwsA(isA<SessionsFailure>()
+              .having((f) => f.code, 'code', 'title')
+              .having((f) => f.message, 'message', validateHighlightRename(ruim))),
+        );
+      }
+      await expectLater(
+        repo.renameHighlight(sessionId: '../x', highlightId: 'lance-0001', title: 'Golaço'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'sessionId')),
+      );
+      expect(calls, 0);
+    });
+
+    test('a recusa do servidor chega com o campo, para ir embaixo dele', () async {
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        throw FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'Só quem gravou a sessão renomeia os lances.',
+        );
+      });
+      await expectLater(
+        repo.renameHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001', title: 'Golaço'),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.message, 'message', 'Só quem gravou a sessão renomeia os lances.')),
+      );
+    });
+  });
 }

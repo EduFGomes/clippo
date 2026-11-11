@@ -194,6 +194,22 @@ String? validateHighlightTitle(String? raw) {
   return null;
 }
 
+/// Novo nome de um lance (renomear). Diferente do envio da sessão, vazio é erro: a pessoa
+/// está escrevendo um nome. Espelha `normalizeHighlightRename` em
+/// backend/functions/src/highlights/validation.ts.
+String? validateHighlightRename(String? raw) {
+  final title = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (title.isEmpty) return 'Dê um nome ao lance.';
+  if (title.length > highlightTitleMax) {
+    return 'O nome do lance pode ter até $highlightTitleMax caracteres.';
+  }
+  return null;
+}
+
+/// Ids da sessão e do lance ao renomear (espelha `normalizeHighlightRef` no servidor).
+String? validateHighlightRef(String raw) =>
+    _entityIdPattern.hasMatch(raw) ? null : 'Não foi possível renomear o lance. Tente de novo.';
+
 /// Momento do lance dentro da sessão, com 1 min de folga para o arredondamento do corte.
 String? validateHighlightOffset(int offsetSeconds, {required int sessionDurationSeconds}) {
   if (offsetSeconds < 0 || offsetSeconds > sessionDurationSeconds + 60) {

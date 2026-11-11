@@ -291,6 +291,26 @@ void main() {
       );
     });
 
+    test('extractThumbnail manda o caminho do MP4, devolve o do JPEG e traduz o erro', () async {
+      MethodCall? sent;
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        sent = call;
+        return {'path': '/data/clippo/lance.jpg'};
+      });
+      expect(await camera.extractThumbnail('/data/clippo/lance.mp4'), '/data/clippo/lance.jpg');
+      expect(sent?.method, 'extractThumbnail');
+      expect(sent?.arguments, {'path': '/data/clippo/lance.mp4'});
+
+      messenger.setMockMethodCallHandler(_commands, (call) async {
+        throw PlatformException(code: 'thumbnail-failed', message: 'falhou');
+      });
+      await expectLater(
+        camera.extractThumbnail('/data/clippo/lance.mp4'),
+        throwsA(isA<CameraFailure>()
+            .having((f) => f.message, 'message', 'Não foi possível gerar a miniatura do lance.')),
+      );
+    });
+
     test('loadSettings e saveSettings conversam com os nomes esperados', () async {
       MethodCall? saveCall;
       messenger.setMockMethodCallHandler(_commands, (call) async {

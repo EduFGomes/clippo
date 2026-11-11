@@ -103,7 +103,7 @@ class PlayerScreen extends StatefulWidget {
 enum _Stage { uploading, unavailable, loading, ready, error }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final List<Highlight> _items = ensureDistinctHighlightTitles(widget.highlights);
+  late final List<Highlight> _items = List<Highlight>.unmodifiable(widget.highlights);
   late int _currentIndex =
       _items.isEmpty ? 0 : widget.initialIndex.clamp(0, _items.length - 1);
   late final PageController _pageController = PageController(initialPage: _currentIndex);

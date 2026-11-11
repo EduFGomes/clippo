@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,6 +39,33 @@ void main() {
 
     test('caminho fora do padrão é recusado', () async {
       await expectLater(repo().videoStream('users/abc/video.mp4'), throwsA(isA<HighlightMediaFailure>()));
+    });
+  });
+
+  group('HighlightMediaRepository.thumbnailFile — miniatura sem link público (D17)', () {
+    const path = 'sessions/sessao-0001/highlights/lance-0001/thumb.jpg';
+
+    test('miniatura já baixada sai do cache, sem falar com o Storage', () async {
+      final dir = await Directory.systemTemp.createTemp('clippo-thumbs-test');
+      addTearDown(() => dir.delete(recursive: true));
+      final cached = File('${dir.path}/clippo-thumbs/${path.replaceAll('/', '_')}');
+      await cached.create(recursive: true);
+      await cached.writeAsBytes([0xFF, 0xD8, 0xFF]);
+
+      // O _FakeStorage não tem `ref`: se o repositório fosse à rede, o teste quebraria.
+      final repo = HighlightMediaRepository(storage: _FakeStorage(), cacheDir: () async => dir);
+      expect((await repo.thumbnailFile(path)).path, cached.path);
+    });
+
+    test('só aceita o thumb.jpg de um lance', () {
+      final repo = HighlightMediaRepository(storage: _FakeStorage());
+      for (final ruim in [
+        'sessions/sessao-0001/highlights/lance-0001/video.mp4',
+        'users/abc/thumb.jpg',
+        'https://example.com/thumb.jpg',
+      ]) {
+        expect(() => repo.thumbnailFile(ruim), throwsA(isA<HighlightMediaFailure>()));
+      }
     });
   });
 

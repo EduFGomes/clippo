@@ -202,6 +202,18 @@ class ClippoCamera {
   /// R14, ou depois que o envio para o banco é confirmado, R13).
   Future<void> deleteHighlight(SavedClip clip) => _call<void>('deleteHighlight', {'path': clip.path});
 
+  /// Tira um quadro do meio do MP4 de um highlight ([videoPath], na pasta interna do app) e
+  /// grava como JPEG ao lado dele: a miniatura do lance. Devolve o caminho do JPEG.
+  ///
+  /// Quem chama é a fila de envio (`core/upload/`), nunca o caminho do gesto (R2). Seguro
+  /// repetir: se a miniatura já existe, o nativo só devolve o caminho.
+  Future<String> extractThumbnail(String videoPath) async {
+    final data = await _call<Map<Object?, Object?>>('extractThumbnail', {'path': videoPath});
+    final path = data?['path'] as String?;
+    if (path == null || path.isEmpty) throw const CameraFailure('Não foi possível gerar a miniatura do lance.');
+    return path;
+  }
+
   /// Lê as configurações salvas do modo de gravação (tempo, resolução, microfone, avisos).
   Future<CaptureSettings> loadSettings() async {
     final data = await _call<Map<Object?, Object?>>('loadSettings');
@@ -243,6 +255,7 @@ class ClippoCamera {
         'save-failed' => const CameraFailure('Não foi possível salvar o lance.'),
         'gallery-unavailable' => const CameraFailure('A galeria só funciona no Android 10 ou mais novo.'),
         'gallery-failed' => const CameraFailure('Não foi possível copiar o lance para a galeria.'),
+        'thumbnail-failed' => const CameraFailure('Não foi possível gerar a miniatura do lance.'),
         'delete-failed' => const CameraFailure('Não foi possível apagar o lance.'),
         _ => CameraFailure('Algo deu errado com a câmera (${e.code}).'),
       };

@@ -191,7 +191,7 @@ class SessionsRepository {
         .snapshots()
         .map(
           (snapshot) => HighlightsSnapshot(
-            highlights: ensureDistinctHighlightTitles([
+            highlights: List<Highlight>.unmodifiable([
               for (var i = 0; i < snapshot.docs.length; i++)
                 Highlight.fromDocument(snapshot.docs[i], index: i),
             ]),
@@ -312,6 +312,25 @@ class SessionsRepository {
   }
 
   /// Um participante sai da sessão (🟡 a confirmar com o grupo). O dono não sai.
+  /// O dono da sessão troca o nome de um lance (a Function `renameHighlight`). Valida antes
+  /// de chamar, com as mesmas regras do servidor. Devolve o nome como ficou gravado.
+  Future<String> renameHighlight({
+    required String sessionId,
+    required String highlightId,
+    required String title,
+  }) async {
+    _check('sessionId', validateHighlightRef(sessionId));
+    _check('highlightId', validateHighlightRef(highlightId));
+    _check('title', validateHighlightRename(title));
+    final normalized = title.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final data = await _call(
+      'renameHighlight',
+      {'sessionId': sessionId, 'highlightId': highlightId, 'title': normalized},
+      fallback: 'Não foi possível renomear o lance. Tente de novo.',
+    );
+    return data['title'] as String? ?? normalized;
+  }
+
   Future<void> leaveSession(String sessionId) async {
     _check('sessionId', validateEntityId(sessionId));
     await _call('leaveSession', {'sessionId': sessionId},

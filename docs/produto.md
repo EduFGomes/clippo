@@ -90,7 +90,7 @@ O modelo é **por sessão**: cada jogo é uma sessão, e quem participou dela v�
 | **Amigo** | Outro usuário com quem existe uma amizade. É de quem se escolhe os participantes de uma sessão. | `Friend` / `Friendship` |
 | **Sessão** | Um jogo gravado. Tem nome, data/hora de início, duração, local, quem gravou e a lista de participantes. Funciona como a "pasta compartilhada". | `Session` |
 | **Participante** | Usuário incluído numa sessão. Todo participante vê todos os highlights da sessão. | `Participant` |
-| **Highlight** | Trecho de vídeo com som (15, 30, 45 ou 60 s; padrão 30) salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto, que nasce com um nome padrão (ex.: "Lance 3") e pode ser editado. | `Highlight` |
+| **Highlight** | Trecho de vídeo com som (15, 30, 45 ou 60 s; padrão 30) salvo pelo gesto. Pertence a exatamente uma sessão. Tem vídeo, miniatura, momento em que foi salvo (dentro da sessão) e um título curto, que nasce com um nome padrão (ex.: "Lance 3", pela ordem na sessão) e o dono da sessão pode renomear (R12). | `Highlight` |
 | **Gesto** | O movimento **\ o /** que dispara o salvamento. | `Gesture` / `Trigger` |
 | **Buffer** | Os últimos segundos de vídeo e som mantidos em memória enquanto a sessão grava (o suficiente para o highlight mais longo). Não é salvo sozinho. | `Buffer` |
 
@@ -156,7 +156,7 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
 | R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
-| R12 | Só o dono edita nome/local da sessão e adiciona ou remove participantes depois da gravação. |
+| R12 | Só o dono edita nome/local da sessão, renomeia os lances e adiciona ou remove participantes depois da gravação. |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
 | R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) guarda os highlights já salvos numa sessão padrão; **"Descartar"** (na confirmação) joga fora todos os highlights da sessão. 🟡 Falta definir a sessão padrão (nome, quem participa) e se sessão sem nenhum highlight pode ser salva. |
 
@@ -258,7 +258,8 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 **Conteúdo**
 - **Cabeçalho de impacto** com "‹ Sessões" para voltar, nome da sessão, "data · duração", local, avatares e "10 participantes".
 - Seção **"Highlights"** com "7 lances salvos" à direita.
-- Lista de **highlights** em ordem cronológica: miniatura com play, título do lance e "00:12:40 · 30s".
+- Lista de **highlights** em ordem cronológica: miniatura com play (um quadro do meio do próprio vídeo), título do lance ("Lance 3" ou o nome que o dono deu) e "00:12:40 · 30s".
+- Para o **dono**, um lápis ao lado do título abre **"Renomear lance"** (campo "Nome do lance", botão "Salvar nome"). Lances que ainda não chegaram ao servidor não dão para renomear.
 - **Sem** navegação de nível superior.
 
 **Estados** 🟡
@@ -267,6 +268,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | Carregando | Cabeçalho já preenchido; linhas em esqueleto. |
 | Sem highlights | "Nenhum lance salvo nessa sessão" + lembrete do gesto. |
 | Highlight enviando | Linha com miniatura local e "enviando…" no lugar da duração. |
+| Sem miniatura | Lances antigos, miniatura que ainda não subiu ou erro ao carregar: desenho de quadra no lugar da imagem. |
 
 **Navegação:** tocar num highlight → **Player**. 🟡 Menu do dono (editar nome/local, participantes) — a desenhar.
 

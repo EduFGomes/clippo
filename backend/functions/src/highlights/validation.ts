@@ -2,6 +2,7 @@
  * Regras puras (sem Firebase) para validar o vídeo de um highlight no Storage.
  * Separadas para poderem ser testadas sozinhas em test/highlights.test.ts.
  */
+import { HIGHLIGHT_TITLE_MAX as TITLE_MAX } from "../sessions/validation";
 
 /** Teto para um trecho de ~30 s em MP4 (100 MB dá folga para 1080p). */
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
@@ -48,4 +49,56 @@ export function validateUploadedVideo(meta: UploadedVideoMeta): VideoValidationR
     return { valid: false, reason: "Arquivo de vídeo acima do limite de 100 MB." };
   }
   return { valid: true };
+}
+
+// ---------------------------------------------------------------------------
+// Renomear um lance (renameHighlight). Espelha validateHighlightRename em
+// app/lib/core/validation/input_validation.dart: mesmas regras e mensagens.
+// ---------------------------------------------------------------------------
+
+/** Mesmo teto do título que o saveSession aceita (sessions/validation.ts). */
+export { HIGHLIGHT_TITLE_MAX } from "../sessions/validation";
+
+export type HighlightField = "sessionId" | "highlightId" | "title";
+
+/** Erro de validação com o campo, para o app mostrar a mensagem embaixo dele. */
+export class HighlightValidationError extends Error {
+  constructor(
+    readonly field: HighlightField,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HighlightValidationError";
+  }
+}
+
+const HIGHLIGHT_ID_PATTERN = /^[A-Za-z0-9_-]{6,64}$/;
+
+/** Ids da sessão e do lance: os mesmos que o app gera. */
+export function normalizeHighlightRef(raw: unknown, field: "sessionId" | "highlightId"): string {
+  if (typeof raw !== "string" || !HIGHLIGHT_ID_PATTERN.test(raw)) {
+    throw new HighlightValidationError(field, "Não foi possível renomear o lance. Tente de novo.");
+  }
+  return raw;
+}
+
+/**
+ * O novo nome do lance. Diferente do saveSession (onde vazio vira "Lance N"), aqui a
+ * pessoa está escrevendo um nome: vazio é erro.
+ */
+export function normalizeHighlightRename(raw: unknown): string {
+  if (raw !== null && raw !== undefined && typeof raw !== "string") {
+    throw new HighlightValidationError("title", "Dê um nome ao lance.");
+  }
+  const title = (raw ?? "").trim().replace(/\s+/g, " ");
+  if (title.length === 0) {
+    throw new HighlightValidationError("title", "Dê um nome ao lance.");
+  }
+  if (title.length > TITLE_MAX) {
+    throw new HighlightValidationError(
+      "title",
+      `O nome do lance pode ter até ${TITLE_MAX} caracteres.`,
+    );
+  }
+  return title;
 }

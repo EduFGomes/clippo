@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -8,10 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:clippo/core/data/friends_repository.dart';
 import 'package:clippo/core/data/friendship.dart';
 import 'package:clippo/core/data/highlight.dart';
+import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
 
 // A Sessão abre sem Firebase: repositórios e streams entram pelo construtor.
@@ -119,8 +122,28 @@ HighlightsSnapshot _fromCache(List<Highlight> items) =>
 
 Stream<HighlightsSnapshot> _noHighlights() => Stream.value(_fromServer(const <Highlight>[]));
 
+/// Miniaturas sem Firebase: devolve um arquivo para os caminhos de [files] e falha nos outros.
+class _FakeMedia extends HighlightMediaRepository {
+  _FakeMedia(this.files);
+
+  final Map<String, String> files;
+  final List<String> asked = [];
+
+  @override
+  Future<File> thumbnailFile(String storagePath) async {
+    asked.add(storagePath);
+    final local = files[storagePath];
+    if (local == null) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
+    return File(local);
+  }
+}
+
 /// A fila de envio com a sessão `quinta` ainda no celular: um lance só local.
-ValueNotifier<UploadQueueState> _queued({bool alsoOnServer = false}) => ValueNotifier(UploadQueueState(sessions: [
+ValueNotifier<UploadQueueState> _queued({
+  bool alsoOnServer = false,
+  Map<String, String> thumbnails = const {},
+}) =>
+    ValueNotifier(UploadQueueState(thumbnails: thumbnails, sessions: [
       QueuedSession(
         sessionId: 'quinta',
         ownerUid: 'alice',
@@ -141,6 +164,51 @@ ValueNotifier<UploadQueueState> _queued({bool alsoOnServer = false}) => ValueNot
     ]));
 
 void main() {
+  testWidgets('cada card mostra a miniatura do seu lance; sem ela, fica o desenho de quadra',
+      (tester) async {
+    _phone(tester);
+    const thumb1 = 'sessions/quinta-0001/highlights/lance-0001/thumb.jpg';
+    const thumb2 = 'sessions/quinta-0001/highlights/lance-0002/thumb.jpg';
+    final media = _FakeMedia({thumb1: '/cache/clippo-thumbs/lance-0001.jpg'});
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      mediaRepository: media,
+      highlights: Stream.value(_fromServer([
+        _highlight('h1', title: 'Lance 1', offset: const Duration(minutes: 4))
+            .copyWith(thumbnailPath: thumb1),
+        // Lance antigo: o caminho existe no banco, mas a miniatura nunca subiu.
+        _highlight('h2', title: 'Lance 2', offset: const Duration(minutes: 9))
+            .copyWith(thumbnailPath: thumb2),
+      ])),
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    ClippoHighlightTile tile(String title) =>
+        tester.widget(find.widgetWithText(ClippoHighlightTile, title));
+    expect(media.asked, unorderedEquals([thumb1, thumb2]));
+    expect((tile('Lance 1').thumbnail! as FileImage).file.path, '/cache/clippo-thumbs/lance-0001.jpg');
+    expect(tile('Lance 2').thumbnail, isNull);
+  });
+
+  testWidgets('lance ainda no celular usa a miniatura do aparelho, sem pedir ao Storage',
+      (tester) async {
+    _phone(tester);
+    final media = _FakeMedia(const {});
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(highlightCount: 1),
+      mediaRepository: media,
+      highlights: Stream.value(_fromCache(const [])),
+      uploads: _queued(thumbnails: const {'h9': '/data/highlights/h9.jpg'}),
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    final tile = tester.widget<ClippoHighlightTile>(find.widgetWithText(ClippoHighlightTile, 'Golaço'));
+    expect((tile.thumbnail! as FileImage).file.path, '/data/highlights/h9.jpg');
+    expect(media.asked, isEmpty);
+  });
+
   testWidgets('sem internet, os lances ainda no celular aparecem para assistir antes de subir',
       (tester) async {
     _phone(tester);
@@ -575,11 +643,11 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Ponto antológico'));
+    await tester.tap(find.text('Lance 2'));
     await tester.pumpAndSettle();
 
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Ponto antológico'), findsOneWidget);
+    expect(find.text('Lance 2'), findsOneWidget);
   });
 
   for (final brightness in Brightness.values) {
@@ -613,4 +681,65 @@ void main() {
       });
     }
   }
+
+  group('renomear lance', () {
+    List<Highlight> onServer() => [
+          _highlight('lance-0001', title: 'Lance 1', offset: const Duration(minutes: 4))
+              .copyWith(videoPath: 'sessions/quinta-0001/highlights/lance-0001/video.mp4'),
+        ];
+
+    testWidgets('o dono vê o lápis e renomeia; o nome passa pela Function', (tester) async {
+      _phone(tester);
+      final calls = <(String, Map<String, dynamic>)>[];
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'alice',
+        repository: _repo(calls, reply: {'title': 'Voleio do Rafa'}),
+        highlights: Stream.value(_fromServer(onServer())),
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('clippo-highlight-rename')));
+      await tester.pumpAndSettle();
+      expect(find.text('Nome do lance'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '   ');
+      await tester.tap(find.text('Salvar nome'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dê um nome ao lance.'), findsOneWidget);
+      expect(calls, isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'Voleio do Rafa');
+      await tester.tap(find.text('Salvar nome'));
+      await tester.pumpAndSettle();
+      expect(calls.single.$1, 'renameHighlight');
+      expect(calls.single.$2, {'sessionId': 'quinta', 'highlightId': 'lance-0001', 'title': 'Voleio do Rafa'});
+      expect(find.text('Lance renomeado.'), findsOneWidget);
+    });
+
+    testWidgets('quem só participa não vê o lápis', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'bob',
+        repository: _repo([]),
+        highlights: Stream.value(_fromServer(onServer())),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('clippo-highlight-rename')), findsNothing);
+    });
+
+    testWidgets('lance que ainda não chegou ao servidor não dá para renomear', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(highlightCount: 1),
+        currentUserId: 'alice',
+        highlights: Stream.value(_fromCache(const [])),
+        uploads: _queued(),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('Golaço'), findsOneWidget);
+      expect(find.byKey(const ValueKey('clippo-highlight-rename')), findsNothing);
+    });
+  });
 }

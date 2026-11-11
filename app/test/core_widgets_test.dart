@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -202,5 +204,26 @@ void main() {
     await tester.tap(find.text('Lance 3'));
     await tester.pumpAndSettle();
     expect(taps, 1);
+  });
+
+  testWidgets('linha de highlight mostra a miniatura quando recebe uma, e a quadra sem ela', (tester) async {
+    await _setPhoneSize(tester);
+    Widget tile(ImageProvider? thumbnail) => _app(Scaffold(
+          body: ClippoHighlightTile(
+            title: 'Lance 3',
+            timing: '00:12:40 · 30s',
+            thumbnail: thumbnail,
+            onTap: () {},
+          ),
+        ));
+    Finder inTile(Type type) =>
+        find.descendant(of: find.byType(ClippoHighlightTile), matching: find.byType(type));
+
+    await tester.pumpWidget(tile(null));
+    expect(inTile(Image), findsNothing);
+
+    final image = FileImage(File('/data/highlights/lance-3.jpg'));
+    await tester.pumpWidget(tile(image));
+    expect(tester.widget<Image>(inTile(Image)).image, image);
   });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, setEquals;
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 import 'package:clippo/features/home/screens/player_screen.dart';
+import 'package:clippo/features/home/screens/rename_highlight_screen.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 import 'package:clippo/features/home/widgets/merge_request_card.dart';
 
@@ -123,7 +125,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-3',
-      title: 'Defesa no reflexo',
+      title: 'Lance 3',
       offset: const Duration(minutes: 27, seconds: 8),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 19, 57, 8),
@@ -131,7 +133,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-4',
-      title: 'Lance na linha',
+      title: 'Lance 4',
       offset: const Duration(minutes: 41, seconds: 50),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 11, 50),
@@ -139,7 +141,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-5',
-      title: 'Virada de jogo',
+      title: 'Lance 5',
       offset: const Duration(minutes: 58, seconds: 12),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 28, 12),
@@ -147,7 +149,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-6',
-      title: 'Reflexo absurdo',
+      title: 'Lance 6',
       offset: const Duration(hours: 1, minutes: 14, seconds: 22),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 44, 22),
@@ -180,6 +182,9 @@ class _SessionScreenState extends State<SessionScreen> {
   ValueListenable<UploadQueueState> get _uploads =>
       widget.uploads ?? (isUserSignedIn ? uploadQueue.state : _noUploads);
   static final ValueNotifier<UploadQueueState> _noUploads = ValueNotifier(const UploadQueueState());
+  /// As miniaturas dos lances. Sem login (catálogo, testes), nenhuma.
+  HighlightMediaRepository? get _media =>
+      widget.mediaRepository ?? (isUserSignedIn ? highlightMediaRepository : null);
   FriendsRepository get _friendsRepo => widget.friendsRepository ?? friendsRepository;
 
   String get _viewerId {
@@ -308,6 +313,23 @@ class _SessionScreenState extends State<SessionScreen> {
         ),
       ),
     );
+  }
+
+  /// Só o dono renomeia, e só lances que já estão no servidor (o `saveSession` já respondeu).
+  bool _canRename(Highlight highlight) => _isOwner && (highlight.videoPath ?? '').isNotEmpty;
+
+  Future<void> _openRename(Highlight highlight) async {
+    final renamed = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => RenameHighlightScreen(
+          sessionId: _session.id,
+          highlight: highlight,
+          repository: _repository,
+        ),
+      ),
+    );
+    // O Firestore atualiza o card sozinho; aqui só o aviso.
+    if (renamed != null && mounted) showHomeMessage(context, 'Lance renomeado.');
   }
 
   Future<Session?> _openEditSession() async {
@@ -477,11 +499,13 @@ class _SessionScreenState extends State<SessionScreen> {
               // Os lances que ainda estão no celular aparecem mesmo sem internet (R13).
               final withLocal = queue.withLocalVideos(session.id, data?.highlights ?? const []);
               if (withLocal.any((h) => h.hasLocalVideo)) {
-                final distinct = ensureDistinctHighlightTitles(withLocal);
                 return _HighlightList(
-                  highlights: distinct,
+                  highlights: withLocal,
                   offline: data?.fromCache ?? false,
-                  onTapHighlight: (index) => _openPlayer(distinct, index),
+                  media: _media,
+                  onTapHighlight: (index) => _openPlayer(withLocal, index),
+                  canRename: _canRename,
+                  onRename: _openRename,
                 );
               }
               if (snapshot.hasError) {
@@ -500,11 +524,14 @@ class _SessionScreenState extends State<SessionScreen> {
               }
               if (data.isEmpty) return const _Empty();
 
-              final distinct = ensureDistinctHighlightTitles(data.highlights);
+              final items = data.highlights;
               return _HighlightList(
-                highlights: distinct,
+                highlights: items,
                 offline: data.fromCache,
-                onTapHighlight: (index) => _openPlayer(distinct, index),
+                media: _media,
+                onTapHighlight: (index) => _openPlayer(items, index),
+                canRename: _canRename,
+                onRename: _openRename,
               );
             },
             ),
@@ -678,22 +705,30 @@ class _HighlightList extends StatelessWidget {
     required this.highlights,
     required this.offline,
     required this.onTapHighlight,
+    this.media,
+    this.canRename,
+    this.onRename,
   });
 
   final List<Highlight> highlights;
   final bool offline;
   final ValueChanged<int> onTapHighlight;
 
+  /// Quais lances mostram "Renomear" (só o dono da sessão). Nulo: nenhum.
+  final bool Function(Highlight)? canRename;
+  final ValueChanged<Highlight>? onRename;
+
+  /// De onde vêm as miniaturas já enviadas. Nulo (catálogo, testes): só o desenho de quadra.
+  final HighlightMediaRepository? media;
+
   Widget _buildCard(int index) {
     final item = highlights[index];
-    return ClippoHighlightTile(
-      title: item.title,
-      timing: clippoHighlightTiming(item.offset, item.duration, uploading: item.isUploading),
-      uploading: item.isUploading,
-      // Miniatura só quando já é uma URL (D17: o app não pede getDownloadURL()).
-      thumbnailUrl:
-          item.thumbnailPath != null && item.thumbnailPath!.startsWith('http') ? item.thumbnailPath : null,
+    return _HighlightCard(
+      key: ValueKey(item.id),
+      highlight: item,
+      media: media,
       onTap: () => onTapHighlight(index),
+      onRename: onRename != null && (canRename?.call(item) ?? false) ? () => onRename!(item) : null,
     );
   }
 
@@ -728,6 +763,78 @@ class _HighlightList extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Um card de highlight com a miniatura certa: a do celular enquanto o lance ainda está na
+/// fila de envio ([Highlight.localThumbnailPath]); depois, a do Storage, baixada com o login
+/// de quem vê (D17: sem `getDownloadURL()`). Sem miniatura, o card desenha a quadra.
+class _HighlightCard extends StatefulWidget {
+  const _HighlightCard({
+    super.key,
+    required this.highlight,
+    required this.onTap,
+    this.media,
+    this.onRename,
+  });
+
+  final Highlight highlight;
+  final HighlightMediaRepository? media;
+  final VoidCallback onTap;
+  final VoidCallback? onRename;
+
+  @override
+  State<_HighlightCard> createState() => _HighlightCardState();
+}
+
+class _HighlightCardState extends State<_HighlightCard> {
+  /// O pedido em andamento (ou já respondido) e para o quê ele foi feito.
+  String? _requested;
+  File? _downloaded;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_HighlightCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final item = widget.highlight;
+    final media = widget.media;
+    final path = item.thumbnailPath;
+    // Quem gravou usa a miniatura do aparelho enquanto o lance está na fila.
+    if (media == null || path == null || item.hasLocalVideo || _downloaded != null) return;
+    // A miniatura pode chegar depois: quando o estado do lance muda, vale pedir de novo.
+    final request = '$path|${item.status.name}';
+    if (_requested == request) return;
+    _requested = request;
+    try {
+      final file = await media.thumbnailFile(path);
+      if (mounted) setState(() => _downloaded = file);
+    } catch (_) {
+      // Ainda não subiu, lance antigo sem miniatura ou sem internet: fica o desenho de quadra.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.highlight;
+    final local = item.localThumbnailPath;
+    final file = local != null && local.isNotEmpty ? File(local) : _downloaded;
+    return ClippoHighlightTile(
+      title: item.title,
+      timing: clippoHighlightTiming(item.offset, item.duration, uploading: item.isUploading),
+      uploading: item.isUploading,
+      thumbnail: file == null ? null : FileImage(file),
+      onTap: widget.onTap,
+      onRename: widget.onRename,
     );
   }
 }

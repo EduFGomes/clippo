@@ -6,11 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'package:clippo/core/camera/clippo_camera.dart';
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 
 /// Um lance esperando para subir (R13): o MP4 na pasta interna do app e, depois que o
 /// `saveSession` respondeu, o caminho dele no Storage.
@@ -214,7 +216,10 @@ class QueuedSession {
 /// O que a fila tem agora. É isto que a Início lê para mostrar "enviando…".
 @immutable
 class UploadQueueState {
-  const UploadQueueState({this.sessions = const []});
+  const UploadQueueState({this.sessions = const [], this.thumbnails = const {}});
+
+  /// A miniatura (JPEG no aparelho) de cada lance da fila que já tem uma, pelo id do lance.
+  final Map<String, String> thumbnails;
 
   /// Sessões com algo pendente: ainda não salvas no servidor e/ou com lances subindo.
   final List<QueuedSession> sessions;
@@ -258,20 +263,26 @@ class UploadQueueState {
     final local = {for (final h in queued.highlights) h.highlightId: h};
     final merged = <Highlight>[
       for (final h in remote)
-        if (local[h.id] case final q?) h.copyWith(localPath: q.localPath) else h,
+        if (local[h.id] case final q?)
+          h.copyWith(localPath: q.localPath, localThumbnailPath: thumbnails[h.id])
+        else
+          h,
     ];
     final known = {for (final h in remote) h.id};
-    for (final q in queued.highlights) {
+    for (var i = 0; i < queued.highlights.length; i++) {
+      final q = queued.highlights[i];
       if (known.contains(q.highlightId)) continue;
       merged.add(Highlight(
         id: q.highlightId,
-        title: q.title ?? '',
+        // O mesmo nome que o saveSession vai gravar: "Lance N" pela ordem do lance na sessão.
+        title: normalizeHighlightTitle(q.title, i + 1),
         offset: q.offset,
         duration: q.duration,
         savedAt: queued.startedAt.add(q.offset),
         createdBy: queued.ownerUid,
         status: HighlightStatus.pending,
         localPath: q.localPath,
+        localThumbnailPath: thumbnails[q.highlightId],
       ));
     }
     merged.sort((a, b) => a.offset.compareTo(b.offset));
@@ -297,6 +308,9 @@ abstract class UploadBackend {
   Future<Map<String, String>> saveSession(QueuedSession session);
 
   Future<void> uploadVideo({required String storagePath, required File localFile});
+
+  /// Envia a miniatura JPEG do lance (`thumb.jpg`, ao lado do vídeo).
+  Future<void> uploadThumbnail({required String storagePath, required File localFile});
 
   /// O estado de cada lance da sessão no Firestore, em tempo real.
   Stream<Map<String, HighlightStatus>> watchStatuses(String sessionId);
@@ -337,6 +351,10 @@ class FirebaseUploadBackend implements UploadBackend {
   @override
   Future<void> uploadVideo({required String storagePath, required File localFile}) =>
       _m.uploadVideo(storagePath: storagePath, localFile: localFile);
+
+  @override
+  Future<void> uploadThumbnail({required String storagePath, required File localFile}) =>
+      _m.uploadThumbnail(storagePath: storagePath, localFile: localFile);
 
   @override
   Stream<Map<String, HighlightStatus>> watchStatuses(String sessionId) =>
@@ -410,6 +428,9 @@ class MemoryUploadQueueStore implements UploadQueueStore {
 /// 3. Envia cada MP4 para o `videoPath` devolvido.
 /// 4. Ouve o Firestore; quando o lance fica `uploaded`, apaga o MP4 local e tira da fila.
 ///
+/// Ao lado disso, sem nunca entrar na frente do vídeo, a fila gera a miniatura de cada lance
+/// (um quadro do MP4) e a envia: veja [UploadQueue.makeThumbnail].
+///
 /// Tenta de novo sozinha com espera crescente ([retryDelays]), quando o app volta para a
 /// frente e quando o app abre ([start]). 🟡 Com o app fechado ainda não (WorkManager):
 /// [drain] já é a peça que uma tarefa em segundo plano chamaria.
@@ -419,6 +440,7 @@ class UploadQueue {
     required UploadQueueStore store,
     Future<void> Function(String path)? deleteLocalFile,
     Future<bool> Function(String path)? localFileExists,
+    this.makeThumbnail,
     this.retryDelays = defaultRetryDelays,
     this.submitWait = defaultSubmitWait,
   })  : _api = backend,
@@ -440,6 +462,17 @@ class UploadQueue {
   final Future<bool> Function(String path) _localFileExists;
   final List<Duration> retryDelays;
 
+  /// Gera a miniatura do MP4 em `videoPath` e devolve o caminho do JPEG (no app,
+  /// `ClippoCamera.extractThumbnail`). Nulo: a fila não gera nem envia miniaturas.
+  ///
+  /// A miniatura é um extra: roda numa fila à parte, fora do caminho do gesto (R2) e do envio
+  /// do vídeo. Se gerar ou enviar falhar, o lance sobe do mesmo jeito e a tela mostra o
+  /// desenho de quadra.
+  final Future<String> Function(String videoPath)? makeThumbnail;
+
+  /// Quanto cada miniatura pode demorar (gerar + enviar) antes de a fila passar para a próxima.
+  static const Duration thumbnailWait = Duration(seconds: 30);
+
   /// Quanto o "Salvar sessão" espera o servidor criar a sessão antes de seguir sem ele.
   static const Duration defaultSubmitWait = Duration(seconds: 5);
   final Duration submitWait;
@@ -452,6 +485,12 @@ class UploadQueue {
   List<QueuedSession> _sessions = [];
   final Map<String, StreamSubscription<Map<String, HighlightStatus>>> _watching = {};
   Future<void> _tail = Future<void>.value();
+
+  /// As miniaturas ficam só na memória: depois de fechar o app, a próxima passada as
+  /// reencontra no aparelho (o nativo devolve o JPEG que já existe).
+  final Map<String, String> _thumbnails = {};
+  final Set<String> _thumbnailsSent = {};
+  Future<void> _thumbnailTail = Future<void>.value();
   Future<void>? _loaded;
   Timer? _retryTimer;
   int _failures = 0;
@@ -502,6 +541,8 @@ class UploadQueue {
         session,
       ];
       await _persist();
+      // Já gera as miniaturas: sem internet, a Sessão mostra os lances com a imagem certa.
+      _startThumbnails();
       return _saveOnServer(id);
     });
 
@@ -550,6 +591,7 @@ class UploadQueue {
     _retryTimer?.cancel();
     _retryTimer = null;
     nextRetryAt = null;
+    _startThumbnails();
     final needsRetry = await _serial(() async {
       var retry = false;
       for (final id in [for (final s in _sessions) s.sessionId]) {
@@ -630,6 +672,8 @@ class UploadQueue {
     if (session == null || !session.saved) return _Step.done;
 
     _watch(session.sessionId);
+    // A sessão existe no servidor: as miniaturas já podem subir, ao lado dos vídeos.
+    _startThumbnails();
 
     for (final h in session.highlights) {
       final current = _find(sessionId)?.highlights.where((x) => x.highlightId == h.highlightId);
@@ -698,6 +742,8 @@ class UploadQueue {
         } catch (_) {
           // Não conseguiu apagar: não faz mal, o lance já está no banco.
         }
+        // Fora da fila principal: apagar alguns KB não precisa segurar o resto do envio.
+        unawaited(_forgetThumbnail(h));
       } else if (status == HighlightStatus.failed && h.videoSent) {
         // O gatilho recusou o arquivo: manda de novo.
         remaining.add(h.copyWith(videoSent: false));
@@ -715,6 +761,94 @@ class UploadQueue {
       await _replace(session.copyWith(highlights: remaining));
     }
     if (resend) _scheduleRetry();
+  }
+
+  /// Põe uma passada das miniaturas na fila delas. Nunca espera nem falha para quem chama.
+  void _startThumbnails() {
+    if (makeThumbnail == null || _disposed) return;
+    _thumbnailTail = _thumbnailTail.then((_) => _thumbnailPass()).catchError((Object _) {});
+  }
+
+  Future<void> _thumbnailPass() async {
+    final uid = _api.currentUid;
+    if (uid == null) return;
+    final pending = [
+      for (final s in _sessions)
+        if (s.ownerUid == uid)
+          for (final h in s.highlights)
+            if (!_thumbnailsSent.contains(h.highlightId)) (s.sessionId, h.highlightId),
+    ];
+    for (final (sessionId, highlightId) in pending) {
+      if (_disposed) return;
+      try {
+        await _thumbnailOf(sessionId, highlightId).timeout(thumbnailWait);
+      } catch (_) {
+        // Sem miniatura desta vez: o lance segue sem ela e a próxima passada tenta de novo.
+      }
+    }
+  }
+
+  QueuedHighlight? _findHighlight(String sessionId, String highlightId) {
+    for (final h in _find(sessionId)?.highlights ?? const <QueuedHighlight>[]) {
+      if (h.highlightId == highlightId) return h;
+    }
+    return null;
+  }
+
+  Future<void> _thumbnailOf(String sessionId, String highlightId) async {
+    final queued = _findHighlight(sessionId, highlightId);
+    if (queued == null) return;
+    var local = _thumbnails[highlightId];
+    if (local == null) {
+      if (!await _localFileExists(queued.localPath)) return;
+      local = await makeThumbnail!(queued.localPath);
+      if (_disposed) return;
+      if (_findHighlight(sessionId, highlightId) == null) {
+        // O lance saiu da fila enquanto a miniatura era gerada: não sobra arquivo solto.
+        await _deleteFile(local);
+        return;
+      }
+      _thumbnails[highlightId] = local;
+      _publish();
+    }
+
+    final session = _find(sessionId);
+    final videoPath = _findHighlight(sessionId, highlightId)?.videoPath;
+    if (session == null || !session.saved || session.blocked || videoPath == null) return;
+    try {
+      await _api.uploadThumbnail(storagePath: thumbnailPathFor(videoPath), localFile: File(local));
+      _thumbnailsSent.add(highlightId);
+    } on HighlightMediaFailure catch (e) {
+      // As regras só aceitam a miniatura uma vez: a recusa quer dizer que ela já está lá.
+      if (e.code == 'unauthorized') _thumbnailsSent.add(highlightId);
+      rethrow;
+    }
+  }
+
+  /// A miniatura fica ao lado do vídeo no Storage (`.../video.mp4` → `.../thumb.jpg`), como
+  /// o `saveSession` grava em `thumbnailPath`.
+  static String thumbnailPathFor(String videoPath) {
+    final slash = videoPath.lastIndexOf('/');
+    return '${videoPath.substring(0, slash + 1)}thumb.jpg';
+  }
+
+  /// O lance subiu: a miniatura local sai junto com o MP4.
+  Future<void> _forgetThumbnail(QueuedHighlight highlight) async {
+    _thumbnailsSent.remove(highlight.highlightId);
+    final known = _thumbnails.remove(highlight.highlightId);
+    final video = highlight.localPath;
+    final paths = <String>{
+      ?known,
+      // Onde o nativo a grava (mesmo nome do MP4, `.jpg`), caso esta execução ainda não a conheça.
+      if (video.toLowerCase().endsWith('.mp4')) '${video.substring(0, video.length - 4)}.jpg',
+    };
+    for (final path in paths) {
+      try {
+        await _deleteFile(path);
+      } catch (_) {
+        // Não conseguiu apagar: são poucos KB, e o lance já está no banco.
+      }
+    }
   }
 
   QueuedSession? _find(String sessionId) {
@@ -748,7 +882,10 @@ class UploadQueue {
 
   void _publish() {
     if (_disposed) return;
-    _state.value = UploadQueueState(sessions: List.unmodifiable(_sessions));
+    _state.value = UploadQueueState(
+      sessions: List.unmodifiable(_sessions),
+      thumbnails: Map.unmodifiable(_thumbnails),
+    );
   }
 
   /// Uma operação de cada vez: a fila nunca envia o mesmo lance duas vezes ao mesmo tempo.
@@ -778,4 +915,5 @@ UploadQueue? _uploadQueue;
 UploadQueue get uploadQueue => _uploadQueue ??= UploadQueue(
       backend: FirebaseUploadBackend(),
       store: FileUploadQueueStore(),
+      makeThumbnail: const ClippoCamera().extractThumbnail,
     );

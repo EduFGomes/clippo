@@ -230,6 +230,31 @@ void main() {
       );
     });
 
+    test('renomear: normaliza espaços e aceita até o limite', () {
+      expect(validateHighlightRename('  Voleio  do Rafa '), isNull);
+      expect(validateHighlightRename('a' * highlightTitleMax), isNull);
+    });
+
+    test('renomear: recusa nome vazio ou só espaços', () {
+      for (final ruim in [null, '', '   ']) {
+        expect(validateHighlightRename(ruim), 'Dê um nome ao lance.');
+      }
+    });
+
+    test('renomear: recusa nome acima do limite', () {
+      expect(
+        validateHighlightRename('a' * (highlightTitleMax + 1)),
+        'O nome do lance pode ter até $highlightTitleMax caracteres.',
+      );
+    });
+
+    test('renomear: aceita os ids que o app gera e recusa o resto', () {
+      expect(validateHighlightRef('lance-0001'), isNull);
+      for (final ruim in ['curto', '../lance-0001', '']) {
+        expect(validateHighlightRef(ruim), 'Não foi possível renomear o lance. Tente de novo.');
+      }
+    });
+
     test('recusa lance fora da sessão, com 1 min de folga', () {
       expect(
         validateHighlightOffset(-1, sessionDurationSeconds: 6120),
