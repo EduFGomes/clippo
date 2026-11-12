@@ -687,11 +687,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
     required String cancelLabel,
     bool destructive = false,
   }) async {
+    // Sobre a câmera, o aviso é escuro; na "Confirme a sessão", segue o tema dela.
+    final overCamera = _step != CaptureStep.finishing;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return Theme(
-          data: clippoTheme(Brightness.dark),
+          data: overCamera ? clippoTheme(Brightness.dark) : Theme.of(context),
           child: Builder(
             builder: (innerContext) {
               final colors = ClippoColors.of(innerContext);
@@ -1039,16 +1041,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // "Confirme a sessão" é um formulário comum, fora da câmera: segue o tema claro ou escuro do
+    // celular, como as outras telas. Antes ficava sempre escura, herdada da Gravação.
     if (_step == CaptureStep.finishing) {
-      return Theme(
-        data: clippoTheme(Brightness.dark),
-        child: PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _backToCamera();
-          },
-          child: _confirmSession(),
-        ),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _backToCamera();
+        },
+        child: _confirmSession(),
       );
     }
     final recording = _step == CaptureStep.recording || _step == CaptureStep.saved;
@@ -1608,14 +1609,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
             spacing: ClippoSpace.spaceS,
             runSpacing: ClippoSpace.spaceS,
             children: [
-              const ClippoCaptureChip(
+              const ClippoCaptureChip.themed(
                 label: 'Você',
                 selected: true,
                 onPressed: null,
               ),
               for (final friend in _friends)
                 if (_selectedFriends.contains(friend.uid))
-                  ClippoCaptureChip(
+                  ClippoCaptureChip.themed(
                     label: friend.firstName,
                     selected: true,
                     onPressed: () => _toggleFriend(friend.uid),
@@ -1623,7 +1624,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               if (_unselectedFriends.isNotEmpty)
                 if (_addingFriend)
                   ..._unselectedFriends.map(
-                    (f) => ClippoCaptureChip(
+                    (f) => ClippoCaptureChip.themed(
                       label: '+ ${f.firstName}',
                       selected: false,
                       onPressed: () {
@@ -1633,7 +1634,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     ),
                   )
                 else
-                  ClippoCaptureChip(
+                  ClippoCaptureChip.themed(
                     label: '+ adicionar',
                     selected: false,
                     onPressed: () => setState(() => _addingFriend = true),

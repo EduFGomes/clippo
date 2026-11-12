@@ -59,6 +59,33 @@ void main() {
     expect(find.text('Gustavo Rocha'), findsWidgets);
   });
 
+  testWidgets('Voltar do Android em Amigos leva à Início; com a roda aberta, só fecha a roda', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(const AppShell()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ClippoRadialNav.buttonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ClippoRadialNav.itemKey(2)));
+    await tester.pumpAndSettle();
+    expect(find.text('SEUS\nAMIGOS.'), findsOneWidget);
+
+    // Roda aberta: o Voltar fecha a roda e continua em Amigos.
+    await tester.tap(find.byKey(ClippoRadialNav.buttonKey));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('SEUS\nAMIGOS.'), findsOneWidget);
+    expect(find.text('SUAS\nSESSÕES.'), findsNothing);
+
+    // Roda fechada (o Voltar de cima fechou): agora o Voltar leva à Início, sem fechar o app.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('SUAS\nSESSÕES.'), findsOneWidget);
+  });
+
   testWidgets('a lista rola até o fim da tela, por trás da roda, sem faixa cortando', (tester) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1;
@@ -68,9 +95,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // A área rolável vai até a base da tela; a folga da roda é espaço no fim da lista.
-    final scroll = find.byType(SingleChildScrollView).first;
+    // A Início é uma lista em slivers (CustomScrollView) com as margens num SliverPadding.
+    final scroll = find.byType(CustomScrollView).first;
     expect(tester.getBottomLeft(scroll).dy, 915);
-    final padding = tester.widget<SingleChildScrollView>(scroll).padding! as EdgeInsets;
+    final padding = tester.widget<SliverPadding>(find.byType(SliverPadding).first).padding as EdgeInsets;
     expect(padding.bottom, ClippoSpace.screenBottom + ClippoSize.navClearance);
   });
 
@@ -88,8 +116,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(ClippoRadialNav.buttonKey), findsNothing);
-    final scroll = find.byType(SingleChildScrollView).first;
-    final padding = tester.widget<SingleChildScrollView>(scroll).padding! as EdgeInsets;
+    final scroll = find.byType(CustomScrollView).first;
+    final padding = tester.widget<SliverPadding>(find.byType(SliverPadding).first).padding as EdgeInsets;
     expect(padding.bottom, ClippoSpace.screenBottom);
     // O conteúdo termina em cima do teclado, não numa faixa vazia.
     expect(tester.getBottomLeft(scroll).dy, 915 - 300);

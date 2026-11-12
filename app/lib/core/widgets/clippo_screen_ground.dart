@@ -8,13 +8,26 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 class ClippoScreenGround extends StatefulWidget {
   const ClippoScreenGround({
     super.key,
-    required this.child,
+    required Widget this.child,
     this.footer,
     this.enterFromWelcome = false,
-  });
+  }) : slivers = null;
+
+  /// Para telas com lista que pode crescer (sessões, lances): o conteúdo vem em slivers e só os
+  /// itens à vista são montados (`SliverList.builder`), com as mesmas margens e o mesmo fundo.
+  /// Partes fixas (título, avisos) vão em `SliverToBoxAdapter`. Sem rodapé preso.
+  const ClippoScreenGround.slivers({
+    super.key,
+    required List<Widget> this.slivers,
+    this.enterFromWelcome = false,
+  })  : child = null,
+        footer = null;
 
   /// Conteúdo do topo (voltar, título, campos…).
-  final Widget child;
+  final Widget? child;
+
+  /// Conteúdo em slivers ([ClippoScreenGround.slivers]).
+  final List<Widget>? slivers;
 
   /// Ações do rodapé (botão primário + botão de texto ou linha com link).
   /// Fica no fim da tela; se não couber, rola junto com o conteúdo.
@@ -107,6 +120,12 @@ class _ClippoScreenGroundState extends State<ClippoScreenGround> with SingleTick
       ClippoSpace.gutter,
       ClippoSpace.screenBottom + bottomInset,
     );
+    final slivers = widget.slivers;
+    if (slivers != null) {
+      return CustomScrollView(
+        slivers: [SliverPadding(padding: padding, sliver: SliverMainAxisGroup(slivers: slivers))],
+      );
+    }
     final footer = widget.footer;
     if (footer == null) {
       return SingleChildScrollView(padding: padding, child: widget.child);
@@ -120,7 +139,7 @@ class _ClippoScreenGroundState extends State<ClippoScreenGround> with SingleTick
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                widget.child,
+                widget.child!,
                 const Spacer(),
                 const SizedBox(height: ClippoSpace.section),
                 footer,

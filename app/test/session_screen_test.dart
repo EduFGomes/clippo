@@ -289,6 +289,24 @@ void main() {
     expect(find.text('2 lances salvos'), findsOneWidget);
   });
 
+  testWidgets('título: uma palavra fica só ela; nome longo diminui em vez de virar várias linhas',
+      (tester) async {
+    _phone(tester);
+    await tester.pumpWidget(_app(SessionScreen(session: _session(name: 'Pelada'), highlights: _noHighlights())));
+    await tester.pumpAndSettle();
+    expect(find.text('PELADA.'), findsOneWidget);
+    expect(find.textContaining('SESSÃO'), findsNothing);
+
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(id: 'longa', name: 'Campeonato interestadual de futevôlei'),
+      highlights: _noHighlights(),
+    )));
+    await tester.pumpAndSettle();
+    final title = tester.widget<Text>(find.text('CAMPEONATO INTERESTADUAL DE\nFUTEVÔLEI.'));
+    expect(title.style!.fontSize, lessThan(ClippoText.displayL.fontSize!));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('mostra cabeçalho da sessão e lista de highlights em ordem cronológica',
       (tester) async {
     _phone(tester);

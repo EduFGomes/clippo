@@ -29,11 +29,16 @@ class ClippoRadialNav extends StatefulWidget {
     required this.items,
     required this.currentIndex,
     required this.onSelected,
+    this.onOpenChanged,
   });
 
   final List<ClippoRadialNavItem> items;
   final int currentIndex;
   final ValueChanged<int> onSelected;
+
+  /// Avisa quando a roda abre (true) e fecha (false). O `AppShell` usa para o "Voltar" do
+  /// Android: com a roda aberta, ele só fecha a roda.
+  final ValueChanged<bool>? onOpenChanged;
 
   /// Chave do botão que abre a roda.
   static const Key buttonKey = ValueKey('clippoRadialNavButton');
@@ -226,16 +231,19 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with TickerProviderSt
       _open = true;
       _highlighted = -1;
     });
+    widget.onOpenChanged?.call(true);
     _wheel.forward();
   }
 
   void _close() {
+    final wasOpen = _open;
     setState(() {
       _open = false;
       _dragging = false;
       _highlighted = -1;
       _onIcon = -1;
     });
+    if (wasOpen) widget.onOpenChanged?.call(false);
     _preview.reverse();
     _magnetOff();
     _wheel.reverse();

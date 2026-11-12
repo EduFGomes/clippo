@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -96,10 +98,29 @@ class AuthRepository {
 
   Future<void> signOut() => _auth.signOut();
 
+  /// Quanto a abertura do app espera o servidor antes de usar o que está guardado no celular.
+  static const Duration profileCheckTimeout = Duration(seconds: 6);
+
   /// O perfil existe? Se não, a pessoa criou a conta mas ainda não completou o perfil.
+  ///
+  /// Sem internet, não espera o Firestore desistir sozinho (a abertura ficava parada): depois de
+  /// [profileCheckTimeout], usa o perfil guardado no celular. Sem nada guardado (primeira vez
+  /// neste aparelho), lança [ProfileOfflineException] para a tela pedir internet.
   Future<bool> hasProfile(String uid) async {
-    final snap = await _firestore.doc('users/$uid').get();
-    return snap.exists;
+    final ref = _firestore.doc('users/$uid');
+    try {
+      final snap = await ref.get().timeout(profileCheckTimeout);
+      return snap.exists;
+    } on Object catch (e) {
+      if (e is! TimeoutException && !(e is FirebaseException && e.code == 'unavailable')) rethrow;
+      try {
+        final cached = await ref.get(const GetOptions(source: Source.cache));
+        if (cached.exists) return true;
+      } on FirebaseException {
+        // Nada guardado: cai no aviso de sem internet.
+      }
+      throw const ProfileOfflineException();
+    }
   }
 
   /// O @ já é de outra pessoa? Lê só `usernames/{@}` (um @ exato, como a busca de Amigos), para
@@ -221,6 +242,12 @@ AuthRepository get authRepository => _authRepository ??= AuthRepository();
 
 /// Retorna `true` somente quando o Firebase está inicializado e há alguém logado.
 /// Nos testes de widget ou no catálogo sem login, devolve `false` sem lançar erro.
+/// Sem internet e sem o perfil guardado no celular: a abertura não tem como saber se a conta já
+/// tem perfil. A tela pede para conectar (só acontece na primeira vez num aparelho).
+class ProfileOfflineException implements Exception {
+  const ProfileOfflineException();
+}
+
 bool get isUserSignedIn {
   try {
     return authRepository.currentUser != null;

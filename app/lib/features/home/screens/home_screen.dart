@@ -251,23 +251,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ClippoScreenGround(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Heading(profile: _profile, onRecord: widget.onRecord),
-          for (final request in _incomingRequests) ...[
-            const SizedBox(height: ClippoSpace.spaceL),
-            MergeRequestCard(
-              request: request,
-              viewerId: _viewerId!,
-              busy: _busyRequests.contains(request.id),
-              onAccept: () => _answerMerge(request, accept: true),
-              onCancel: () => _answerMerge(request, accept: false),
-            ),
-          ],
-          const SizedBox(height: ClippoSpace.section),
-          ValueListenableBuilder<UploadQueueState>(
+    // Em slivers: com muitas sessões, só os cards à vista são montados (item 30 da análise).
+    return ClippoScreenGround.slivers(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Heading(profile: _profile, onRecord: widget.onRecord),
+              for (final request in _incomingRequests) ...[
+                const SizedBox(height: ClippoSpace.spaceL),
+                MergeRequestCard(
+                  request: request,
+                  viewerId: _viewerId!,
+                  busy: _busyRequests.contains(request.id),
+                  onAccept: () => _answerMerge(request, accept: true),
+                  onCancel: () => _answerMerge(request, accept: false),
+                ),
+              ],
+              const SizedBox(height: ClippoSpace.section),
+            ],
+          ),
+        ),
+        ValueListenableBuilder<UploadQueueState>(
             valueListenable: _uploads,
             builder: (context, queue, _) => StreamBuilder<SessionsSnapshot>(
             stream: _sessions,
@@ -287,27 +293,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               }
               if (snapshot.hasError) {
-                return _Problem(
-                  failure: SessionsFailure.from(snapshot.error!),
-                  onRetry: _retry,
+                return SliverToBoxAdapter(
+                  child: _Problem(
+                    failure: SessionsFailure.from(snapshot.error!),
+                    onRetry: _retry,
+                  ),
                 );
               }
-              if (snapshot.connectionState == ConnectionState.waiting) return const _Loading();
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SliverToBoxAdapter(child: _Loading());
+              }
 
               final data = snapshot.data;
-              if (data == null) return const _Loading();
+              if (data == null) return const SliverToBoxAdapter(child: _Loading());
 
               // Lista vazia vinda do cache não quer dizer "nunca gravei nada":
               // quer dizer que não deu para falar com o servidor.
               if (data.isEmpty && data.fromCache) {
-                return _Problem(
-                  failure: const SessionsFailure(
-                    'Sem internet. Suas sessões aparecem assim que você conectar.',
+                return SliverToBoxAdapter(
+                  child: _Problem(
+                    failure: const SessionsFailure(
+                      'Sem internet. Suas sessões aparecem assim que você conectar.',
+                    ),
+                    onRetry: _retry,
                   ),
-                  onRetry: _retry,
                 );
               }
-              if (data.isEmpty) return _Empty(onRecord: widget.onRecord);
+              if (data.isEmpty) return SliverToBoxAdapter(child: _Empty(onRecord: widget.onRecord));
 
               return _List(
                 sessions: data.sessions,
@@ -320,8 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -418,22 +429,27 @@ class _List extends StatelessWidget {
   final void Function(Session) onToggle;
   final void Function(Session) onOpen;
 
+  /// Um sliver: só os cards à vista são montados.
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (offline) ...[
-          Text(
-            'Sem internet. Mostrando o que já estava no aparelho.',
-            style: ClippoText.label.copyWith(color: colors.textMuted),
-          ),
-          const SizedBox(height: ClippoSpace.spaceM),
-        ],
-        for (var i = 0; i < sessions.length; i++) ...[
-          if (i > 0) const SizedBox(height: ClippoSpace.cardGap),
-          ClippoSessionCard(
+    final notice = offline ? 1 : 0;
+    return SliverList.builder(
+      itemCount: sessions.length + notice,
+      itemBuilder: (context, index) {
+        if (index < notice) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: ClippoSpace.spaceM),
+            child: Text(
+              'Sem internet. Mostrando o que já estava no aparelho.',
+              style: ClippoText.label.copyWith(color: colors.textMuted),
+            ),
+          );
+        }
+        final i = index - notice;
+        return Padding(
+          padding: EdgeInsets.only(top: i > 0 ? ClippoSpace.cardGap : 0),
+          child: ClippoSessionCard(
             title: sessions[i].name,
             summary: clippoDotList([
               clippoRelativeDate(sessions[i].startedAt),
@@ -454,8 +470,8 @@ class _List extends StatelessWidget {
             onToggle: () => onToggle(sessions[i]),
             onAction: () => onOpen(sessions[i]),
           ),
-        ],
-      ],
+        );
+      },
     );
   }
 }
