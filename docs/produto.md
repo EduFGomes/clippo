@@ -50,7 +50,7 @@ Escuro, esportivo e vibrante — na linha de Strava e Nike. Referências de expe
 
 | Entra | Fica de fora |
 |---|---|
-| App Android com as telas descritas em [Telas](#4-telas) | Versão iOS 🟡 *(não descartada para o futuro)* |
+| App Android com as telas descritas em [Telas](#4-telas) | Versão iOS *(objetivo de longo prazo; fora do MVP, grupo em 12/11/2026)* |
 | Detecção do gesto no aparelho | Edição de vídeo dentro do app |
 | Buffer e salvamento automático do highlight (15 a 60 s, com som) | Transmissão ao vivo |
 | Sessões compartilhadas entre participantes | Publicação aberta na Play Store (só teste interno) |
@@ -70,7 +70,7 @@ O projeto está pronto quando:
 
 - Modelo de pose pré-treinado, sem treino de modelo próprio.
 - 5 pessoas, cerca de 6 h por semana cada.
-- Período: 27/08 a 04/12/2026 (entrega final ainda depende de aprovação do orientador 🟡).
+- Período: 27/08 a 25/11/2026 (nova data de entrega, grupo em 12/11/2026).
 - Só Android no MVP.
 - Critério de desempate em qualquer decisão: **o que deixa a demo ao vivo mais convincente** para quem não é técnico.
 
@@ -104,7 +104,7 @@ Usuário ──< Participante >── Sessão ──< Highlight
 - Uma sessão tem zero ou mais highlights; um highlight pertence a uma única sessão.
 
 ### 2.2 Conta e entrada
-- Criar conta e entrar (hoje: e-mail e senha; login com Google 🟡, ver [arquitetura.md](arquitetura.md#decisões-em-aberto-)).
+- Criar conta e entrar (hoje: e-mail e senha; **"Continuar com Google"** decidido em 12/11/2026, a fazer).
 - Completar o perfil (nome, @usuário, data de nascimento) depois de criar a conta.
 - Na primeira vez: pedir permissão de câmera (e de localização, para sugerir o local da sessão) e explicar o gesto **\ o /** de forma visual.
 - Sair da conta a partir do Perfil.
@@ -123,12 +123,12 @@ Usuário ──< Participante >── Sessão ──< Highlight
 ### 2.5 Amigos
 - Lista de amigos com busca.
 - Convidar amigos.
-- 🟡 Menu de ações por amigo (⋮) — ações a definir.
+- Menu de ações por amigo (⋮): **Ver perfil** e **Remover** (só esses dois por agora, grupo em 12/11/2026).
 - A lista de amigos alimenta o seletor "gravar com" da tela de gravação.
 
 ### 2.6 Perfil
 - Foto, nome, estatísticas rápidas: nº de sessões, nº de highlights, nº de amigos.
-- Editar nome e nome de usuário. 🟡 Trocar a foto e notificações ainda não existem e não aparecem na tela.
+- Editar nome e nome de usuário. Trocar a **foto do perfil** entra em breve (a fazer); notificações ficam para o futuro. Os dois não aparecem na tela enquanto não existirem.
 - Sair da conta (com confirmação).
 - Excluir a conta (LGPD): some o perfil, as amizades e as sessões que a pessoa gravou; das sessões dos outros, ela sai.
 
@@ -159,7 +159,7 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 | R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
 | R12 | Só o dono edita nome/local/data e horário da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
-| R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) guarda os highlights já salvos numa sessão padrão; **"Descartar"** (na confirmação) joga fora todos os highlights da sessão. 🟡 Falta definir a sessão padrão (nome, quem participa) e se sessão sem nenhum highlight pode ser salva. |
+| R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) e **"Descartar"** (na confirmação). As duas **perguntam antes** e, confirmadas, jogam fora todos os highlights da sessão. **Não existe sessão padrão** (grupo, 12/11/2026). Sessão sem nenhum highlight pode ser salva. |
 
 ### Amigos
 | # | Regra |
@@ -204,7 +204,7 @@ Boas-vindas ─► Como funciona ─► Criar conta ─► Complete seu perfil �
                    Player
 ```
 
-- **Nível superior**: Início, Amigos, Perfil. A forma é a **roda** do protótipo v2 (botão no centro inferior; toque abre, arrastar e soltar escolhe) — decidida em 20/10/2026, 🟡 a confirmar com o grupo.
+- **Nível superior**: Início, Amigos, Perfil. A forma é a **roda** do protótipo v2 (botão no centro inferior; toque abre, arrastar e soltar escolhe) — decidida em 20/10/2026 e confirmada pelo grupo em 12/11/2026.
 - **Gravar** é um destino da navegação, mas abre um fluxo **em tela cheia, sem navegação**.
 - **Telas de detalhe** (Sessão, Confirme a sessão, Player) **não** mostram a navegação; têm voltar no topo.
 - Ordem dos destinos: **Início · Gravar · Amigos · Perfil**.
@@ -222,19 +222,19 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 | **Complete seu perfil** | Dados públicos e data de nascimento | Nome, Nome de usuário (@), Data de nascimento (digitada, dd/mm/aaaa: as barras entram sozinhas) | "Continuar" → Início · "Sair" → Boas-vindas |
 
 **Estados**
-- **Validação:** nada é enviado sem passar pelas regras do app e, de novo, do servidor (e-mail no formato `nome@dominio.tld`; senha nova de 8 a 128 caracteres, com maiúscula, minúscula e número (quem tem conta antiga entra com a senha que tem); nome até 50; @usuário de 3 a 20 com `a–z 0–9 _ .`; data de nascimento entre 1900 e hoje). Os erros aparecem embaixo de cada campo e somem quando a pessoa corrige.
+- **Validação:** nada é enviado sem passar pelas regras do app e, de novo, do servidor (e-mail no formato `nome@dominio.tld`; senha nova de 8 a 128 caracteres, com maiúscula, minúscula e número (quem tem conta antiga entra com a senha que tem); nome até 50; @usuário de 3 a 20 com `a–z 0–9 _ .`; data de nascimento entre 1900 e hoje, com pelo menos **13 anos**). Os erros aparecem embaixo de cada campo e somem quando a pessoa corrige.
 - **Criar conta:** o botão "Criar conta" fica desabilitado até a senha cumprir as quatro exigências e a confirmação ser igual. O e-mail é conferido ao tocar no botão.
 - **Erros** (e-mail já usado, senha errada, sem internet…) aparecem em português abaixo dos campos, com o texto vindo do `AuthRepository`, e o campo do erro fica marcado. Em "E-mail ou senha incorretos.", os dois campos ficam marcados. No Complete seu perfil, o erro de um campo aparece logo abaixo dele.
 - **Carregando:** o botão primário mostra que está trabalhando e não aceita um segundo toque.
 
-🟡 **Permissões** — câmera (obrigatória), microfone (opcional, para o som dos highlights) e localização (opcional, só para sugerir o local), cada uma com o porquê em uma frase, pedidas quando fizerem sentido. Ainda sem tela.
+**Permissões** (grupo, 12/11/2026) — **câmera** (obrigatória) e **microfone** (opcional, para o som dos highlights) são pedidos **só ao entrar na Gravação**, cada um com o porquê em uma frase. **Localização** (opcional) só quando a pessoa toca em "Usar localização atual" no campo Local. Sem tela de permissões no onboarding.
 
 ### 4.2 Início
 
 **Objetivo:** ver as sessões de que participei e entrar numa delas.
 
 **Conteúdo**
-- Topo: saudação curta ("Boa noite, Gustavo") e o título **"Suas sessões"**; à direita, o avatar do usuário. Ao lado do título, o atalho **"Gravar"** abre a Gravação com um toque (a roda continua; 🟡 a forma da navegação segue em aberto).
+- Topo: saudação curta ("Boa noite, Gustavo") e o título **"Suas sessões"**; à direita, o avatar do usuário. Ao lado do título, o atalho **"Gravar"** abre a Gravação com um toque (a roda continua: confirmada em 12/11/2026).
 - Lista vertical de **cards de sessão em sanfona**, mais recente primeiro:
   - **Fechado:** nome · data · nº de highlights · botão de abrir.
   - **Aberto:** local, avatares dos participantes (até 5 + "+N"), duração, nº de participantes e o botão **"Ver highlights"**.
@@ -273,7 +273,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 
 **Navegação:** tocar num highlight → **Player**. 🟡 Menu do dono (editar nome/local, participantes) — a desenhar.
 
-**Excluir sessão** (só o dono, no fim da tela): pergunta antes ("Excluir sessão?", com quantos lances somem), tira a sessão da fila de envio do aparelho, apaga no servidor e volta à Início. 🟡 Sessão com outra juntada (D18) ainda não pode ser excluída.
+**Excluir sessão** (só o dono, no fim da tela): pergunta antes ("Excluir sessão?", com quantos lances somem), tira a sessão da fila de envio do aparelho, apaga no servidor e volta à Início. Sessão com outra juntada (D18): **decidido em 12/11/2026** que excluir a principal devolve a sessão de origem ao dono dela, com os lances dele (a fazer; hoje ainda é bloqueado com uma mensagem).
 
 ### 4.4 Player
 
@@ -281,7 +281,7 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 - Vídeo em tela cheia sobre fundo preto.
 - Controles mínimos: play/pause, fechar, compartilhar.
 - Título do lance e nome da sessão em texto pequeno, sem cobrir o vídeo.
-- 🟡 Deslizar para o próximo/anterior highlight da mesma sessão.
+- Deslizar para o próximo/anterior highlight da mesma sessão. O Player **não** passa sozinho para o próximo lance (grupo, 12/11/2026).
 
 ### 4.5 Gravação — 4 estados
 
@@ -290,7 +290,8 @@ A gravação ignora o tema claro/escuro.
 **Estado A — Preparar**
 - Imagem da câmera em **tela cheia**. A barra de status fica escura.
 - Topo: voltar e a dica **"Apoie o celular e enquadre o campo"**.
-- Embaixo, rótulo **"Gravar com"** e uma fileira rolável de chips: **"Gravar sozinho"** (padrão) e **"Com Rafa"**, **"Com Bruno"**… (amigos). 🟡 **Proposta, revisar em grupo:** os chips deixam marcar **vários amigos** (R10); "Gravar sozinho" vem marcado e desmarca quando alguém é escolhido. Na "Confirme a sessão" dá para acrescentar quem faltou, e depois de salva só o dono muda os participantes (R12). Os participantes não precisam aceitar: a sessão aparece na Início deles, porque já são amigos (R15).
+- Embaixo, rótulo **"Gravar com"** e uma fileira rolável de chips: **"Gravar sozinho"** (padrão) e **"Com Rafa"**, **"Com Bruno"**… (amigos). Na "Confirme a sessão" dá para acrescentar quem faltou, e depois de salva só o dono muda os participantes (R12).
+- **Novo plano do grupo (12/11/2026, a fazer):** os chips saem. Um botão no topo, ao lado do de configurações da câmera e no mesmo estilo, abre a lista de amigos para escolher **com quem você está gravando** (cada um com o seu celular). Esse botão serve **só para juntar as sessões** (D18) desses amigos, **sem convite** entre eles. No fim da gravação continua um botão para adicionar mais participantes como **observadores**: eles veem os lances, mas não juntam sessões.
 - **Botão de gravar** grande e a legenda "Iniciar detecção de gesto \ o /".
 - Sem permissão de câmera: explicar por que é necessária + botão para permitir; se o Android não perguntar mais, **"Abrir configurações"** leva à tela do Clippo nas Configurações e, na volta, a câmera é conferida de novo.
 - Sem microfone: o aviso **"Sem microfone · toque para permitir"** pede o microfone ou, negado de vez, abre as Configurações.
@@ -299,7 +300,7 @@ A gravação ignora o tema claro/escuro.
 **Estado B — Gravando (standby)**
 - Tela **preta pura** (nunca cinza escuro: em telas OLED o pixel desliga e economiza bateria), **nenhum** elemento além de um **pequeno ponto pulsando** no centro (ciclo lento de 2,6 s). A barra de status também fica preta.
 - Logo depois de ligar, a frase **"Detecção ligada. Toque na tela para encerrar."** aparece embaixo do ponto por alguns segundos e some sozinha, para quem grava pela primeira vez não achar que o app travou.
-- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A; os highlights já salvos ficam numa sessão padrão, R14). 🟡 Enquanto a sessão padrão não existe, "Cancelar gravação" **descarta** os highlights, e o aviso de confirmação diz quantos se perdem.
+- **Um toque** na tela mostra, por **3,2 s**, dois botões embaixo: **"Encerrar sessão"** (→ Estado D) e **"Cancelar gravação"** (→ volta ao Estado A). Pergunta antes e, confirmado, **descarta** os highlights; o aviso diz quantos se perdem. Não existe sessão padrão (R14).
 - Sair da Gravação com highlights ainda não salvos (voltou da "Confirme a sessão" para a câmera) pergunta antes: **"Voltar e salvar"** ou **"Sair e descartar"**.
 
 **Estado C — Highlight salvo**
@@ -310,7 +311,7 @@ A gravação ignora o tema claro/escuro.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
-- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; 🟡 sugerir pelo GPS segue em aberto), **Participantes** (inclui "Você") + "+ adicionar".
+- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; texto livre, não precisa ser um lugar real; **"Usar localização atual"** pede o GPS só quando tocado, a fazer), **Participantes** (inclui "Você") + "+ adicionar".
 - Botão primário **"Salvar sessão"** → volta à **Início**, com a nova sessão no topo.
 - Link **"Descartar"** → descarta a sessão e todos os highlights dela e volta à câmera (R14).
 
@@ -321,7 +322,7 @@ A gravação ignora o tema claro/escuro.
 **Conteúdo**
 - Título **"Amigos"** com o botão **"Convidar"**.
 - Busca: "Buscar amigo ou usuário".
-- Lista: avatar, nome e linha secundária ("12 sessões juntos", "nenhuma sessão ainda"), com menu **⋮** 🟡 *(ações a definir: remover, ver sessões juntos…)*.
+- Lista: avatar, nome e linha secundária ("12 sessões juntos", "nenhuma sessão ainda"), com menu **⋮**: Ver perfil e Remover.
 - Navegação com **Amigos** ativo.
 
 **Estados** 🟡: vazio ("Adicione quem joga com você" + Convidar); busca sem resultado; convites pendentes (a amizade exige aceite, R15).
@@ -331,9 +332,9 @@ A gravação ignora o tema claro/escuro.
 **Objetivo:** ver meu resumo e ajustar minha conta.
 
 **Conteúdo**
-- **Avatar grande**, nome e @usuário (🟡 trocar a foto ainda não existe).
+- **Avatar grande**, nome e @usuário (trocar a foto entra em breve).
 - **Três estatísticas**: sessões · highlights · amigos.
-- Linhas: **Nome ›**, **Usuário ›** (🟡 notificações entram quando existirem).
+- Linhas: **Nome ›**, **Usuário ›** (notificações ficam para o futuro).
 - **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 
@@ -347,15 +348,17 @@ Início → Sessão → Gravação (A–D) são o núcleo da proposta e precisam
 
 | Tema | Pergunta |
 |---|---|
-| Plataforma | iOS entra depois do MVP? |
-| Cancelar / Descartar | Como é a sessão padrão que guarda os highlights de "Cancelar gravação"? Sessão sem highlights pode ser salva? |
-| Participantes na gravação | Revisar em grupo a proposta da Gravação › Estado A (vários amigos nos chips, sem aceite). |
-| Permissões de sessão | Participantes podem sair de uma sessão? (Só o dono edita, R12.) |
-| Menu de amigo | Quais ações ficam no ⋮ da lista de amigos? |
+| Plataforma | ~~iOS entra depois do MVP?~~ Só Android por agora; iOS é objetivo de longo prazo (12/11/2026). |
+| Cancelar / Descartar | ~~Sessão padrão?~~ Não existe: cancelar pergunta e descarta (R14, 12/11/2026). |
+| Participantes na gravação | ~~Chips sem aceite?~~ Novo plano: botão "gravando com" para juntar sessões sem convite, observadores no fim e convite com aceite (12/11/2026, a fazer). |
+| Permissões de sessão | ~~Participantes podem sair?~~ Podem; e passam a aceitar o convite, que o dono pode desfazer (12/11/2026). |
+| Menu de amigo | ~~Quais ações?~~ Ver perfil e Remover (12/11/2026). |
 | Recuperação de senha | "Esqueci a senha" manda o e-mail padrão do Firebase (10/11/2026). Falta decidir o texto do e-mail e se a nova senha é criada dentro do app. |
-| Tela de permissões | Quando e como pedir câmera e localização. |
+| Tela de permissões | ~~Quando pedir?~~ Câmera e microfone ao entrar na Gravação; localização só no "Usar localização atual" (12/11/2026). |
+| Privacidade | Escrever a política de privacidade completa (o cadastro mostra um resumo provisório). |
+| Favoritos e retenção | Vídeos apagados depois de 60 dias, menos os favoritos (12/11/2026). Favoritar ainda não existe: precisa vir antes da limpeza. |
 | Telas internas | Início, Sessão, Player, Gravação, Amigos e Perfil ainda vão ser redesenhadas na direção C. |
-| Entrega final | Data de 04/12/2026 depende de aprovação do orientador. |
+| Entrega final | ~~04/12/2026?~~ Nova data: 25/11/2026 (12/11/2026). |
 
 ---
 

@@ -701,7 +701,7 @@ class _SessionHeader extends StatelessWidget {
         ClippoScreenTitle(
           line1: line1,
           line2: line2,
-          subtitle: clippoDotList([clippoDate(session.startedAt), clippoDuration(session.duration)]),
+          subtitle: clippoDotList([clippoRelativeDate(session.startedAt), clippoDuration(session.duration)]),
         ),
         if (place != null && place.isNotEmpty) ...[
           const SizedBox(height: ClippoSpace.spaceM),

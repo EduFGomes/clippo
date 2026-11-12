@@ -50,6 +50,16 @@ describe("normalizeBirthDate", () => {
   it.each(["2001-02-30", "2027-01-01", "1899-12-31", "13/10/2001", ""])("recusa %s", (value) => {
     expect(() => normalizeBirthDate(value, today)).toThrow(ValidationError);
   });
+
+  // Os mesmos casos de app/test/input_validation_test.dart.
+  it("idade mínima de 13 anos: faz 13 hoje entra, um dia antes não", () => {
+    expect(normalizeBirthDate("2013-10-13", today)).toBe("2013-10-13");
+    for (const value of ["2013-10-14", "2026-10-13"]) {
+      expect(() => normalizeBirthDate(value, today)).toThrow(
+        "Você precisa ter pelo menos 13 anos para usar o Clippo.",
+      );
+    }
+  });
 });
 
 describe("normalizeEmail", () => {

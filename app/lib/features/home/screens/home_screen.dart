@@ -436,7 +436,7 @@ class _List extends StatelessWidget {
           ClippoSessionCard(
             title: sessions[i].name,
             summary: clippoDotList([
-              clippoDate(sessions[i].startedAt),
+              clippoRelativeDate(sessions[i].startedAt),
               clippoHighlightCount(sessions[i].highlightCount),
               ?queue.noteFor(sessions[i].id),
             ]),

@@ -32,14 +32,14 @@ Celular de quem grava              Firebase (São Paulo; Storage nos EUA)       
 | D8 | **Fontes embutidas no app** (Anton e Archivo em `app/assets/fonts/`, sem o pacote `google_fonts`) | Funciona sem internet na quadra; nada é baixado na primeira abertura | ~1 MB a mais no app |
 | D9 | **Valores visuais só em `clippo_tokens.dart`** (sem JSON paralelo) | Uma fonte só evita divergência entre docs e código | Quem não usa Flutter lê os valores pelo [design.md](design.md) |
 | D10 | **Toda entrada validada duas vezes: no app e no servidor**, com as mesmas regras e mensagens (regra 0 do `AGENTS.md`) | O app dá o erro na hora, embaixo do campo, sem gastar chamada; o servidor garante que ninguém pula a validação. O Firebase Auth sozinho aceita e-mails como `nome@g` | Duas cópias das regras (`app/lib/core/validation/input_validation.dart` e `backend/functions/src/{users,sessions}/validation.ts`) que precisam mudar juntas, com testes dos dois lados |
-| D11 | **Navegação de nível superior em roda** (protótipo v2), e não em barra | Combina com "o lance é o herói": nada de barra fixa ocupando o rodapé em cima do vídeo; o gesto de segurar-e-arrastar chega em qualquer seção com uma mão só | Menos convencional que uma barra; exige explicar na primeira vez. 🟡 Decidido pelo back-end em 20/10/2026; o grupo aprova em 28/10/2026, mas fica em aberto caso precise mudar |
+| D11 | **Navegação de nível superior em roda** (protótipo v2), e não em barra | Combina com "o lance é o herói": nada de barra fixa ocupando o rodapé em cima do vídeo; o gesto de segurar-e-arrastar chega em qualquer seção com uma mão só | Menos convencional que uma barra; exige explicar na primeira vez. Decidido pelo back-end em 20/10/2026, aprovado pelo grupo em 28/10/2026 e confirmado em 12/11/2026 |
 | D12 | **`flutter_svg`** para desenhar os ícones da marca | Os 19 SVGs de `app/assets/icons/` já existiam sem um jeito de usar; redesenhá-los em código duplicaria o traço | Uma dependência a mais (~200 KB). Os ícones dos controles continuam desenhados em código no `ClippoIcon` |
 | D13 | **Câmera e pose em código nativo (Kotlin: CameraX + ML Kit Pose base); regra do gesto em Dart** (`app/android/.../camera/` e `app/lib/core/gesture/`) | O Android entrega a câmera a um cliente por vez: o CameraX abre uma vez e alimenta a imagem na tela, a análise de pose e o buffer de 30 s. O ML Kit (modelo padrão `base`) roda no Kotlin, sem copiar cada quadro para o Dart; o Dart recebe só os 33 pontos do corpo (~25 vezes por segundo). A regra e o disparo em Dart são testáveis sem câmera | Código Kotlin sem teste automático (só no celular); só Android (iOS precisaria do equivalente); o ML Kit Pose só tem versões beta desde 2020 (usamos a 18.0.0-beta5). Decidido pela visão computacional em 23/10/2026, confirmado pelo grupo em 28/10/2026 |
 | D14 | **Gesto só vale de frente para a câmera**, conferido pela profundidade (z) do nariz em relação aos ombros | O produto pede o gesto "olhando para a câmera" para não disparar em comemorações. Em vídeo, o Y de costas disparava; a confiança do ML Kit não serve (diz se o ponto está na imagem, não se está visível) e a ordem dos ombros erra. O nariz separou bem: de frente −0,8 a −2,1, de costas +1,2 a +2,1 | Depende de uma profundidade estimada a partir de uma imagem só; ainda não medido a 8 m. Decidido pela visão computacional em 24/10/2026, confirmado pelo grupo em 28/10/2026 |
 | D15 | **Sessões e highlights gravados por uma Cloud Function chamável (`saveSession`)**; os vídeos sobem do app direto para o Storage, e um gatilho marca o highlight como enviado (R13) | Valida tudo no servidor (regra 0 do AGENTS.md, e os participantes são amigos do dono, R10) e grava numa transação, como o `completeProfile`; as Security Rules continuam fechadas para escrita. A gravação não depende dela (R8): só o "Salvar sessão" chama, e sem internet o app guarda e tenta de novo depois (WorkManager) | O projeto real precisa do plano Blaze (pago por uso, com cartão; o Storage também exige). O uso de um projeto de faculdade cabe na cota sem custo. Decidido pelo grupo em 28/10/2026 |
-| D16 | **Amizade num documento por par** (`friendships/{uidA_uidB}`, ids em ordem), gravado só por Functions | Não existe pedido duplicado nem "meio amigo" (R15 é um documento só); conferir R10 custa uma leitura por participante; a lista de amigos é uma consulta (`uids` contém eu) | Nome e foto copiados no documento (`profiles`) ficam velhos se a pessoa mudar o perfil. 🟡 Proposta do back-end em 09/11/2026, a confirmar com o grupo |
-| D17 | **Vídeos protegidos pelas regras do Storage lendo o Firestore** (`firestore.get()` na regra), sem URL pública | Só participantes da sessão baixam (R11) e só quem gravou envia, num highlight `pending`, um MP4 de tamanho limitado; nada de link que funciona sem login. O Player assiste por streaming com o login e o App Check no cabeçalho ([Acesso aos vídeos](#acesso-aos-vídeos-no-storage-d17-)) | Cada download custa uma leitura no Firestore; no projeto real, o primeiro deploy das regras pede para dar ao Storage permissão de ler o Firestore. 🟡 Proposta do back-end em 09/11/2026 |
-| D18 | **Juntar sessões** (ex.: tênis com um celular de cada lado): os highlights da sessão de origem são **copiados** para a sessão principal, mas o vídeo **não sai do lugar** no Storage | Um hub só, com todos os ângulos em ordem de horário, sem mover arquivo; a sessão de origem fica escondida (`mergedInto`) e com a mesma lista de participantes, para as regras do Storage continuarem liberando o vídeo | O documento do lance existe em dois lugares (origem e principal); o gatilho do upload e o reenvio da fila atualizam os dois. 🟡 Proposta do back-end em 09/11/2026 |
+| D16 | **Amizade num documento por par** (`friendships/{uidA_uidB}`, ids em ordem), gravado só por Functions | Não existe pedido duplicado nem "meio amigo" (R15 é um documento só); conferir R10 custa uma leitura por participante; a lista de amigos é uma consulta (`uids` contém eu) | Nome e foto copiados no documento (`profiles`) ficam velhos se a pessoa mudar o perfil. Proposta do back-end em 09/11/2026, aprovada pelo grupo em 12/11/2026 |
+| D17 | **Vídeos protegidos pelas regras do Storage lendo o Firestore** (`firestore.get()` na regra), sem URL pública | Só participantes da sessão baixam (R11) e só quem gravou envia, num highlight `pending`, um MP4 de tamanho limitado; nada de link que funciona sem login. O Player assiste por streaming com o login e o App Check no cabeçalho ([Acesso aos vídeos](#acesso-aos-vídeos-no-storage-d17-)) | Cada download custa uma leitura no Firestore; no projeto real, o primeiro deploy das regras pede para dar ao Storage permissão de ler o Firestore. Proposta do back-end em 09/11/2026, aprovada pelo grupo em 12/11/2026 |
+| D18 | **Juntar sessões** (ex.: tênis com um celular de cada lado): os highlights da sessão de origem são **copiados** para a sessão principal, mas o vídeo **não sai do lugar** no Storage | Um hub só, com todos os ângulos em ordem de horário, sem mover arquivo; a sessão de origem fica escondida (`mergedInto`) e com a mesma lista de participantes, para as regras do Storage continuarem liberando o vídeo | O documento do lance existe em dois lugares (origem e principal); o gatilho do upload e o reenvio da fila atualizam os dois. Proposta do back-end em 09/11/2026, aprovada pelo grupo em 12/11/2026 (o jeito de juntar muda: ver Juntar sessões) |
 
 Custos estimados e alternativas descartadas (API de visão computacional, backend próprio): documento da proposta apresentado ao grupo.
 
@@ -68,7 +68,7 @@ Regras de modelagem:
 - **Cópias do perfil** (`friendships.profiles`, `sessions.participantsPreview`): quando a pessoa muda o nome ou o @ (`updateProfile`), a Function grava `users/` e `usernames/` numa transação e depois regrava as cópias em lotes, fora da transação. Custo: 1 leitura por amizade/pedido + 1 por sessão da pessoa, e só escreve onde a cópia mudou (ex.: 50 amigos e 100 sessões ≈ 154 leituras). Se cair no meio, o perfil já está certo e chamar de novo termina as cópias. A foto ainda não é editável.
 - **Contadores são mantidos por gatilho**, nunca pelo app, e de forma idempotente.
 
-### Amigos (D16) 🟡
+### Amigos (D16)
 
 1. **Pedido:** eu digito o @ exato do meu amigo; o app lê `usernames/{@}` para mostrar quem é, e
    `sendFriendRequest({username})` cria `friendships/{par}` com `status: pending`. Se ele já tinha me
@@ -92,7 +92,11 @@ do campo, que o @ já é de alguém (`AuthRepository.isUsernameTaken`); quem dec
 um contador por par precisaria de até 435 escritas por sessão de 30 pessoas. Se a lista de sessões de
 alguém ficar grande demais, vira contador.
 
-### Participantes e "hub" da sessão 🟡
+### Participantes e "hub" da sessão
+
+> **Decidido pelo grupo em 12/11/2026 (a fazer):** quem é adicionado a uma sessão **recebe um convite e aceita**
+> antes de ela aparecer na Início dele, e o dono pode **desfazer um convite** ainda não aceito. Hoje o app ainda
+> adiciona direto, sem aceite.
 
 - No "Salvar sessão", o dono escolhe os participantes **entre os amigos** (R10, conferido no `saveSession`).
   Eles **não precisam aceitar**: a sessão aparece na Início deles (proposta da Gravação › Estado A).
@@ -105,23 +109,29 @@ alguém ficar grande demais, vira contador.
   (`offsetSeconds`), o `savedAt` de cada um é recalculado, e a nova duração precisa ir até o último lance
   (`checkPeriodFitsHighlights`, espelhada em `validatePeriodFitsHighlights` no app). Sessão com lances de outra
   juntada (D18) não muda de data.
-- Um participante pode sair sozinho: `leaveSession` (o dono não sai; 🟡 decisão de produto em aberto).
+- Um participante pode sair sozinho: `leaveSession` (o dono não sai).
 - O dono exclui a sessão para todos: `deleteSession` apaga numa transação os highlights, os
   pedidos de juntar que citam a sessão e a própria sessão, e desconta a sessão e os lances do
   perfil de cada participante; depois apaga a pasta `sessions/{id}/` do Storage (falha ali só vai
-  para o log). O app tira a sessão da fila de envio antes de chamar. 🟡 Sessão juntada (D18) ainda
-  não é excluída.
+  para o log). O app tira a sessão da fila de envio antes de chamar. Sessão juntada (D18): decidido em
+  12/11/2026 que excluir a principal **devolve a sessão de origem ao dono dela**, com os lances dele (a fazer;
+  hoje ainda é bloqueado).
 - O dono apaga um lance: `deleteHighlight` (domínio `highlights/`) apaga o documento, desconta 1
   do `highlightCount` da sessão e do perfil de cada participante e apaga o vídeo e a miniatura
   no Storage. Lance copiado de uma sessão juntada (`sourceSessionId`) é da outra pessoa e não sai.
 - A pessoa exclui a conta: `deleteMyAccount` (domínio `users/`, LGPD) exclui as sessões que ela
   gravou (`deleteSessionAs`), tira ela das dos outros (`leaveSessionAs`), apaga amizades, pedidos,
-  perfil, `usernames/` e `userPrivate/`, e por último a conta do Auth. Seguro repetir. 🟡 Dona de
-  sessão juntada ainda não consegue excluir pelo app.
+  perfil, `usernames/` e `userPrivate/`, e por último a conta do Auth. Seguro repetir. Dona de
+  sessão juntada: mesma regra (a sessão de origem volta para o dono dela; a fazer, hoje é bloqueado).
 - O app **não** cria sessão "aberta" nem entra por código/link: o campo `isClosed` do app não existe no
   servidor. Se o grupo quiser convite por link, entra como pedido que o dono aprova.
 
-### Juntar sessões (D18) 🟡
+### Juntar sessões (D18)
+
+> **Novo plano do grupo (12/11/2026, a fazer):** quem grava escolhe, num botão no topo da Gravação (ao lado das
+> configurações da câmera), **com quais amigos está gravando**, cada um no seu celular. As sessões desses amigos
+> se juntam **sem convite** entre eles. No fim da gravação, quem for adicionado depois entra como **observador**:
+> vê os lances, mas não junta sessões. O fluxo de pedido descrito abaixo é o de hoje e muda com esse plano.
 
 Caso de uso: tênis, cada um com o celular atrás de si. São duas sessões, cada uma com os seus lances;
 no fim, elas viram uma só.
@@ -200,7 +210,7 @@ tenta de novo sozinho quando a conexão voltar (WorkManager), mesmo com o app fe
 vídeo sobe do app direto para o Storage, e um gatilho marca o highlight como `uploaded`;
 só depois disso o app apaga a cópia local (R13).
 
-#### Acesso aos vídeos no Storage (D17) 🟡
+#### Acesso aos vídeos no Storage (D17)
 
 Caminho combinado (o `saveSession` devolve ele pronto para o app enviar):
 `sessions/{sessionId}/highlights/{highlightId}/video.mp4` e `thumb.jpg`.
@@ -378,18 +388,20 @@ alerta de orçamento; e o que está 🟡 abaixo (retenção de vídeos, idade m�
 
 ## Decisões em aberto 🟡
 
+Decididas pelo grupo em 12/11/2026 (saíram desta tabela): D11, D16, D17 e D18 aprovadas; participante pode sair
+e passa a aceitar o convite; **idade mínima de 13 anos** (`minimumAge` no app, `MIN_AGE` no servidor; 12 é o
+limite da LGPD sem consentimento dos pais, e 13 é a idade mínima de uma conta Google); limites do gesto
+confirmados como estão.
+
 | Tema | Quem decide |
 |---|---|
 | Gerenciamento de estado no app (Provider, Riverpod, Bloc…) | Front-end |
-| Confirmar D16 (amizade por par), D17 (vídeos pelas regras do Storage) e D18 (juntar sessões) | Back-end + grupo |
-| Participante pode sair sozinho da sessão (`leaveSession` já existe)? Participante precisa aceitar entrar? | Grupo |
 | Sessão aberta/fechada e entrada por código ou link (o app tem `isClosed`; o servidor não) | Grupo |
-| Login com Google (precisa do projeto real) | Back-end |
-| Recuperação de senha ("Esqueci a senha" manda o e-mail padrão do Firebase desde 10/11/2026, por `AuthRepository.sendPasswordReset`; falta o texto do e-mail e a nova senha dentro do app) | Back-end |
-| Idade mínima para usar o app (LGPD: menores de 12 precisam de consentimento dos pais) | Grupo |
-| Política de retenção de vídeos (ex.: apagar após 30 dias, exceto favoritos) | Grupo |
+| "Continuar com Google" no login e no cadastro: **decidido em 12/11/2026, a fazer** (precisa do projeto real e do SHA-1 do app) | Back-end |
+| Recuperação de senha ("Esqueci a senha" manda o e-mail padrão do Firebase desde 10/11/2026, por `AuthRepository.sendPasswordReset`; o grupo vai escrever o texto do e-mail) | Back-end + grupo |
+| Política de privacidade completa (o cadastro mostra um resumo provisório) | Grupo |
+| Retenção: **decidido em 12/11/2026** apagar vídeos depois de 60 dias (enquanto houver pouca gente usando), menos os **favoritos**. Favoritar ainda não existe e precisa vir antes da limpeza (a fazer) | Back-end + front-end |
 | Várias pessoas no quadro: escolhido o **detector de pessoas (MediaPipe, EfficientDet-Lite0, numa thread à parte) + um ML Kit em modo stream para cada pessoa**, sempre ligado no laboratório desde 28/10/2026. Escolhido por licença (Apache 2.0 e ML Kit podem ir para a Play Store; o YOLO-pose é AGPL) e por manter a regra e o z do nariz. A medir: tempo com 3–6 pessoas e acerto de longe. Alternativa a comparar: MediaPipe Pose Landmarker no lugar do ML Kit (mesmos 33 pontos, sem beta, pode usar a GPU) | Visão computacional |
-| Limites da regra do gesto (ângulos, nariz, tempo mínimo, espera da R4): valores atuais e como medir em [`app/lib/core/gesture/README.md`](../app/lib/core/gesture/README.md) | Visão computacional + grupo |
 
 As decisões em aberto de produto estão em [produto.md](produto.md#5-decisões-em-aberto--de-produto).
 

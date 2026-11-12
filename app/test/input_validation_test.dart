@@ -97,7 +97,15 @@ void main() {
     final today = DateTime(2026, 10, 13);
     test('aceita uma data válida no passado', () {
       expect(validateBirthDate(DateTime(2001, 2, 28), today: today), isNull);
-      expect(validateBirthDate(today, today: today), isNull);
+    });
+    // Os mesmos casos de normalizeBirthDate em backend/functions/test/validation.test.ts.
+    test('idade mínima de 13 anos: faz 13 hoje entra, um dia antes não', () {
+      expect(validateBirthDate(DateTime(2013, 10, 13), today: today), isNull);
+      expect(validateBirthDate(DateTime(2013, 10, 14), today: today),
+          'Você precisa ter pelo menos 13 anos para usar o Clippo.');
+      expect(validateBirthDate(today, today: today), 'Você precisa ter pelo menos 13 anos para usar o Clippo.');
+      expect(validateBirthDateText('14/10/2013', today: today),
+          'Você precisa ter pelo menos 13 anos para usar o Clippo.');
     });
     test('recusa vazia, futura ou antes de 1900', () {
       expect(validateBirthDate(null, today: today), isNotNull);

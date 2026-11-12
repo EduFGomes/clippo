@@ -12,11 +12,19 @@ const List<String> _months = [
   'jul', 'ago', 'set', 'out', 'nov', 'dez',
 ];
 
-/// "11 set 2026".
-///
-/// 🟡 Para sessões recentes, o design prevê trocar por "Hoje" e "Ontem"
-/// (docs/design.md › Regras de escrita). Ainda não decidido, por isso não é feito aqui.
+/// "11 set 2026". Data exata: campos de formulário e o que precisa do dia certo.
 String clippoDate(DateTime date) => '${date.day} ${_months[date.month - 1]} ${date.year}';
+
+/// "Hoje", "Ontem" ou "11 set 2026": a data de uma sessão em listas e cabeçalhos
+/// (docs/design.md › Regras de escrita; decidido pelo grupo em 12/11/2026).
+String clippoRelativeDate(DateTime date, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  final day = DateTime(date.year, date.month, date.day);
+  final todayDay = DateTime(today.year, today.month, today.day);
+  if (day == todayDay) return 'Hoje';
+  if (day == DateTime(todayDay.year, todayDay.month, todayDay.day - 1)) return 'Ontem';
+  return clippoDate(date);
+}
 
 /// "19:30".
 String clippoTime(DateTime time) =>

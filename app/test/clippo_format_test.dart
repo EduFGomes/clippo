@@ -69,6 +69,15 @@ void main() {
     expect(clippoPlayerProgress(const Duration(seconds: 30)), '0:30');
   });
 
+  test('data de sessão recente vira "Hoje" e "Ontem"; o resto fica exato', () {
+    final now = DateTime(2026, 11, 12, 9);
+    expect(clippoRelativeDate(DateTime(2026, 11, 12, 0, 5), now: now), 'Hoje');
+    expect(clippoRelativeDate(DateTime(2026, 11, 11, 23, 50), now: now), 'Ontem');
+    expect(clippoRelativeDate(DateTime(2026, 11, 10, 20), now: now), '10 nov 2026');
+    // Virada do mês e do ano.
+    expect(clippoRelativeDate(DateTime(2026, 12, 31, 21), now: DateTime(2027, 1, 1, 8)), 'Ontem');
+  });
+
   test('tempo de gravação do standby como relógio', () {
     expect(clippoRecordingTime(const Duration(seconds: 42)), '0:42');
     expect(clippoRecordingTime(const Duration(minutes: 12, seconds: 5)), '12:05');

@@ -15,6 +15,9 @@ export const SESSION_NAME_MAX = 50;
 export const SESSION_LOCATION_MAX = 80;
 
 /** Senha nova: igual a `validateNewPassword` do app (input_validation.dart). */
+/** Idade mínima para usar o Clippo (grupo, 12/11/2026). Mesma `minimumAge` do app. */
+export const MIN_AGE = 13;
+
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 128;
 
@@ -123,6 +126,15 @@ export function normalizeBirthDate(raw: unknown, today: Date = new Date()): stri
   if (!valid) throw new ValidationError("birthDate", "Data de nascimento inválida.");
   if (date.getTime() > today.getTime() || y < 1900) {
     throw new ValidationError("birthDate", "Data de nascimento inválida.");
+  }
+  // Faz MIN_AGE anos hoje ou antes (dia do aniversário conta, como no app).
+  const birthday = Date.UTC(y + MIN_AGE, m - 1, d);
+  const todayDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (birthday > todayDay) {
+    throw new ValidationError(
+      "birthDate",
+      `Você precisa ter pelo menos ${MIN_AGE} anos para usar o Clippo.`,
+    );
   }
   return raw;
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/friends_repository.dart';
@@ -543,13 +542,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Text('Ninguém usa @$username', style: ClippoText.titleS.copyWith(color: colors.text)),
           const SizedBox(height: ClippoSpace.spaceS),
           Text(
-            'Confira o @ com a pessoa ou mande o link para ela baixar o app.',
+            'Confira o @ com a pessoa. Quem ainda não tem o Clippo precisa baixar o app e criar a conta.',
             style: ClippoText.body.copyWith(color: colors.textMuted),
-          ),
-          const SizedBox(height: ClippoSpace.spaceS),
-          ClippoTextButton(
-            label: 'Mandar o link para baixar',
-            onPressed: () => _openAddFriend(initial: username),
           ),
         ],
       );
@@ -1081,14 +1075,12 @@ class _AddFriendScreen extends StatefulWidget {
 }
 
 class _AddFriendScreenState extends State<_AddFriendScreen> {
-  static const String _downloadAppLink = 'https://clippo.app/baixar';
 
   late final _controller = TextEditingController(text: widget.initialUsername);
 
   String? _fieldError;
   bool _searching = false;
   bool _sending = false;
-  bool _copiedLink = false;
 
   /// O @ procurado e quem usa. [_found] nulo depois de procurar = ninguém usa.
   String? _searched;
@@ -1166,12 +1158,6 @@ class _AddFriendScreenState extends State<_AddFriendScreen> {
     }
   }
 
-  Future<void> _copyDownloadLink() async {
-    await Clipboard.setData(const ClipboardData(text: _downloadAppLink));
-    if (!mounted) return;
-    setState(() => _copiedLink = true);
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
@@ -1208,7 +1194,7 @@ class _AddFriendScreenState extends State<_AddFriendScreen> {
             const SizedBox(height: ClippoSpace.section),
             if (_found == null)
               Text(
-                'Ninguém usa @$_searched no Clippo. Confira o @ ou mande o link abaixo.',
+                'Ninguém usa @$_searched no Clippo. Confira o @ com a pessoa.',
                 style: ClippoText.body.copyWith(color: colors.textMuted),
               )
             else
@@ -1244,16 +1230,10 @@ class _AddFriendScreenState extends State<_AddFriendScreen> {
                     style: ClippoText.titleS.copyWith(color: colors.text),
                   ),
                   const SizedBox(height: ClippoSpace.spaceS),
+                  // O link para a Play Store volta quando o app estiver publicado (grupo, 12/11/2026).
                   Text(
-                    'Mande o link para baixar o app. Com a conta criada, é só procurar o @.',
+                    'A pessoa baixa o app e cria a conta. Depois, é só procurar o @ dela aqui.',
                     style: ClippoText.body.copyWith(color: colors.textMuted),
-                  ),
-                  const SizedBox(height: ClippoSpace.spaceM),
-                  Text(_downloadAppLink, style: ClippoText.label.copyWith(color: colors.accent)),
-                  const SizedBox(height: ClippoSpace.spaceM),
-                  ClippoTextButton(
-                    label: _copiedLink ? 'Link copiado!' : 'Copiar link para baixar o app',
-                    onPressed: _copyDownloadLink,
                   ),
                 ],
               ),
@@ -1429,7 +1409,7 @@ class _FriendProfileScreenState extends State<_FriendProfileScreen> {
             ClippoSessionCard(
               title: shared[i].name,
               summary: clippoDotList([
-                clippoDate(shared[i].startedAt),
+                clippoRelativeDate(shared[i].startedAt),
                 clippoHighlightCount(shared[i].highlightCount),
               ]),
               location: shared[i].location?.label,

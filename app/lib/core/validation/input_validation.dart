@@ -99,13 +99,22 @@ String? validateUsername(String raw) {
   return null;
 }
 
-/// Data de nascimento: obrigatória, de 1900 até hoje.
+/// Idade mínima para usar o Clippo (decidida pelo grupo em 12/11/2026; mesma constante
+/// `MIN_AGE` no servidor). Menores de 12 precisariam do consentimento dos pais (LGPD, art. 14);
+/// 13 também é a idade mínima de uma conta Google, para o "Continuar com Google".
+const int minimumAge = 13;
+
+/// Data de nascimento: obrigatória, de 1900 até hoje, e com pelo menos [minimumAge] anos.
 String? validateBirthDate(DateTime? date, {DateTime? today}) {
   if (date == null) return 'Informe a data de nascimento.';
   final now = today ?? DateTime.now();
+  final todayDay = DateTime(now.year, now.month, now.day);
   final day = DateTime(date.year, date.month, date.day);
-  if (day.isAfter(DateTime(now.year, now.month, now.day)) || date.year < 1900) {
+  if (day.isAfter(todayDay) || date.year < 1900) {
     return 'Data de nascimento inválida.';
+  }
+  if (DateTime(date.year + minimumAge, date.month, date.day).isAfter(todayDay)) {
+    return 'Você precisa ter pelo menos $minimumAge anos para usar o Clippo.';
   }
   return null;
 }

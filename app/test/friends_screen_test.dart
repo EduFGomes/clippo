@@ -255,7 +255,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, ['findByUsername:zeca']);
     expect(find.text('Ninguém usa @zeca'), findsOneWidget);
-    expect(find.text('Mandar o link para baixar'), findsOneWidget);
+    // Sem link para baixar enquanto o app não está na Play Store.
+    expect(find.textContaining('link'), findsNothing);
   });
 
   testWidgets('a busca acha pelo @ quem ainda não é amigo e já adiciona dali', (tester) async {
@@ -329,7 +330,7 @@ void main() {
     expect(find.text('Agora você e Pedro são amigos.'), findsOneWidget);
   });
 
-  testWidgets('@ que ninguém usa diz isso e oferece o link para baixar', (tester) async {
+  testWidgets('@ que ninguém usa diz isso, sem link para baixar (ainda não está na Play Store)', (tester) async {
     _phone(tester);
     final repo = _FakeFriendsRepository();
     await tester.pumpWidget(_app(_screen(repo)));
@@ -342,10 +343,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Ninguém usa @ninguem no Clippo. Confira o @ ou mande o link abaixo.'),
+      find.text('Ninguém usa @ninguem no Clippo. Confira o @ com a pessoa.'),
       findsOneWidget,
     );
-    expect(find.text('https://clippo.app/baixar'), findsOneWidget);
+    expect(find.textContaining('clippo.app'), findsNothing);
   });
 
   testWidgets('remover pelo menu ⋮ pede confirmação e chama removeFriend', (tester) async {
