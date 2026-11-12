@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -8,10 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:clippo/core/data/friends_repository.dart';
 import 'package:clippo/core/data/friendship.dart';
 import 'package:clippo/core/data/highlight.dart';
+import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
 
 // A Sessão abre sem Firebase: repositórios e streams entram pelo construtor.
@@ -119,8 +122,28 @@ HighlightsSnapshot _fromCache(List<Highlight> items) =>
 
 Stream<HighlightsSnapshot> _noHighlights() => Stream.value(_fromServer(const <Highlight>[]));
 
+/// Miniaturas sem Firebase: devolve um arquivo para os caminhos de [files] e falha nos outros.
+class _FakeMedia extends HighlightMediaRepository {
+  _FakeMedia(this.files);
+
+  final Map<String, String> files;
+  final List<String> asked = [];
+
+  @override
+  Future<File> thumbnailFile(String storagePath) async {
+    asked.add(storagePath);
+    final local = files[storagePath];
+    if (local == null) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
+    return File(local);
+  }
+}
+
 /// A fila de envio com a sessão `quinta` ainda no celular: um lance só local.
-ValueNotifier<UploadQueueState> _queued({bool alsoOnServer = false}) => ValueNotifier(UploadQueueState(sessions: [
+ValueNotifier<UploadQueueState> _queued({
+  bool alsoOnServer = false,
+  Map<String, String> thumbnails = const {},
+}) =>
+    ValueNotifier(UploadQueueState(thumbnails: thumbnails, sessions: [
       QueuedSession(
         sessionId: 'quinta',
         ownerUid: 'alice',
@@ -141,6 +164,51 @@ ValueNotifier<UploadQueueState> _queued({bool alsoOnServer = false}) => ValueNot
     ]));
 
 void main() {
+  testWidgets('cada card mostra a miniatura do seu lance; sem ela, fica o desenho de quadra',
+      (tester) async {
+    _phone(tester);
+    const thumb1 = 'sessions/quinta-0001/highlights/lance-0001/thumb.jpg';
+    const thumb2 = 'sessions/quinta-0001/highlights/lance-0002/thumb.jpg';
+    final media = _FakeMedia({thumb1: '/cache/clippo-thumbs/lance-0001.jpg'});
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      mediaRepository: media,
+      highlights: Stream.value(_fromServer([
+        _highlight('h1', title: 'Lance 1', offset: const Duration(minutes: 4))
+            .copyWith(thumbnailPath: thumb1),
+        // Lance antigo: o caminho existe no banco, mas a miniatura nunca subiu.
+        _highlight('h2', title: 'Lance 2', offset: const Duration(minutes: 9))
+            .copyWith(thumbnailPath: thumb2),
+      ])),
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    ClippoHighlightTile tile(String title) =>
+        tester.widget(find.widgetWithText(ClippoHighlightTile, title));
+    expect(media.asked, unorderedEquals([thumb1, thumb2]));
+    expect((tile('Lance 1').thumbnail! as FileImage).file.path, '/cache/clippo-thumbs/lance-0001.jpg');
+    expect(tile('Lance 2').thumbnail, isNull);
+  });
+
+  testWidgets('lance ainda no celular usa a miniatura do aparelho, sem pedir ao Storage',
+      (tester) async {
+    _phone(tester);
+    final media = _FakeMedia(const {});
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(highlightCount: 1),
+      mediaRepository: media,
+      highlights: Stream.value(_fromCache(const [])),
+      uploads: _queued(thumbnails: const {'h9': '/data/highlights/h9.jpg'}),
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    final tile = tester.widget<ClippoHighlightTile>(find.widgetWithText(ClippoHighlightTile, 'Golaço'));
+    expect((tile.thumbnail! as FileImage).file.path, '/data/highlights/h9.jpg');
+    expect(media.asked, isEmpty);
+  });
+
   testWidgets('sem internet, os lances ainda no celular aparecem para assistir antes de subir',
       (tester) async {
     _phone(tester);
@@ -154,6 +222,54 @@ void main() {
     expect(find.text('Sem internet. Os highlights aparecem assim que você conectar.'), findsNothing);
     expect(find.text('Golaço'), findsOneWidget);
     expect(find.text('00:20:00 · enviando…'), findsOneWidget);
+  });
+
+  testWidgets('sessão só no celular e sem lances abre vazia, sem erro de carregamento',
+      (tester) async {
+    _phone(tester);
+    final calls = <(String, Map<String, dynamic>)>[];
+    final discarded = <String>[];
+    final queue = ValueNotifier(UploadQueueState(sessions: [
+      QueuedSession(
+        sessionId: 'quinta',
+        ownerUid: 'alice',
+        name: 'Pelada de quinta',
+        startedAt: DateTime(2026, 9, 11, 19, 30),
+        endedAt: DateTime(2026, 9, 11, 21, 12),
+      ),
+    ]));
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(highlightCount: 0),
+      currentUserId: 'alice',
+      // O Firestore não tem a sessão: ler os lances lá dá "sem permissão".
+      highlights: Stream.error(FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied')),
+      uploads: queue,
+      repository: SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        throw FirebaseFunctionsException(code: 'unavailable', message: 'offline');
+      }),
+      discardUploads: (id) async {
+        discarded.add(id);
+        queue.value = const UploadQueueState();
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nenhum lance salvo nessa sessão'), findsOneWidget);
+    expect(find.text('A sessão está guardada neste celular e sobe quando você conectar.'), findsOneWidget);
+    expect(find.text('Tentar de novo'), findsNothing);
+    // Editar e juntar dependem do servidor.
+    expect(find.bySemanticsLabel('Editar sessão'), findsNothing);
+    expect(find.text('Juntar com outra sessão'), findsNothing);
+
+    // Excluir sem internet: sair da fila basta.
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+    expect(discarded, ['quinta']);
+    expect(find.text('Sessão excluída.'), findsOneWidget);
   });
 
   testWidgets('lances do servidor e os que só estão no celular aparecem juntos, em ordem',
@@ -215,10 +331,54 @@ void main() {
 
     expect(find.bySemanticsLabel('Editar sessão'), findsNothing);
     expect(find.text('Juntar com outra sessão'), findsNothing);
+    expect(find.text('Excluir sessão'), findsNothing);
     expect(find.text('Sair da sessão'), findsOneWidget);
     // Não existe mais sessão aberta/fechada nem compartilhar a sessão por link/QR.
     expect(find.text('Sessão aberta'), findsNothing);
     expect(find.bySemanticsLabel('Compartilhar sessão'), findsNothing);
+  });
+
+  testWidgets('editar sessão: sair com mudanças pergunta antes de descartar; sem mudanças, só sai',
+      (tester) async {
+    _phone(tester);
+    final calls = <(String, Map<String, dynamic>)>[];
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      currentUserId: 'alice',
+      repository: _repo(calls),
+      highlights: _noHighlights(),
+    )));
+    await tester.pumpAndSettle();
+
+    // Sem mudanças: volta direto.
+    await tester.tap(find.bySemanticsLabel('Editar sessão'));
+    await tester.pumpAndSettle();
+    expect(find.text('Data'), findsOneWidget);
+    expect(find.text('11 set 2026'), findsOneWidget);
+    expect(find.text('19:30 – 21:12'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsNothing);
+
+    // Com mudanças: pergunta; "Continuar editando" fica, "Descartar" sai sem chamar o servidor.
+    await tester.tap(find.bySemanticsLabel('Editar sessão'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Outro nome');
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sair sem salvar?'), findsOneWidget);
+    await tester.tap(find.text('Continuar editando'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Descartar alterações'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsNothing);
+    expect(find.text('PELADA DE\nQUINTA.'), findsOneWidget);
+    expect(calls, isEmpty);
   });
 
   testWidgets('dono edita: valida e chama updateSession com os dados normalizados (R12)',
@@ -301,6 +461,76 @@ void main() {
     // Continua na edição, com a mensagem pronta do servidor.
     expect(find.text('EDITAR\nSESSÃO.'), findsOneWidget);
     expect(find.text('O local pode ter até 80 caracteres.'), findsOneWidget);
+  });
+
+  testWidgets('dono exclui a sessão só depois de confirmar; sai da fila antes do servidor',
+      (tester) async {
+    _phone(tester);
+    final order = <String>[];
+    final calls = <(String, Map<String, dynamic>)>[];
+    final repo = SessionsRepository(callFunction: (name, payload) async {
+      order.add(name);
+      calls.add((name, payload));
+      return {'sessionId': 'quinta'};
+    });
+
+    await tester.pumpWidget(_app(Navigator(
+      onGenerateRoute: (_) => MaterialPageRoute<void>(
+        builder: (_) => SessionScreen(
+          session: _session(),
+          currentUserId: 'alice',
+          repository: repo,
+          highlights: _noHighlights(),
+          discardUploads: (id) async => order.add('discard:$id'),
+        ),
+      ),
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    expect(find.text('Excluir sessão?'), findsOneWidget);
+    expect(find.textContaining('somem para todos os participantes. Não dá para desfazer.'), findsOneWidget);
+
+    await tester.tap(find.text('Manter sessão'));
+    await tester.pumpAndSettle();
+    expect(order, isEmpty);
+
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+
+    expect(order, ['discard:quinta', 'deleteSession']);
+    expect(calls.single.$2, {'sessionId': 'quinta'});
+    expect(find.text('Sessão excluída.'), findsOneWidget);
+  });
+
+  testWidgets('se o servidor recusar a exclusão, a tela continua e diz por quê', (tester) async {
+    _phone(tester);
+    final repo = SessionsRepository(callFunction: (_, _) async {
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: 'Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.',
+      );
+    });
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      currentUserId: 'alice',
+      repository: repo,
+      highlights: _noHighlights(),
+      discardUploads: (_) async {},
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Excluir sessão'));
+    await tester.tap(find.text('Excluir sessão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Excluir sessão')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.'), findsOneWidget);
+    expect(find.text('Excluir sessão'), findsOneWidget);
   });
 
   testWidgets('participante sai da sessão só depois de confirmar', (tester) async {
@@ -575,11 +805,11 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Ponto antológico'));
+    await tester.tap(find.text('Lance 2'));
     await tester.pumpAndSettle();
 
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Ponto antológico'), findsOneWidget);
+    expect(find.text('Lance 2'), findsOneWidget);
   });
 
   for (final brightness in Brightness.values) {
@@ -613,4 +843,99 @@ void main() {
       });
     }
   }
+
+  group('renomear lance', () {
+    List<Highlight> onServer() => [
+          _highlight('lance-0001', title: 'Lance 1', offset: const Duration(minutes: 4))
+              .copyWith(videoPath: 'sessions/quinta-0001/highlights/lance-0001/video.mp4'),
+        ];
+
+    testWidgets('o dono vê o lápis e renomeia; o nome passa pela Function', (tester) async {
+      _phone(tester);
+      final calls = <(String, Map<String, dynamic>)>[];
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'alice',
+        repository: _repo(calls, reply: {'title': 'Voleio do Rafa'}),
+        highlights: Stream.value(_fromServer(onServer())),
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('clippo-highlight-rename')));
+      await tester.pumpAndSettle();
+      expect(find.text('Nome do lance'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '   ');
+      await tester.tap(find.text('Salvar nome'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dê um nome ao lance.'), findsOneWidget);
+      expect(calls, isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'Voleio do Rafa');
+      await tester.tap(find.text('Salvar nome'));
+      await tester.pumpAndSettle();
+      expect(calls.single.$1, 'renameHighlight');
+      expect(calls.single.$2, {'sessionId': 'quinta', 'highlightId': 'lance-0001', 'title': 'Voleio do Rafa'});
+      expect(find.text('Lance renomeado.'), findsOneWidget);
+    });
+
+    testWidgets('o dono apaga o lance só depois de confirmar; sai da fila antes do servidor', (tester) async {
+      _phone(tester);
+      final order = <String>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        order.add('$name:${payload['highlightId']}');
+        return {'highlightId': payload['highlightId']};
+      });
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'alice',
+        repository: repo,
+        highlights: Stream.value(_fromServer(onServer())),
+        discardHighlightUpload: (session, highlight) async => order.add('discard:$session/$highlight'),
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('clippo-highlight-rename')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Apagar lance'));
+      await tester.tap(find.text('Apagar lance'));
+      await tester.pumpAndSettle();
+      expect(find.text('Apagar lance?'), findsOneWidget);
+      await tester.tap(find.text('Manter lance'));
+      await tester.pumpAndSettle();
+      expect(order, isEmpty);
+
+      await tester.tap(find.text('Apagar lance'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Apagar lance')));
+      await tester.pumpAndSettle();
+      expect(order, ['discard:quinta/lance-0001', 'deleteHighlight:lance-0001']);
+      expect(find.text('Lance apagado.'), findsOneWidget);
+    });
+
+    testWidgets('quem só participa não vê o lápis', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(),
+        currentUserId: 'bob',
+        repository: _repo([]),
+        highlights: Stream.value(_fromServer(onServer())),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('clippo-highlight-rename')), findsNothing);
+    });
+
+    testWidgets('lance que ainda não chegou ao servidor não dá para renomear', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(SessionScreen(
+        session: _session(highlightCount: 1),
+        currentUserId: 'alice',
+        highlights: Stream.value(_fromCache(const [])),
+        uploads: _queued(),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('Golaço'), findsOneWidget);
+      expect(find.byKey(const ValueKey('clippo-highlight-rename')), findsNothing);
+    });
+  });
 }

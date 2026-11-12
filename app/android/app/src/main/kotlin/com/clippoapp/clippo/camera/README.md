@@ -16,7 +16,7 @@ A regra do gesto e o disparo **não** ficam aqui: estão em Dart, em `app/lib/co
 
 | Canal | Tipo | O quê |
 |---|---|---|
-| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `startPreview({recordAudio})` → `{withSound}` (previsão) · `start({multiPerson, fullHd, recordAudio, withPreview})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `deleteHighlight({path})` · `signalSaved({sound, flash, vibrate})` · `copyToGallery({path})` (só nos testes) |
+| `clippo/camera` | `MethodChannel` | `hasPermission` → bool · `requestPermission` → bool (pede câmera e microfone; responde pela câmera) · `hasMicrophonePermission` → bool · `requestMicrophonePermission` → bool · `startPreview({recordAudio})` → `{withSound}` (previsão) · `start({multiPerson, fullHd, recordAudio, withPreview})` → `{withSound}` · `stop` · `saveHighlight({untilMicros, seconds})` → `{path, durationMs, withSound}` · `deleteHighlight({path})` (apaga o MP4 e a miniatura ao lado) · `extractThumbnail({path})` → `{path}` (JPEG de um quadro do meio do MP4, gravado ao lado dele; chamado pela fila de envio, fora do caminho do gesto) · `signalSaved({sound, flash, vibrate})` · `signalFailed({sound, vibrate})` (bip duplo de recusa e vibração de 300 ms, sem flash: o lance não foi salvo) · `openAppSettings` (abre o Clippo nas Configurações do Android, para liberar câmera ou microfone negados de vez) · `batteryLevel` → int 0–100 ou null (`BatteryManager`, sem permissão; o standby mostra ao tocar na tela) · `copyToGallery({path})` (só nos testes) |
 | `clippo/camera/poses` | `EventChannel` | Um mapa por quadro analisado: `t` (µs, relógio do sensor), `width`, `height`, `analysisMs`, `people` (uma entrada por pessoa: `points` = null ou 33 × x, y, z, confiança, com z a profundidade, menor = mais perto; no modo várias pessoas, também `box`), e só no modo várias pessoas `prepMs`, `detectMs`, `poseMs` e `detectorGpu` |
 | `clippo/camera-preview` | Platform view | A imagem da câmera, para um `AndroidView` |
 
@@ -71,7 +71,9 @@ em câmeras FULL ou melhores (ex.: S24). Cada `start`/`startPreview` desliga a f
      `buffer-failed`, e o laço do encoder para.
 6. **Aviso de salvo.** Depois que o MP4 fica pronto, o Dart chama `signalSaved({sound, flash,
    vibrate})`: bip do sistema no volume de mídia (🟡 até o design definir o som), flash de
-   200 ms da lanterna (pela câmera aberta; aparece também no vídeo) e vibração de 40 ms.
+   200 ms da lanterna (pela câmera aberta; aparece também no vídeo) e vibração de 40 ms. Se o
+   corte falhar, o Dart chama `signalFailed({sound, vibrate})`: bip duplo de recusa
+   (`TONE_PROP_NACK`, 400 ms) e vibração de 300 ms, sem flash.
 7. **Galeria só nos testes.** `copyToGallery({path})` copia o MP4 para o álbum DCIM/Clippo, para o
    time assistir. O produto guarda o highlight só na pasta do app.
 8. **Na gravação a tela não mostra a câmera e não apaga sozinha** (R7): enquanto a câmera está ligada, `FLAG_KEEP_SCREEN_ON` impede o Android de apagar a tela e bloquear o celular (no laboratório a imagem e os esqueletos continuam na tela; no app final a tela fica preta `#000000`, desligando os pixels OLED). Sem `PreviewView`, o primeiro fluxo fica sem

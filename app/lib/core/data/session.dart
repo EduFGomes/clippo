@@ -179,6 +179,9 @@ class Session {
     SessionLocation? location,
     bool clearLocation = false,
     bool? isClosed,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    Duration? duration,
   }) {
     return Session(
       id: id,
@@ -187,9 +190,9 @@ class Session {
       participantIds: participantIds ?? this.participantIds,
       participants: participants ?? this.participants,
       participantCount: participantCount ?? this.participantCount,
-      startedAt: startedAt,
-      endedAt: endedAt,
-      duration: duration,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      duration: duration ?? this.duration,
       location: clearLocation ? null : (location ?? this.location),
       highlightCount: highlightCount,
       isClosed: isClosed ?? this.isClosed,

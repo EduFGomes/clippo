@@ -63,12 +63,58 @@ class AuthRepository {
     }
   }
 
+  /// "Esqueci a senha": o Firebase Auth manda um e-mail com o link para criar outra senha.
+  ///
+  /// Não diz se existe conta com o e-mail (quem pergunta não deve descobrir quem tem conta):
+  /// "conta não encontrada" termina igual a "enviado". 🟡 Fluxo mínimo; o texto do e-mail e a
+  /// tela de nova senha são os padrões do Firebase (docs/arquitetura.md › Decisões em aberto).
+  Future<void> sendPasswordReset({required String email}) async {
+    _check('email', validateEmail(email));
+    try {
+      await _auth.sendPasswordResetEmail(email: normalizeEmail(email));
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') return;
+      throw _translateAuthError(e);
+    }
+  }
+
+  /// Exclui a conta e os dados da pessoa (Function deleteMyAccount, LGPD) e sai do app.
+  ///
+  /// Nada digitado vai junto: o servidor exclui quem chamou. Lança [AuthFailure] com a frase
+  /// da tela (ex.: sessão juntada que ainda trava a exclusão).
+  Future<void> deleteMyAccount() async {
+    try {
+      await _functions.httpsCallable('deleteMyAccount').call<Map<String, dynamic>>(<String, dynamic>{});
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        throw const AuthFailure('Sem conexão. Confira a internet e tente de novo.');
+      }
+      throw AuthFailure(e.message ?? 'Não foi possível excluir a conta. Tente de novo.');
+    }
+    await _auth.signOut();
+  }
+
   Future<void> signOut() => _auth.signOut();
 
   /// O perfil existe? Se não, a pessoa criou a conta mas ainda não completou o perfil.
   Future<bool> hasProfile(String uid) async {
     final snap = await _firestore.doc('users/$uid').get();
     return snap.exists;
+  }
+
+  /// O @ já é de outra pessoa? Lê só `usernames/{@}` (um @ exato, como a busca de Amigos), para
+  /// "Complete seu perfil" avisar ao sair do campo, antes de enviar. Quem decide de verdade é a
+  /// Function, na transação: entre esta leitura e o envio, outra pessoa pode pegar o @.
+  /// Sem internet ou erro na leitura: false (não trava a pessoa; o envio confere de novo).
+  Future<bool> isUsernameTaken(String raw) async {
+    _check('username', validateUsername(raw));
+    try {
+      final lock = await _firestore.doc('usernames/${normalizeUsername(raw)}').get();
+      final owner = lock.data()?['uid'] as String?;
+      return owner != null && owner != _auth.currentUser?.uid;
+    } on FirebaseException {
+      return false;
+    }
   }
 
   /// O perfil público de quem está logado, atualizado sozinho quando mudar
@@ -149,7 +195,10 @@ class AuthRepository {
       case 'email-already-in-use':
         return const AuthFailure('Já existe uma conta com esse e-mail. Tente entrar.', field: 'email');
       case 'weak-password':
-        return const AuthFailure('Use uma senha com pelo menos 6 caracteres.', field: 'password');
+        return const AuthFailure('Use uma senha com pelo menos 8 caracteres.', field: 'password');
+      case 'password-does-not-meet-requirements':
+        // Política de senha do Firebase Auth (PASSWORD_POLICY no backend).
+        return const AuthFailure('Use letra maiúscula, minúscula e número na senha.', field: 'password');
       case 'invalid-credential':
       case 'wrong-password':
       case 'user-not-found':

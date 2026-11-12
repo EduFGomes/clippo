@@ -6,12 +6,14 @@ import {
   PARTICIPANTS_MAX,
   SESSION_NAME_MAX,
   SessionValidationError,
+  checkPeriodFitsHighlights,
   normalizeHighlights,
   normalizeId,
   normalizeLocation,
   normalizeParticipantIds,
   normalizePeriod,
   normalizeSessionName,
+  sessionStoragePrefix,
 } from "../src/sessions/validation";
 
 // Os mesmos casos de app/test/input_validation_test.dart: as duas regras precisam concordar.
@@ -84,6 +86,25 @@ describe("início e fim", () => {
       "A sessão não pode terminar no futuro.",
     );
     expect(normalizePeriod(INICIO, "2026-10-30T01:04:00Z", AGORA).durationSeconds).toBeGreaterThan(0);
+  });
+});
+
+describe("corrigir data e horário (updateSession)", () => {
+  it("aceita duração que vai até o último lance, com 1 minuto de folga", () => {
+    expect(() => checkPeriodFitsHighlights(600, [30, 300, 600])).not.toThrow();
+    expect(() => checkPeriodFitsHighlights(600, [660])).not.toThrow();
+    expect(() => checkPeriodFitsHighlights(600, [])).not.toThrow();
+  });
+
+  it("recusa encurtar a sessão para antes do último lance", () => {
+    expect(() => checkPeriodFitsHighlights(600, [30, 661])).toThrow(
+      "A sessão precisa durar até o último lance. Confira o horário do fim.",
+    );
+    try {
+      checkPeriodFitsHighlights(60, [500]);
+    } catch (e) {
+      expect((e as SessionValidationError).field).toBe("endedAt");
+    }
   });
 });
 
@@ -226,6 +247,18 @@ describe("mensagens de erro", () => {
     for (const m of mensagens) {
       expect(m).not.toMatch(/undefined|null|Error|Firebase|string/i);
       expect(m.endsWith(".")).toBe(true);
+    }
+  });
+});
+
+describe("pasta da sessão no Storage (deleteSession)", () => {
+  it("termina em barra, para não levar junto outra sessão de id parecido", () => {
+    expect(sessionStoragePrefix("sessao-123456")).toBe("sessions/sessao-123456/");
+  });
+
+  it("recusa id fora do padrão do app (nada de apagar a pasta inteira)", () => {
+    for (const bad of ["", "abc", "../x", "a/b/cdef", "sessao 1234", 42, null]) {
+      expect(() => sessionStoragePrefix(bad as string)).toThrow(SessionValidationError);
     }
   });
 });

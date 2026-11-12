@@ -588,7 +588,12 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with TickerProviderSt
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _dragging ? ClippoBrand.wineDeep : ClippoBrand.wine,
-              border: Border.all(color: colors.background, width: ClippoSize.navRing),
+              // Vinho sobre o fundo escuro tem ~1,8:1 e o botão sumia; no escuro o anel é o
+              // accent (pêssego, 12:1). No claro, continua da cor do fundo.
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark ? colors.accent : colors.background,
+                width: ClippoSize.navRing,
+              ),
             ),
             alignment: Alignment.center,
             child: AnimatedBuilder(

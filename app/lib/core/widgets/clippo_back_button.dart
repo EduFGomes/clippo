@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_icon.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 
 /// Voltar no topo das telas: círculo suave com chevron. Sem [onPressed], volta uma tela.
 class ClippoBackButton extends StatelessWidget {
@@ -23,8 +24,7 @@ class ClippoBackButton extends StatelessWidget {
         button: true,
         label: text == null || text.isEmpty ? 'Voltar' : 'Voltar para $text',
         child: ExcludeSemantics(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          child: ClippoPressable(
             onTap: onPressed ?? () => Navigator.of(context).maybePop(),
             child: ConstrainedBox(
               constraints: const BoxConstraints(

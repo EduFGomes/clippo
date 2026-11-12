@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_icon.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 
 /// Um jogo na lista da Início, em sanfona (docs/produto.md › 4.2).
@@ -10,6 +11,9 @@ import 'package:clippo/core/widgets/clippo_primary_button.dart';
 /// Fechado: nome, data e quantos highlights. Aberto: local, participantes,
 /// duração e a ação de ver os highlights. Quem decide qual card está aberto é a
 /// tela — só um por vez —, por isso [expanded] e [onToggle] vêm de fora.
+///
+/// Com [onAction], tocar no card já faz a ação (um toque da Início até os highlights) e o
+/// chevron vira o botão de abrir e fechar. Sem ela, o card inteiro abre e fecha.
 ///
 /// Recebe texto já formatado (use core/format/clippo_format.dart), não o modelo:
 /// assim o componente serve para qualquer lista parecida.
@@ -52,35 +56,31 @@ class ClippoSessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
+    // Com ação, tocar no card já abre a sessão (um toque até os highlights); o chevron abre
+    // e fecha os detalhes. Sem ação, o card inteiro abre e fecha, como antes.
+    final primary = onAction ?? onToggle;
 
-    return Semantics(
-      button: true,
-      expanded: expanded,
-      label: title,
-      child: ExcludeSemantics(
-        child: Material(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.all(ClippoSpace.cardPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _header(context, colors),
-                  AnimatedSize(
-                    duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
-                    curve: ClippoMotion.standard,
-                    alignment: Alignment.topCenter,
-                    child: expanded
-                        ? _body(context, colors)
-                        : const SizedBox(width: double.infinity, height: 0),
-                  ),
-                ],
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: primary,
+        child: Padding(
+          padding: const EdgeInsets.all(ClippoSpace.cardPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(context, colors),
+              AnimatedSize(
+                duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+                curve: ClippoMotion.standard,
+                alignment: Alignment.topCenter,
+                child: expanded
+                    ? _body(context, colors)
+                    : const SizedBox(width: double.infinity, height: 0),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -88,31 +88,57 @@ class ClippoSessionCard extends StatelessWidget {
   }
 
   Widget _header(BuildContext context, ClippoColors colors) {
+    final hasAction = onAction != null;
+    final chevron = AnimatedRotation(
+      // O chevron aponta para baixo quando fechado e vira para cima ao abrir.
+      turns: expanded ? 0.5 : 0,
+      duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+      curve: ClippoMotion.standard,
+      child: ClippoIcon(
+        ClippoIconShape.chevronDown,
+        size: ClippoSize.backIcon,
+        color: colors.textMuted,
+      ),
+    );
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: ClippoText.titleS.copyWith(color: colors.text)),
-              const SizedBox(height: ClippoSpace.labelToValue),
-              Text(summary, style: ClippoText.label.copyWith(color: colors.textMuted)),
-            ],
+          child: Semantics(
+            button: true,
+            label: hasAction ? '$title. $actionLabel' : title,
+            expanded: hasAction ? null : expanded,
+            onTap: onAction ?? onToggle,
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: ClippoText.titleS.copyWith(color: colors.text)),
+                const SizedBox(height: ClippoSpace.labelToValue),
+                Text(summary, style: ClippoText.label.copyWith(color: colors.textMuted)),
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: ClippoSpace.spaceM),
-        // O chevron aponta para baixo quando fechado e vira para cima ao abrir.
-        AnimatedRotation(
-          turns: expanded ? 0.5 : 0,
-          duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
-          curve: ClippoMotion.standard,
-          child: ClippoIcon(
-            ClippoIconShape.chevronDown,
-            size: ClippoSize.backIcon,
-            color: colors.textMuted,
-          ),
-        ),
+        const SizedBox(width: ClippoSpace.spaceS),
+        if (hasAction)
+          Semantics(
+            button: true,
+            expanded: expanded,
+            label: expanded ? 'Esconder detalhes de $title' : 'Mostrar detalhes de $title',
+            excludeSemantics: true,
+            child: ClippoPressable(
+              onTap: onToggle,
+              // 48 dp para o dedo; o ícone fica no canto de cima, alinhado ao nome.
+              child: SizedBox.square(
+                dimension: ClippoSize.minTouchTarget,
+                child: Align(alignment: Alignment.topRight, child: chevron),
+              ),
+            ),
+          )
+        else
+          chevron,
       ],
     );
   }
@@ -140,11 +166,13 @@ class ClippoSessionCard extends StatelessWidget {
           ),
           const SizedBox(height: ClippoSpace.spaceM),
         ],
-        if (info != null && info.isNotEmpty) ...[
+        if (info != null && info.isNotEmpty)
           Text(info, style: ClippoText.label.copyWith(color: colors.textMuted)),
+        // Sem ação (ex.: perfil de amigo aberto fora da Início), sem botão que não faz nada.
+        if (onAction != null) ...[
           const SizedBox(height: ClippoSpace.spaceL),
+          ClippoPrimaryButton(label: actionLabel, onPressed: onAction),
         ],
-        ClippoPrimaryButton(label: actionLabel, onPressed: onAction ?? () {}),
       ],
     );
   }

@@ -126,16 +126,23 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
+    // Com o teclado aberto (buscar amigo, editar perfil) a roda subiria junto e cobriria o
+    // campo: ela sai de cena e a folga dela também, até o teclado fechar.
+    final typing = media.viewInsets.bottom > 0;
 
     return Scaffold(
+      // Quem encolhe para o teclado é a tela (o Scaffold do ClippoScreenGround). Se este
+      // encolhesse também, o teclado contava duas vezes e a tela subia o dobro.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // A roda flutua sobre o conteúdo, então as telas precisam terminar antes
-          // dela. Aumentar a área segura resolve sem cada tela saber da navegação.
+          // A roda flutua sobre o conteúdo, então as telas precisam de folga no fim da
+          // rolagem. Aumentar a área segura resolve sem cada tela saber da navegação: o
+          // ClippoScreenGround transforma essa área em espaço no fim da lista, não num corte.
           MediaQuery(
             data: media.copyWith(
               padding: media.padding.copyWith(
-                bottom: media.padding.bottom + ClippoSize.navClearance,
+                bottom: media.padding.bottom + (typing ? 0 : ClippoSize.navClearance),
               ),
             ),
             child: IndexedStack(
@@ -151,7 +158,9 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
           Positioned.fill(
-            child: ClippoRadialNav(
+            child: Offstage(
+              offstage: typing,
+              child: ClippoRadialNav(
               currentIndex: _current,
               onSelected: _select,
               items: const [
@@ -160,6 +169,7 @@ class _AppShellState extends State<AppShell> {
                 ClippoRadialNavItem(label: 'Amigos', icon: 'friends'),
                 ClippoRadialNavItem(label: 'Perfil', icon: 'profile'),
               ],
+              ),
             ),
           ),
         ],

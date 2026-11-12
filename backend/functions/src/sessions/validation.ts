@@ -51,6 +51,14 @@ export function normalizeId(raw: unknown, field: SessionField): string {
   return raw;
 }
 
+/**
+ * A pasta da sessão no Storage (vídeos e miniaturas, D17). Com a barra no fim: sem ela, apagar
+ * "sessions/abc123" levaria junto "sessions/abc1234…".
+ */
+export function sessionStoragePrefix(sessionId: string): string {
+  return `sessions/${normalizeId(sessionId, "sessionId")}/`;
+}
+
 /** Tira espaços das pontas e junta espaços repetidos. */
 export function normalizeSessionName(raw: unknown): string {
   if (typeof raw !== "string") {
@@ -178,6 +186,21 @@ function normalizeTitle(raw: unknown, position: number): string {
 function wholeSeconds(raw: unknown): number | null {
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) return null;
   return Math.round(raw);
+}
+
+/**
+ * Mudar a data e o horário de uma sessão salva (updateSession): os lances continuam no mesmo
+ * momento dentro da sessão (`offsetSeconds`), então a nova duração precisa ir até o último deles,
+ * com a mesma folga de 1 minuto do [normalizeHighlights].
+ */
+export function checkPeriodFitsHighlights(durationSeconds: number, offsets: number[]): void {
+  const last = offsets.reduce((max, offset) => Math.max(max, offset), 0);
+  if (last > durationSeconds + 60) {
+    throw new SessionValidationError(
+      "endedAt",
+      "A sessão precisa durar até o último lance. Confira o horário do fim.",
+    );
+  }
 }
 
 /**

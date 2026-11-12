@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, setEquals;
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -24,6 +26,7 @@ import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 import 'package:clippo/features/home/screens/player_screen.dart';
+import 'package:clippo/features/home/screens/rename_highlight_screen.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 import 'package:clippo/features/home/widgets/merge_request_card.dart';
 
@@ -53,6 +56,8 @@ class SessionScreen extends StatefulWidget {
     this.mySessions,
     this.mergeRequests,
     this.uploads,
+    this.discardUploads,
+    this.discardHighlightUpload,
   });
 
   /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
@@ -85,6 +90,13 @@ class SessionScreen extends StatefulWidget {
   /// Lances ainda no celular de quem gravou, para assistir antes de subir (R13). No app,
   /// `uploadQueue` (com alguém logado).
   final ValueListenable<UploadQueueState>? uploads;
+
+  /// Tira a sessão da fila de envio e apaga do aparelho os vídeos que ainda não subiram, antes
+  /// de excluir no servidor. No app, `uploadQueue.discard` (com alguém logado).
+  final Future<void> Function(String sessionId)? discardUploads;
+
+  /// Tira um lance da fila de envio antes de apagar no servidor (repassado à tela do lance).
+  final Future<void> Function(String sessionId, String highlightId)? discardHighlightUpload;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
@@ -123,7 +135,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-3',
-      title: 'Defesa no reflexo',
+      title: 'Lance 3',
       offset: const Duration(minutes: 27, seconds: 8),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 19, 57, 8),
@@ -131,7 +143,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-4',
-      title: 'Lance na linha',
+      title: 'Lance 4',
       offset: const Duration(minutes: 41, seconds: 50),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 11, 50),
@@ -139,7 +151,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-5',
-      title: 'Virada de jogo',
+      title: 'Lance 5',
       offset: const Duration(minutes: 58, seconds: 12),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 28, 12),
@@ -147,7 +159,7 @@ class SessionScreen extends StatefulWidget {
     ),
     Highlight(
       id: 'hl-6',
-      title: 'Reflexo absurdo',
+      title: 'Lance 6',
       offset: const Duration(hours: 1, minutes: 14, seconds: 22),
       duration: const Duration(seconds: 30),
       savedAt: DateTime(2026, 9, 11, 20, 44, 22),
@@ -171,6 +183,10 @@ class _SessionScreenState extends State<SessionScreen> {
   List<SessionMergeRequest> _mergeRequests = const [];
   final Set<String> _busyRequests = <String>{};
   bool _leaving = false;
+  bool _deleting = false;
+
+  /// Os lances que a tela mostrou por último: o Editar sessão confere a nova data com eles.
+  List<Highlight> _knownHighlights = const [];
 
   final List<StreamSubscription<Object?>> _subscriptions = [];
 
@@ -180,6 +196,9 @@ class _SessionScreenState extends State<SessionScreen> {
   ValueListenable<UploadQueueState> get _uploads =>
       widget.uploads ?? (isUserSignedIn ? uploadQueue.state : _noUploads);
   static final ValueNotifier<UploadQueueState> _noUploads = ValueNotifier(const UploadQueueState());
+  /// As miniaturas dos lances. Sem login (catálogo, testes), nenhuma.
+  HighlightMediaRepository? get _media =>
+      widget.mediaRepository ?? (isUserSignedIn ? highlightMediaRepository : null);
   FriendsRepository get _friendsRepo => widget.friendsRepository ?? friendsRepository;
 
   String get _viewerId {
@@ -310,6 +329,26 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
+  /// Só o dono renomeia, e só lances que já estão no servidor (o `saveSession` já respondeu).
+  bool _canRename(Highlight highlight) => _isOwner && (highlight.videoPath ?? '').isNotEmpty;
+
+  Future<void> _openRename(Highlight highlight) async {
+    final result = await Navigator.of(context).push<Object>(
+      MaterialPageRoute<Object>(
+        builder: (_) => RenameHighlightScreen(
+          sessionId: _session.id,
+          highlight: highlight,
+          repository: _repository,
+          discardUpload: widget.discardHighlightUpload,
+        ),
+      ),
+    );
+    // O Firestore atualiza a lista sozinho; aqui só o aviso.
+    if (!mounted) return;
+    if (result is HighlightDeleted) showHomeMessage(context, 'Lance apagado.');
+    if (result is String) showHomeMessage(context, 'Lance renomeado.');
+  }
+
   Future<Session?> _openEditSession() async {
     if (!_isOwner) return null;
     final updated = await Navigator.of(context).push<Session>(
@@ -319,6 +358,7 @@ class _SessionScreenState extends State<SessionScreen> {
           participants: _participantsOf(_session),
           friends: _friends,
           repository: _repository,
+          highlightOffsets: [for (final h in _knownHighlights) h.offset],
         ),
       ),
     );
@@ -412,6 +452,45 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  /// O dono exclui a sessão para todos (deleteSession). Primeiro sai da fila de envio deste
+  /// aparelho (os lances que ainda não subiram não voltam a subir), depois o servidor apaga.
+  ///
+  /// Com [localOnly] (a sessão ainda não subiu), tirar da fila já basta: o servidor é chamado
+  /// mesmo assim, para o caso de o envio ter chegado agora, mas sem internet isso não é erro.
+  Future<void> _delete({bool localOnly = false}) async {
+    final name = _session.name;
+    final count = _session.highlightCount;
+    final confirmed = await confirmHomeAction(
+      context,
+      title: 'Excluir sessão?',
+      message: count == 0
+          ? '$name some para todos os participantes. Não dá para desfazer.'
+          : '$name e ${clippoHighlightCount(count)} somem para todos os participantes. '
+              'Não dá para desfazer.',
+      confirmLabel: 'Excluir sessão',
+      cancelLabel: 'Manter sessão',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      final discard = widget.discardUploads ?? (isUserSignedIn ? uploadQueue.discard : null);
+      await discard?.call(_session.id);
+      try {
+        await _repository.deleteSession(_session.id);
+      } catch (_) {
+        if (!localOnly) rethrow;
+      }
+      if (!mounted) return;
+      showHomeMessage(context, 'Sessão excluída.');
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) showHomeMessage(context, SessionsFailure.from(e).message);
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   Future<void> _leave() async {
     final confirmed = await confirmHomeAction(
       context,
@@ -435,10 +514,25 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  /// A sessão ainda não chegou ao servidor (gravada sem internet, R13): o Firestore não tem o
+  /// documento, então ler os lances lá dá "sem permissão". O que vale é o que está na fila.
+  bool _onlyOnThisPhone(UploadQueueState queue) {
+    final queued = queue.sessionOf(_session.id);
+    return queued != null && !queued.saved;
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<UploadQueueState>(
+      valueListenable: _uploads,
+      builder: (context, queue, _) => _buildWith(queue),
+    );
+  }
+
+  Widget _buildWith(UploadQueueState queue) {
     final session = _session;
     final requests = _requestsHere;
+    final localOnly = _onlyOnThisPhone(queue);
 
     return ClippoScreenGround(
       child: Column(
@@ -447,7 +541,8 @@ class _SessionScreenState extends State<SessionScreen> {
           Row(
             children: [
               const Expanded(child: ClippoBackButton(label: 'Sessões')),
-              if (_isOwner)
+              // Editar chama o servidor, que ainda não conhece a sessão.
+              if (_isOwner && !localOnly)
                 _HeaderIconButton(
                   icon: 'edit',
                   semanticLabel: 'Editar sessão',
@@ -468,22 +563,25 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ],
           const SizedBox(height: ClippoSpace.section),
-          ValueListenableBuilder<UploadQueueState>(
-            valueListenable: _uploads,
-            builder: (context, queue, _) => StreamBuilder<HighlightsSnapshot>(
+          StreamBuilder<HighlightsSnapshot>(
             stream: _highlights,
             builder: (context, snapshot) {
               final data = snapshot.data;
               // Os lances que ainda estão no celular aparecem mesmo sem internet (R13).
               final withLocal = queue.withLocalVideos(session.id, data?.highlights ?? const []);
+              _knownHighlights = withLocal;
               if (withLocal.any((h) => h.hasLocalVideo)) {
-                final distinct = ensureDistinctHighlightTitles(withLocal);
                 return _HighlightList(
-                  highlights: distinct,
+                  highlights: withLocal,
                   offline: data?.fromCache ?? false,
-                  onTapHighlight: (index) => _openPlayer(distinct, index),
+                  media: _media,
+                  onTapHighlight: (index) => _openPlayer(withLocal, index),
+                  canRename: _canRename,
+                  onRename: _openRename,
                 );
               }
+              // Só neste celular e sem lance nenhum: não há o que buscar no servidor.
+              if (localOnly) return const _Empty(localOnly: true);
               if (snapshot.hasError) {
                 return _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry);
               }
@@ -500,19 +598,29 @@ class _SessionScreenState extends State<SessionScreen> {
               }
               if (data.isEmpty) return const _Empty();
 
-              final distinct = ensureDistinctHighlightTitles(data.highlights);
+              final items = data.highlights;
               return _HighlightList(
-                highlights: distinct,
+                highlights: items,
                 offline: data.fromCache,
-                onTapHighlight: (index) => _openPlayer(distinct, index),
+                media: _media,
+                onTapHighlight: (index) => _openPlayer(items, index),
+                canRename: _canRename,
+                onRename: _openRename,
               );
             },
-            ),
           ),
           const SizedBox(height: ClippoSpace.section),
-          if (_isOwner)
-            ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge)
-          else if (participantsCanLeaveSession)
+          if (_isOwner) ...[
+            // Juntar também depende do servidor; volta quando a sessão subir.
+            if (!localOnly) ...[
+              ClippoTextButton(label: 'Juntar com outra sessão', onPressed: _openMerge),
+              const SizedBox(height: ClippoSpace.spaceS),
+            ],
+            ClippoTextButton(
+              label: _deleting ? 'Excluindo…' : 'Excluir sessão',
+              onPressed: _deleting ? null : () => _delete(localOnly: localOnly),
+            ),
+          ] else if (participantsCanLeaveSession)
             ClippoTextButton(label: 'Sair da sessão', onPressed: _leaving ? null : _leave),
         ],
       ),
@@ -538,8 +646,7 @@ class _HeaderIconButton extends StatelessWidget {
       button: true,
       label: semanticLabel,
       child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: ClippoPressable(
           onTap: onPressed,
           child: SizedBox.square(
             dimension: ClippoSize.minTouchTarget,
@@ -594,7 +701,7 @@ class _SessionHeader extends StatelessWidget {
         ClippoScreenTitle(
           line1: line1,
           line2: line2,
-          subtitle: clippoDotList([clippoDate(session.startedAt), clippoDuration(session.duration)]),
+          subtitle: clippoDotList([clippoRelativeDate(session.startedAt), clippoDuration(session.duration)]),
         ),
         if (place != null && place.isNotEmpty) ...[
           const SizedBox(height: ClippoSpace.spaceM),
@@ -678,22 +785,30 @@ class _HighlightList extends StatelessWidget {
     required this.highlights,
     required this.offline,
     required this.onTapHighlight,
+    this.media,
+    this.canRename,
+    this.onRename,
   });
 
   final List<Highlight> highlights;
   final bool offline;
   final ValueChanged<int> onTapHighlight;
 
+  /// Quais lances mostram "Renomear" (só o dono da sessão). Nulo: nenhum.
+  final bool Function(Highlight)? canRename;
+  final ValueChanged<Highlight>? onRename;
+
+  /// De onde vêm as miniaturas já enviadas. Nulo (catálogo, testes): só o desenho de quadra.
+  final HighlightMediaRepository? media;
+
   Widget _buildCard(int index) {
     final item = highlights[index];
-    return ClippoHighlightTile(
-      title: item.title,
-      timing: clippoHighlightTiming(item.offset, item.duration, uploading: item.isUploading),
-      uploading: item.isUploading,
-      // Miniatura só quando já é uma URL (D17: o app não pede getDownloadURL()).
-      thumbnailUrl:
-          item.thumbnailPath != null && item.thumbnailPath!.startsWith('http') ? item.thumbnailPath : null,
+    return _HighlightCard(
+      key: ValueKey(item.id),
+      highlight: item,
+      media: media,
       onTap: () => onTapHighlight(index),
+      onRename: onRename != null && (canRename?.call(item) ?? false) ? () => onRename!(item) : null,
     );
   }
 
@@ -728,6 +843,78 @@ class _HighlightList extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Um card de highlight com a miniatura certa: a do celular enquanto o lance ainda está na
+/// fila de envio ([Highlight.localThumbnailPath]); depois, a do Storage, baixada com o login
+/// de quem vê (D17: sem `getDownloadURL()`). Sem miniatura, o card desenha a quadra.
+class _HighlightCard extends StatefulWidget {
+  const _HighlightCard({
+    super.key,
+    required this.highlight,
+    required this.onTap,
+    this.media,
+    this.onRename,
+  });
+
+  final Highlight highlight;
+  final HighlightMediaRepository? media;
+  final VoidCallback onTap;
+  final VoidCallback? onRename;
+
+  @override
+  State<_HighlightCard> createState() => _HighlightCardState();
+}
+
+class _HighlightCardState extends State<_HighlightCard> {
+  /// O pedido em andamento (ou já respondido) e para o quê ele foi feito.
+  String? _requested;
+  File? _downloaded;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_HighlightCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final item = widget.highlight;
+    final media = widget.media;
+    final path = item.thumbnailPath;
+    // Quem gravou usa a miniatura do aparelho enquanto o lance está na fila.
+    if (media == null || path == null || item.hasLocalVideo || _downloaded != null) return;
+    // A miniatura pode chegar depois: quando o estado do lance muda, vale pedir de novo.
+    final request = '$path|${item.status.name}';
+    if (_requested == request) return;
+    _requested = request;
+    try {
+      final file = await media.thumbnailFile(path);
+      if (mounted) setState(() => _downloaded = file);
+    } catch (_) {
+      // Ainda não subiu, lance antigo sem miniatura ou sem internet: fica o desenho de quadra.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.highlight;
+    final local = item.localThumbnailPath;
+    final file = local != null && local.isNotEmpty ? File(local) : _downloaded;
+    return ClippoHighlightTile(
+      title: item.title,
+      timing: clippoHighlightTiming(item.offset, item.duration, uploading: item.isUploading),
+      uploading: item.isUploading,
+      thumbnail: file == null ? null : FileImage(file),
+      onTap: widget.onTap,
+      onRename: widget.onRename,
     );
   }
 }
@@ -779,7 +966,10 @@ class _Loading extends StatelessWidget {
 
 /// Sessão sem lances salvos (docs/produto.md › 4.3).
 class _Empty extends StatelessWidget {
-  const _Empty();
+  const _Empty({this.localOnly = false});
+
+  /// A sessão ainda está só neste celular (sobe quando conectar).
+  final bool localOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -795,6 +985,13 @@ class _Empty extends StatelessWidget {
           'Na próxima vez, olhe para a câmera e faça \\ o / quando rolar um lance bom.',
           style: ClippoText.body.copyWith(color: colors.textMuted),
         ),
+        if (localOnly) ...[
+          const SizedBox(height: ClippoSpace.spaceM),
+          Text(
+            'A sessão está guardada neste celular e sobe quando você conectar.',
+            style: ClippoText.label.copyWith(color: colors.textMuted),
+          ),
+        ],
       ],
     );
   }
@@ -829,10 +1026,15 @@ class _EditSessionScreen extends StatefulWidget {
     required this.participants,
     required this.friends,
     required this.repository,
+    this.highlightOffsets = const [],
   });
 
   final Session session;
   final List<SessionParticipant> participants;
+
+  /// O momento de cada lance que a Sessão já mostrou: a nova data e horário precisam ir até o
+  /// último (o servidor confere de novo com os do banco).
+  final List<Duration> highlightOffsets;
 
   /// Amigos aceitos do dono: só eles podem entrar (R10, conferido de novo no servidor).
   final List<Friend> friends;
@@ -848,6 +1050,109 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
       TextEditingController(text: widget.session.location?.label ?? '');
   late final List<SessionParticipant> _selected = List<SessionParticipant>.of(widget.participants);
 
+  /// Data e horário (R12: o dono corrige se o relógio ou o dia saíram errados).
+  late DateTime _startedAt = widget.session.startedAt;
+  late DateTime _endedAt = _originalEnd;
+  late final TextEditingController _dateController = TextEditingController(text: clippoDate(_startedAt));
+  late final TextEditingController _timeController =
+      TextEditingController(text: clippoTimeRange(_startedAt, _endedAt));
+  String? _periodError;
+
+  DateTime get _originalEnd => widget.session.endedAt ?? widget.session.startedAt.add(widget.session.duration);
+
+  /// Sessão com lances de outra juntada (D18) não muda de data (o servidor também recusa).
+  bool get _periodLocked => widget.session.mergedFrom.isNotEmpty;
+
+  bool get _periodChanged => _startedAt != widget.session.startedAt || _endedAt != _originalEnd;
+
+  /// Mudou alguma coisa desde que abriu? Sair assim pergunta antes de descartar.
+  bool get _dirty {
+    final before = {
+      for (final uid in widget.session.participantIds)
+        if (uid != _ownerId) uid,
+    };
+    return _nameController.text.trim() != widget.session.name.trim() ||
+        _locationController.text.trim() != (widget.session.location?.label ?? '').trim() ||
+        !setEquals(before, _selectedIds.toSet()) ||
+        _periodChanged;
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      helpText: 'Data da sessão',
+      initialDate: _startedAt.isAfter(now) ? now : _startedAt,
+      firstDate: DateTime(2020),
+      lastDate: now,
+    );
+    if (picked == null || !mounted) return;
+    final length = _endedAt.difference(_startedAt);
+    final start = DateTime(picked.year, picked.month, picked.day, _startedAt.hour, _startedAt.minute);
+    _setPeriod(start, start.add(length));
+  }
+
+  Future<void> _pickTimeRange() async {
+    final pickedStart = await showTimePicker(
+      context: context,
+      helpText: 'Começou às',
+      initialTime: TimeOfDay.fromDateTime(_startedAt),
+    );
+    if (pickedStart == null || !mounted) return;
+    final pickedEnd = await showTimePicker(
+      context: context,
+      helpText: 'Terminou às',
+      initialTime: TimeOfDay.fromDateTime(_endedAt),
+    );
+    if (pickedEnd == null || !mounted) return;
+    final start = DateTime(_startedAt.year, _startedAt.month, _startedAt.day, pickedStart.hour, pickedStart.minute);
+    var end = DateTime(start.year, start.month, start.day, pickedEnd.hour, pickedEnd.minute);
+    // Terminou "antes" de começar = passou da meia-noite (jogo à noite).
+    if (!end.isAfter(start)) end = end.add(const Duration(days: 1));
+    _setPeriod(start, end);
+  }
+
+  void _setPeriod(DateTime start, DateTime end) {
+    setState(() {
+      _startedAt = start;
+      _endedAt = end;
+      _dateController.text = clippoDate(start);
+      _timeController.text = clippoTimeRange(start, end);
+      _periodError = _validatePeriod();
+    });
+  }
+
+  String? _validatePeriod() =>
+      validateSessionPeriod(_startedAt, _endedAt) ??
+      validatePeriodFitsHighlights(_endedAt.difference(_startedAt), widget.highlightOffsets);
+
+  @override
+  void initState() {
+    super.initState();
+    // O PopScope decide pelo [_dirty]: a tela precisa se redesenhar quando o texto muda.
+    _nameController.addListener(_onTextChanged);
+    _locationController.addListener(_onTextChanged);
+  }
+
+  bool _wasDirty = false;
+
+  void _onTextChanged() {
+    final dirty = _dirty;
+    if (dirty != _wasDirty && mounted) setState(() => _wasDirty = dirty);
+  }
+
+  Future<void> _confirmLeave() async {
+    final leave = await confirmHomeAction(
+      context,
+      title: 'Sair sem salvar?',
+      message: 'O que você mudou nesta sessão vai ser descartado.',
+      confirmLabel: 'Descartar alterações',
+      cancelLabel: 'Continuar editando',
+      destructive: true,
+    );
+    if (leave && mounted) Navigator.of(context).pop();
+  }
+
   String? _nameError;
   String? _locationError;
   String? _participantsError;
@@ -860,6 +1165,8 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
   void dispose() {
     _nameController.dispose();
     _locationController.dispose();
+    _dateController.dispose();
+    _timeController.dispose();
     super.dispose();
   }
 
@@ -898,13 +1205,16 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
     final nameErr = validateSessionName(_nameController.text);
     final locErr = validateLocation(_locationController.text);
     final partErr = validateParticipantIds(ids, ownerId: _ownerId);
+    final periodChanged = _periodChanged;
+    final periodErr = periodChanged ? _validatePeriod() : null;
     setState(() {
       _nameError = nameErr;
       _locationError = locErr;
       _participantsError = partErr;
+      _periodError = periodErr;
       _generalError = null;
     });
-    if (nameErr != null || locErr != null || partErr != null) return;
+    if (nameErr != null || locErr != null || partErr != null || periodErr != null) return;
 
     final location = normalizeLocation(_locationController.text);
     final hadLocation = (widget.session.location?.label ?? '').trim().isNotEmpty;
@@ -922,6 +1232,9 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
         location: location,
         clearLocation: location == null && hadLocation,
         participantIds: participantsChanged ? ids : null,
+        startedAt: periodChanged ? _startedAt : null,
+        endedAt: periodChanged ? _endedAt : null,
+        highlightOffsets: widget.highlightOffsets,
       );
       if (!mounted) return;
       final allIds = normalizeParticipantIds(ids, ownerId: _ownerId);
@@ -932,6 +1245,9 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
         participantIds: allIds,
         participants: List<SessionParticipant>.unmodifiable(_selected),
         participantCount: allIds.length,
+        startedAt: _startedAt,
+        endedAt: _endedAt,
+        duration: _endedAt.difference(_startedAt),
       ));
     } catch (e) {
       if (!mounted) return;
@@ -946,6 +1262,8 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
             _locationError = failure.message;
           case 'participantIds':
             _participantsError = failure.message;
+          case 'startedAt' || 'endedAt':
+            _periodError = failure.message;
           default:
             _generalError = failure.message;
         }
@@ -958,7 +1276,13 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
     final colors = ClippoColors.of(context);
     final addable = _addable;
 
-    return ClippoScreenGround(
+    // Voltar (o botão ou o do Android) com mudanças pergunta antes de descartar.
+    return PopScope(
+      canPop: _saving || !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: ClippoScreenGround(
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -977,7 +1301,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
           const ClippoScreenTitle(
             line1: 'Editar',
             line2: 'sessão.',
-            subtitle: 'Só quem gravou muda o nome, o local e quem jogou.',
+            subtitle: 'Só quem gravou muda o nome, o local, a data e quem jogou.',
           ),
           const SizedBox(height: ClippoSpace.section),
           ClippoTextField(
@@ -1001,6 +1325,38 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
               if (_locationError != null) setState(() => _locationError = null);
             },
           ),
+          const SizedBox(height: ClippoSpace.spaceM),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClippoTextField(
+                  label: 'Data',
+                  controller: _dateController,
+                  readOnly: true,
+                  onTap: _periodLocked ? null : _pickDate,
+                  hasError: _periodError != null,
+                ),
+              ),
+              const SizedBox(width: ClippoSpace.spaceM),
+              Expanded(
+                child: ClippoTextField(
+                  label: 'Horário',
+                  controller: _timeController,
+                  readOnly: true,
+                  onTap: _periodLocked ? null : _pickTimeRange,
+                  hasError: _periodError != null,
+                ),
+              ),
+            ],
+          ),
+          if (_periodError != null || _periodLocked) ...[
+            const SizedBox(height: ClippoSpace.spaceS),
+            Text(
+              _periodError ?? 'Essa sessão tem lances de outra sessão juntada e a data não dá para mudar.',
+              style: ClippoText.label.copyWith(color: _periodError != null ? colors.error : colors.textMuted),
+            ),
+          ],
           const SizedBox(height: ClippoSpace.section),
           Text(
             'Participantes (${_selected.length})',
@@ -1075,6 +1431,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
             ),
         ],
       ),
+      ),
     );
   }
 }
@@ -1099,30 +1456,38 @@ class _EditableParticipantPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
         border: Border.all(color: isOwner ? colors.accent : colors.outline, width: ClippoSize.border),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL, vertical: ClippoSpace.spaceM),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                isOwner ? '${participant.firstName} (Criador)' : participant.firstName,
-                style: ClippoText.label.copyWith(color: isOwner ? colors.accent : colors.text),
-              ),
-            ),
-            if (!isOwner) ...[
-              const SizedBox(width: ClippoSpace.spaceS),
-              Semantics(
-                button: true,
-                label: 'Remover ${participant.name}',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onRemove,
-                  child: ClippoSvgIcon('close', size: ClippoSize.checkIcon, color: colors.textMuted),
+      // O ✕ ocupa 48 × 48 dp no fim da pílula (antes era só o ícone de 16): a pílula cresce
+      // até essa altura, e o nome fica com o mesmo respiro de antes à esquerda.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+        child: Padding(
+          padding: EdgeInsetsDirectional.only(start: ClippoSpace.spaceL, end: isOwner ? ClippoSpace.spaceL : 0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  isOwner ? '${participant.firstName} (Criador)' : participant.firstName,
+                  style: ClippoText.label.copyWith(color: isOwner ? colors.accent : colors.text),
                 ),
               ),
+              if (!isOwner)
+                Semantics(
+                  button: true,
+                  label: 'Remover ${participant.name}',
+                  excludeSemantics: true,
+                  child: ClippoPressable(
+                    onTap: onRemove,
+                    child: SizedBox.square(
+                      dimension: ClippoSize.minTouchTarget,
+                      child: Center(
+                        child: ClippoSvgIcon('close', size: ClippoSize.checkIcon, color: colors.textMuted),
+                      ),
+                    ),
+                  ),
+                ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1400,11 +1765,15 @@ class _AddFriendChip extends StatelessWidget {
       button: true,
       enabled: !sending,
       label: sending ? 'Enviando pedido para $participantName' : 'Adicionar amigo $participantName',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Enviando: o toque fica no botão (não abre o perfil da linha) e não faz nada.
+      // Enviando: o toque fica no botão (não abre o perfil da linha) e não faz nada. A área de
+      // toque tem 48 dp de altura; o desenho da pílula continua do tamanho de antes.
+      child: ClippoPressable(
         onTap: sending ? () {} : onPressed,
-        child: DecoratedBox(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
+          child: Center(
+            widthFactor: 1,
+            child: DecoratedBox(
           decoration: BoxDecoration(
             color: colors.accentSoft,
             borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
@@ -1425,6 +1794,8 @@ class _AddFriendChip extends StatelessWidget {
                 const SizedBox(width: ClippoSpace.spaceXs),
                 Text(sending ? 'Enviando…' : 'Adicionar', style: ClippoText.label.copyWith(color: colors.accent)),
               ],
+            ),
+          ),
             ),
           ),
         ),

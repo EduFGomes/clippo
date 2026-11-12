@@ -33,9 +33,9 @@ com o celular deitado ou torto (no teste no corredor de 27/10/2026, com o celula
 \ o / saía como "braço cruzado"). Se o quadril não está na imagem com confiança, a regra usa a
 vertical da imagem. O laboratório mostra qual eixo valeu ("corpo 90°" ou "sem quadril").
 
-## Limites atuais 🟡
+## Limites atuais
 
-Valores ainda não medidos em quadra. Ajustáveis ao vivo no laboratório ("Ajustar limites").
+Testados pelo grupo e confirmados em 12/11/2026. Ajustáveis ao vivo no laboratório ("Ajustar limites").
 
 | Limite | Valor | De onde veio |
 |---|---|---|

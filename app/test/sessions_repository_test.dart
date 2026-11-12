@@ -330,4 +330,179 @@ void main() {
       );
     });
   });
+
+  group('SessionsRepository.renameHighlight — validado no app e no servidor', () {
+    test('normaliza o nome e chama a Function com sessão e lance', () async {
+      String? calledName;
+      Map<String, dynamic>? sent;
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calledName = name;
+        sent = payload;
+        return {'title': 'Voleio do Rafa'};
+      });
+      final saved = await repo.renameHighlight(
+        sessionId: 'sessao-0001',
+        highlightId: 'lance-0001',
+        title: '  Voleio  do Rafa ',
+      );
+      expect(saved, 'Voleio do Rafa');
+      expect(calledName, 'renameHighlight');
+      expect(sent, {'sessionId': 'sessao-0001', 'highlightId': 'lance-0001', 'title': 'Voleio do Rafa'});
+    });
+
+    test('nome vazio ou longo demais nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      for (final ruim in ['   ', 'a' * (highlightTitleMax + 1)]) {
+        await expectLater(
+          repo.renameHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001', title: ruim),
+          throwsA(isA<SessionsFailure>()
+              .having((f) => f.code, 'code', 'title')
+              .having((f) => f.message, 'message', validateHighlightRename(ruim))),
+        );
+      }
+      await expectLater(
+        repo.renameHighlight(sessionId: '../x', highlightId: 'lance-0001', title: 'Golaço'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'sessionId')),
+      );
+      expect(calls, 0);
+    });
+
+    test('a recusa do servidor chega com o campo, para ir embaixo dele', () async {
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        throw FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'Só quem gravou a sessão renomeia os lances.',
+        );
+      });
+      await expectLater(
+        repo.renameHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001', title: 'Golaço'),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.message, 'message', 'Só quem gravou a sessão renomeia os lances.')),
+      );
+    });
+  });
+
+  group('SessionsRepository.deleteSession — validado no app e no servidor', () {
+    test('chama a Function só com o id da sessão', () async {
+      String? calledName;
+      Map<String, dynamic>? sent;
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calledName = name;
+        sent = payload;
+        return {'sessionId': 'sessao-0001'};
+      });
+      await repo.deleteSession('sessao-0001');
+      expect(calledName, 'deleteSession');
+      expect(sent, {'sessionId': 'sessao-0001'});
+    });
+
+    test('id fora do padrão nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      await expectLater(
+        repo.deleteSession('../x'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'sessionId')),
+      );
+      expect(calls, 0);
+    });
+
+    test('a recusa do servidor chega pronta para a tela', () async {
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        throw FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'Só quem gravou a sessão pode excluir.',
+        );
+      });
+      await expectLater(
+        repo.deleteSession('sessao-0001'),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.message, 'message', 'Só quem gravou a sessão pode excluir.')),
+      );
+    });
+  });
+
+  group('SessionsRepository.deleteHighlight — validado no app e no servidor', () {
+    test('chama a Function com a sessão e o lance; ids tortos nem saem do app', () async {
+      final calls = <(String, Map<String, dynamic>)>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        return const {};
+      });
+      await repo.deleteHighlight(sessionId: 'sessao-0001', highlightId: 'lance-0001');
+      expect(calls.single.$1, 'deleteHighlight');
+      expect(calls.single.$2, {'sessionId': 'sessao-0001', 'highlightId': 'lance-0001'});
+      await expectLater(
+        repo.deleteHighlight(sessionId: 'sessao-0001', highlightId: '../x'),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'highlightId')),
+      );
+      expect(calls, hasLength(1));
+    });
+  });
+
+  group('SessionsRepository.updateSession — data e horário (regra 0)', () {
+    final inicio = DateTime.utc(2026, 10, 29, 22, 30);
+    final fim = DateTime.utc(2026, 10, 30, 0, 12);
+    final agora = DateTime.utc(2026, 10, 30, 1);
+
+    test('manda início e fim juntos, em ISO 8601 UTC', () async {
+      final calls = <(String, Map<String, dynamic>)>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        return const {};
+      });
+      await repo.updateSession(
+        sessionId: 'sessao-0001',
+        startedAt: inicio,
+        endedAt: fim,
+        highlightOffsets: const [Duration(minutes: 30)],
+        now: agora,
+      );
+      expect(calls.single.$1, 'updateSession');
+      expect(calls.single.$2, {
+        'sessionId': 'sessao-0001',
+        'startedAt': '2026-10-29T22:30:00.000Z',
+        'endedAt': '2026-10-30T00:12:00.000Z',
+      });
+    });
+
+    test('período inválido ou que corta lances nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      await expectLater(
+        repo.updateSession(sessionId: 'sessao-0001', startedAt: fim, endedAt: inicio, now: agora),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.code, 'code', 'endedAt')
+            .having((f) => f.message, 'message', 'O fim da sessão precisa vir depois do início.')),
+      );
+      await expectLater(
+        repo.updateSession(sessionId: 'sessao-0001', startedAt: inicio, now: agora),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'endedAt')),
+      );
+      await expectLater(
+        repo.updateSession(
+          sessionId: 'sessao-0001',
+          startedAt: inicio,
+          endedAt: fim,
+          highlightOffsets: const [Duration(hours: 2)],
+          now: agora,
+        ),
+        throwsA(isA<SessionsFailure>().having(
+          (f) => f.message,
+          'message',
+          'A sessão precisa durar até o último lance. Confira o horário do fim.',
+        )),
+      );
+      expect(calls, 0);
+    });
+  });
 }

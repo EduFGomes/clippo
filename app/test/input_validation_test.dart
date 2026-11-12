@@ -37,11 +37,28 @@ void main() {
   });
 
   group('senha', () {
-    test('nova senha: 6 a 128 caracteres', () {
-      expect(validateNewPassword(''), isNotNull);
-      expect(validateNewPassword('abc12'), isNotNull);
-      expect(validateNewPassword('abc123'), isNull);
-      expect(validateNewPassword('a' * 129), isNotNull);
+    test('nova senha: 8 a 128 caracteres, com maiúscula, minúscula e número', () {
+      expect(validateNewPassword(''), 'Informe a senha.');
+      expect(validateNewPassword('Abc1234'), 'Use uma senha com pelo menos 8 caracteres.');
+      expect(validateNewPassword('Abc12345'), isNull);
+      expect(validateNewPassword('Ab1${'a' * 125}'), isNull); // 128
+      expect(validateNewPassword('Ab1${'a' * 126}'), 'A senha pode ter até 128 caracteres.');
+      for (final weak in ['abcd1234', 'ABCD1234', 'Abcdefgh', '12345678']) {
+        expect(validateNewPassword(weak), 'Use letra maiúscula, minúscula e número na senha.', reason: weak);
+      }
+    });
+
+    test('senha de quem entra só precisa estar preenchida (contas antigas têm 6+)', () {
+      expect(validateExistingPassword(''), 'Informe a senha.');
+      expect(validateExistingPassword('abc123'), isNull);
+    });
+
+    test('o medidor sabe o que falta', () {
+      final c = passwordChecks('abcdefg1');
+      expect(c.length, isTrue);
+      expect(c.upper, isFalse);
+      expect(c.lower, isTrue);
+      expect(c.number, isTrue);
     });
 
     test('confirmação precisa ser igual', () {
@@ -80,12 +97,32 @@ void main() {
     final today = DateTime(2026, 10, 13);
     test('aceita uma data válida no passado', () {
       expect(validateBirthDate(DateTime(2001, 2, 28), today: today), isNull);
-      expect(validateBirthDate(today, today: today), isNull);
+    });
+    // Os mesmos casos de normalizeBirthDate em backend/functions/test/validation.test.ts.
+    test('idade mínima de 13 anos: faz 13 hoje entra, um dia antes não', () {
+      expect(validateBirthDate(DateTime(2013, 10, 13), today: today), isNull);
+      expect(validateBirthDate(DateTime(2013, 10, 14), today: today),
+          'Você precisa ter pelo menos 13 anos para usar o Clippo.');
+      expect(validateBirthDate(today, today: today), 'Você precisa ter pelo menos 13 anos para usar o Clippo.');
+      expect(validateBirthDateText('14/10/2013', today: today),
+          'Você precisa ter pelo menos 13 anos para usar o Clippo.');
     });
     test('recusa vazia, futura ou antes de 1900', () {
       expect(validateBirthDate(null, today: today), isNotNull);
       expect(validateBirthDate(DateTime(2027, 1, 1), today: today), isNotNull);
       expect(validateBirthDate(DateTime(1899, 12, 31), today: today), isNotNull);
+    });
+
+    test('digitada: "dd/mm/aaaa" vira a data e vai como AAAA-MM-DD', () {
+      expect(validateBirthDateText('28/02/2001', today: today), isNull);
+      expect(parseBirthDateText(' 28/02/2001 '), DateTime(2001, 2, 28));
+      expect(birthDateIso(parseBirthDateText('05/09/1990')!), '1990-09-05');
+    });
+    test('digitada: vazia pede a data; incompleta, inexistente ou futura é inválida', () {
+      expect(validateBirthDateText('  ', today: today), 'Informe a data de nascimento.');
+      for (final bad in ['12/03', '12/03/20', '31/02/2001', '00/01/2001', '12/13/2001', '01/01/2027', '31/12/1899']) {
+        expect(validateBirthDateText(bad, today: today), 'Data de nascimento inválida.', reason: bad);
+      }
     });
   });
 
@@ -140,6 +177,22 @@ void main() {
       expect(normalizeLocation('  Quadra   do Parque '), 'Quadra do Parque');
       expect(validateLocation('a' * (locationMax + 1)),
           'O local pode ter até $locationMax caracteres.');
+    });
+  });
+
+  // Os mesmos casos de checkPeriodFitsHighlights em backend/functions/test/sessions.validation.test.ts.
+  group('corrigir data e horário: a sessão vai até o último lance', () {
+    test('aceita duração que vai até o último lance, com 1 minuto de folga', () {
+      const s = Duration(seconds: 1);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 30, s * 300, s * 600]), isNull);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 660]), isNull);
+      expect(validatePeriodFitsHighlights(s * 600, const []), isNull);
+    });
+
+    test('recusa encurtar a sessão para antes do último lance', () {
+      const s = Duration(seconds: 1);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 30, s * 661]),
+          'A sessão precisa durar até o último lance. Confira o horário do fim.');
     });
   });
 
@@ -228,6 +281,31 @@ void main() {
         validateHighlightTitle('a' * (highlightTitleMax + 1)),
         'O nome do lance pode ter até $highlightTitleMax caracteres.',
       );
+    });
+
+    test('renomear: normaliza espaços e aceita até o limite', () {
+      expect(validateHighlightRename('  Voleio  do Rafa '), isNull);
+      expect(validateHighlightRename('a' * highlightTitleMax), isNull);
+    });
+
+    test('renomear: recusa nome vazio ou só espaços', () {
+      for (final ruim in [null, '', '   ']) {
+        expect(validateHighlightRename(ruim), 'Dê um nome ao lance.');
+      }
+    });
+
+    test('renomear: recusa nome acima do limite', () {
+      expect(
+        validateHighlightRename('a' * (highlightTitleMax + 1)),
+        'O nome do lance pode ter até $highlightTitleMax caracteres.',
+      );
+    });
+
+    test('renomear: aceita os ids que o app gera e recusa o resto', () {
+      expect(validateHighlightRef('lance-0001'), isNull);
+      for (final ruim in ['curto', '../lance-0001', '']) {
+        expect(validateHighlightRef(ruim), 'Esse lance não foi encontrado. Tente de novo.');
+      }
     });
 
     test('recusa lance fora da sessão, com 1 min de folga', () {

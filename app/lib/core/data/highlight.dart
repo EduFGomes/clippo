@@ -1,69 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Nomes criativos e genéricos (válidos para qualquer esporte) para que cada
-/// highlight da sessão tenha identidade própria sem repetir na mesma sessão.
-const List<String> creativeHighlightTitles = [
-  'Jogada de cinema',
-  'Ponto antológico',
-  'Defesa no reflexo',
-  'Lance na linha',
-  'Virada de jogo',
-  'Reflexo absurdo',
-  'Sequência perfeita',
-  'Deixadinha de mestre',
-  'Salva improvável',
-  'Ponto decisivo',
-  'Leitura de jogo',
-  'Cravada sem chance',
-  'Disputa ponto a ponto',
-  'Recuperação no limite',
-  'Fechando com chave de ouro',
-  'Momento de pura técnica',
-];
-
-final RegExp _genericLancePattern = RegExp(r'^lance(?:\s+\d+)?$', caseSensitive: false);
-
-/// Devolve um título criativo que ainda não foi usado em [usedTitles].
-String nextCreativeHighlightTitle(int index, Set<String> usedTitles) {
-  for (var offset = 0; offset < creativeHighlightTitles.length; offset++) {
-    final candidate = creativeHighlightTitles[(index + offset) % creativeHighlightTitles.length];
-    if (usedTitles.add(candidate.toLowerCase())) {
-      return candidate;
-    }
-  }
-  // Se a sessão tiver mais lances que o catálogo base, combina com o minuto/ordem sem repetir.
-  var suffix = index + 1;
-  while (true) {
-    final base = creativeHighlightTitles[index % creativeHighlightTitles.length];
-    final candidate = '$base #$suffix';
-    if (usedTitles.add(candidate.toLowerCase())) {
-      return candidate;
-    }
-    suffix++;
-  }
-}
-
-/// Garante que todos os highlights de uma sessão tenham nomes criativos e únicos
-/// (nunca repete o mesmo título dentro da mesma sessão).
-List<Highlight> ensureDistinctHighlightTitles(List<Highlight> highlights) {
-  final used = <String>{};
-  final result = <Highlight>[];
-
-  for (var i = 0; i < highlights.length; i++) {
-    final current = highlights[i];
-    final trimmed = current.title.trim();
-    final isGeneric = trimmed.isEmpty || _genericLancePattern.hasMatch(trimmed);
-
-    if (!isGeneric && used.add(trimmed.toLowerCase())) {
-      result.add(current);
-    } else {
-      final creative = nextCreativeHighlightTitle(i, used);
-      result.add(current.copyWith(title: creative));
-    }
-  }
-  return List<Highlight>.unmodifiable(result);
-}
-
 /// Estado do envio do vídeo no Storage (R13).
 enum HighlightStatus {
   /// O gesto salvou o lance no aparelho, mas o vídeo ainda está subindo.
@@ -103,17 +39,18 @@ class Highlight {
     this.thumbnailPath,
     this.status = HighlightStatus.uploaded,
     this.localPath,
+    this.localThumbnailPath,
   });
 
   factory Highlight.fromMap(String id, Map<String, dynamic> data, {int index = 0}) {
     final offsetSeconds = (data['offsetSeconds'] as num?)?.toInt() ?? 0;
     final durationSeconds = (data['durationSeconds'] as num?)?.toInt() ?? 30;
     final rawTitle = (data['title'] as String? ?? '').trim();
-    final defaultTitle = creativeHighlightTitles[index % creativeHighlightTitles.length];
 
     return Highlight(
       id: id,
-      title: rawTitle.isEmpty || _genericLancePattern.hasMatch(rawTitle) ? defaultTitle : rawTitle,
+      // O saveSession grava "Lance N"; só um documento sem título cai aqui (o nome pela posição).
+      title: rawTitle.isEmpty ? 'Lance ${index + 1}' : rawTitle,
       offset: Duration(seconds: offsetSeconds < 0 ? 0 : offsetSeconds),
       duration: Duration(seconds: durationSeconds <= 0 ? 30 : durationSeconds),
       savedAt: _dateFrom(data['savedAt']) ?? _unknownDate,
@@ -133,7 +70,8 @@ class Highlight {
   /// ID do documento na subcoleção `highlights`.
   final String id;
 
-  /// Título curto e criativo do lance ("Jogada de cinema", "Ponto antológico").
+  /// Título curto do lance: nasce "Lance 3" (pela ordem na sessão) e o dono da sessão pode
+  /// renomear ("Voleio do Rafa").
   final String title;
 
   /// Momento em que foi salvo desde o início da sessão ("00:12:40").
@@ -151,7 +89,7 @@ class Highlight {
   /// Caminho do MP4 no Storage (ou nulo enquanto não definido).
   final String? videoPath;
 
-  /// Caminho da miniatura no Storage (ou URL/caminho local).
+  /// Caminho da miniatura no Storage (`.../thumb.jpg`). O arquivo pode ainda não existir.
   final String? thumbnailPath;
 
   /// Estado do upload do vídeo (R13).
@@ -161,6 +99,10 @@ class Highlight {
   /// Só existe no aparelho de quem gravou; nunca vem do Firestore. Com ele, o Player toca e
   /// baixa o lance sem internet.
   final String? localPath;
+
+  /// A miniatura (JPEG) ainda guardada no celular de quem gravou, ao lado do MP4. Como o
+  /// [localPath], nunca vem do Firestore: quem preenche é a fila de envio.
+  final String? localThumbnailPath;
 
   /// true quando o vídeo pode tocar direto do celular, sem baixar da nuvem.
   bool get hasLocalVideo => (localPath ?? '').isNotEmpty;
@@ -178,6 +120,7 @@ class Highlight {
     String? thumbnailPath,
     HighlightStatus? status,
     String? localPath,
+    String? localThumbnailPath,
   }) {
     return Highlight(
       id: id,
@@ -190,6 +133,7 @@ class Highlight {
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       status: status ?? this.status,
       localPath: localPath ?? this.localPath,
+      localThumbnailPath: localThumbnailPath ?? this.localThumbnailPath,
     );
   }
 

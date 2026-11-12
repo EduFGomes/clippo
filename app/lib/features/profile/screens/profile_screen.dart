@@ -6,7 +6,10 @@ import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
+import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
+import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -20,7 +23,8 @@ import 'package:clippo/features/profile/widgets/profile_stats_bar.dart';
 typedef ProfileSaver = Future<void> Function({String? name, String? username});
 
 /// Perfil (docs/produto.md › 4.7): avatar grande, nome e @usuário, três estatísticas
-/// (sessões · highlights · amigos), linhas de ajuste (Nome, Usuário, Notificações) e sair da conta.
+/// (sessões · highlights · amigos), linhas de ajuste (Nome, Usuário), sair da conta e excluir a
+/// conta. 🟡 Notificações e trocar a foto ainda não existem: não aparecem até existirem.
 ///
 /// Os dados vêm de `users/{uid}` em tempo real ([AuthRepository.watchMyProfile]); editar chama
 /// a Function updateProfile ([AuthRepository.updateProfile]) e a tela se atualiza sozinha.
@@ -30,8 +34,8 @@ class ProfileScreen extends StatefulWidget {
     super.key,
     this.profile,
     this.saveProfile,
-    this.initialNotificationsEnabled = true,
     this.onSignOut,
+    this.deleteAccount,
   });
 
   /// Substitui o perfil em tempo real (testes). Null = Firebase, ou o exemplo sem login.
@@ -40,11 +44,12 @@ class ProfileScreen extends StatefulWidget {
   /// Substitui o salvar (testes). Null = Function updateProfile, ou só memória sem login.
   final ProfileSaver? saveProfile;
 
-  /// 🟡 Notificações ainda não existem no back-end: a chave só muda na tela.
-  final bool initialNotificationsEnabled;
-
   /// Permite substituir a ação de sair nos testes sem inicializar o Firebase.
   final VoidCallback? onSignOut;
+
+  /// Substitui o excluir conta (testes). Null = tira a fila deste aparelho e chama
+  /// [AuthRepository.deleteMyAccount]. Lança [AuthFailure] com a frase da tela.
+  final Future<void> Function()? deleteAccount;
 
   /// O perfil mostrado sem login (catálogo de telas).
   static const UserProfile demoProfile = UserProfile(
@@ -61,7 +66,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late bool _notificationsEnabled = widget.initialNotificationsEnabled;
+  bool _deleting = false;
 
   /// Só no modo de exemplo (sem login): o perfil vive aqui.
   StreamController<UserProfile?>? _demo;
@@ -87,6 +92,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _retry() => setState(() => _profile = _resolveProfile());
+
+  /// Sair pede confirmação: um toque sem querer no fim da tela tirava a pessoa da conta.
+  Future<void> _signOut() async {
+    final confirmed = await showClippoConfirm(
+      context,
+      title: 'Sair da conta?',
+      message: 'Lances que ainda não subiram ficam guardados neste celular e sobem quando você '
+          'entrar de novo.',
+      confirmLabel: 'Sair',
+      cancelLabel: 'Ficar',
+    );
+    if (!confirmed || !mounted) return;
+    (widget.onSignOut ?? () => authRepository.signOut())();
+  }
+
+  /// Excluir a conta (LGPD): pergunta antes, com o que acontece com as sessões.
+  Future<void> _deleteAccount() async {
+    final confirmed = await showClippoConfirm(
+      context,
+      title: 'Excluir sua conta?',
+      message: 'Seu perfil, suas amizades e as sessões que você gravou somem para todo mundo, com '
+          'os lances. Das sessões dos outros, você sai. Não dá para desfazer.',
+      confirmLabel: 'Excluir conta',
+      cancelLabel: 'Manter conta',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await (widget.deleteAccount ?? _deleteWithFirebase)();
+      // Com a conta excluída, o AuthGate volta às Boas-vindas sozinho.
+    } on AuthFailure catch (e) {
+      if (mounted) _showError(e.message);
+    } catch (_) {
+      if (mounted) _showError('Não foi possível excluir a conta. Tente de novo.');
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  static Future<void> _deleteWithFirebase() async {
+    final uid = authRepository.currentUser?.uid;
+    // Os vídeos que ainda não subiram não podem subir depois para uma conta que não existe.
+    if (uid != null) await uploadQueue.discardAllOf(uid);
+    await authRepository.deleteMyAccount();
+  }
+
+  void _showError(String message) => showClippoMessage(context, message);
 
   Future<void> _save({String? name, String? username}) async {
     final saver = widget.saveProfile;
@@ -150,9 +203,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return ClippoScreenGround(
-      footer: ClippoTextButton(
-        label: 'Sair da conta',
-        onPressed: widget.onSignOut ?? () => authRepository.signOut(),
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClippoTextButton(label: 'Sair da conta', onPressed: _deleting ? null : _signOut),
+          const SizedBox(height: ClippoSpace.spaceS),
+          ClippoTextButton(
+            label: _deleting ? 'Excluindo…' : 'Excluir conta',
+            onPressed: _deleting ? null : _deleteAccount,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -182,11 +242,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
               return _Content(
                 me: me,
-                notificationsEnabled: _notificationsEnabled,
                 onEditName: () => _editName(me),
                 onEditUsername: () => _editUsername(me),
-                onNotificationsChanged: (enabled) =>
-                    setState(() => _notificationsEnabled = enabled),
               );
             },
           ),
@@ -199,30 +256,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _Content extends StatelessWidget {
   const _Content({
     required this.me,
-    required this.notificationsEnabled,
     required this.onEditName,
     required this.onEditUsername,
-    required this.onNotificationsChanged,
   });
 
   final UserProfile me;
-  final bool notificationsEnabled;
   final VoidCallback onEditName;
   final VoidCallback onEditUsername;
-  final ValueChanged<bool> onNotificationsChanged;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ProfileHeader(
-          name: me.name,
-          username: me.username,
-          photoUrl: me.photoUrl,
-          // Trocar a foto ainda não existe (precisa de upload no Storage).
-          onEditPhoto: () {},
-        ),
+        // Sem onEditPhoto: trocar a foto ainda não existe (precisa de upload no Storage).
+        ProfileHeader(name: me.name, username: me.username, photoUrl: me.photoUrl),
         const SizedBox(height: ClippoSpace.spaceM),
         ProfileStatsBar(
           sessions: me.sessionCount,
@@ -240,12 +288,6 @@ class _Content extends StatelessWidget {
           label: 'Usuário',
           value: '@${me.username}',
           onTap: onEditUsername,
-        ),
-        const SizedBox(height: ClippoSpace.spaceM),
-        ProfileToggleTile(
-          label: 'Notificações',
-          value: notificationsEnabled,
-          onChanged: onNotificationsChanged,
         ),
       ],
     );

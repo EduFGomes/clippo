@@ -25,6 +25,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _emailFocus = FocusNode();
   bool _loading = false;
 
   /// Erro de cada campo (validação do app ou resposta do Firebase).
@@ -38,11 +39,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.initState();
     _password.addListener(_refresh);
     _confirm.addListener(_refresh);
+    _emailFocus.addListener(_onEmailFocus);
+  }
+
+  /// Saiu do campo do e-mail: confere o formato na hora, não só no "Criar conta". Se o e-mail
+  /// já tem conta, só o envio diz (o Firebase não conta quais e-mails existem, de propósito).
+  void _onEmailFocus() {
+    if (_emailFocus.hasFocus || _email.text.trim().isEmpty) return;
+    final error = validateEmail(_email.text);
+    if (error != null) setState(() => _fieldErrors['email'] = error);
   }
 
   @override
   void dispose() {
     _email.dispose();
+    _emailFocus.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
@@ -135,6 +146,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             label: 'E-mail',
             hint: 'voce@email.com',
             controller: _email,
+            focusNode: _emailFocus,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
@@ -145,14 +157,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.password(
             label: 'Senha',
-            hint: 'mínimo de 6 caracteres',
+            hint: 'mínimo de 8 caracteres',
             controller: _password,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.newPassword],
             errorText: _fieldErrors['password'],
             onChanged: (_) => _clearError('password'),
           ),
-          ClippoPasswordMeter(length: _password.text.length),
+          ClippoPasswordMeter(password: _password.text),
           const SizedBox(height: ClippoSpace.spaceM),
           ClippoTextField.confirmation(
             label: 'Confirme a senha',

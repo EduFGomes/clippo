@@ -27,6 +27,10 @@ class SaveSignal(private val context: Context) {
         private const val TONE_MS = 150
         private const val FLASH_MS = 200L
         private const val VIBRATION_MS = 40L
+        // Falha ao salvar: bip duplo de recusa, diferente do de salvo, e vibração mais longa.
+        private const val FAIL_TONE = ToneGenerator.TONE_PROP_NACK
+        private const val FAIL_TONE_MS = 400
+        private const val FAIL_VIBRATION_MS = 300L
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -47,6 +51,15 @@ class SaveSignal(private val context: Context) {
         if (vibrate) vibrate()
     }
 
+    /**
+     * O lance NÃO foi salvo: quem fez o gesto longe do celular precisa saber para tentar de novo.
+     * Sem flash, que quer dizer "salvo".
+     */
+    fun fail(sound: Boolean, vibrate: Boolean) {
+        if (sound) tone?.startTone(FAIL_TONE, FAIL_TONE_MS)
+        if (vibrate) vibrate(FAIL_VIBRATION_MS)
+    }
+
     // O flash também aparece no vídeo dos próximos highlights: é a mesma câmera que grava.
     private fun flash(camera: Camera?) {
         if (camera == null || !camera.cameraInfo.hasFlashUnit()) return
@@ -55,7 +68,7 @@ class SaveSignal(private val context: Context) {
     }
 
     @Suppress("DEPRECATION") // vibrate(ms) é o único jeito antes do Android 8
-    private fun vibrate() {
+    private fun vibrate(ms: Long = VIBRATION_MS) {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
         } else {
@@ -63,9 +76,9 @@ class SaveSignal(private val context: Context) {
         }
         if (!vibrator.hasVibrator()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(VIBRATION_MS, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
-            vibrator.vibrate(VIBRATION_MS)
+            vibrator.vibrate(ms)
         }
     }
 

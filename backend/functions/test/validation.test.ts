@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PASSWORD_POLICY,
   ValidationError,
   normalizeBirthDate,
   normalizeEmail,
@@ -48,6 +49,16 @@ describe("normalizeBirthDate", () => {
 
   it.each(["2001-02-30", "2027-01-01", "1899-12-31", "13/10/2001", ""])("recusa %s", (value) => {
     expect(() => normalizeBirthDate(value, today)).toThrow(ValidationError);
+  });
+
+  // Os mesmos casos de app/test/input_validation_test.dart.
+  it("idade mínima de 13 anos: faz 13 hoje entra, um dia antes não", () => {
+    expect(normalizeBirthDate("2013-10-13", today)).toBe("2013-10-13");
+    for (const value of ["2013-10-14", "2026-10-13"]) {
+      expect(() => normalizeBirthDate(value, today)).toThrow(
+        "Você precisa ter pelo menos 13 anos para usar o Clippo.",
+      );
+    }
   });
 });
 
@@ -141,5 +152,25 @@ describe("normalizeProfileUpdate", () => {
     })();
     expect(error).toBeInstanceOf(ValidationError);
     expect((error as ValidationError).field).toBe("username");
+  });
+});
+
+// A senha nova não passa por Function: quem confere no servidor é a política do Firebase Auth.
+// Ela precisa dizer o mesmo que validateNewPassword do app (input_validation.dart).
+describe("PASSWORD_POLICY", () => {
+  it("exige 8 a 128 caracteres com maiúscula, minúscula e número, sem símbolo obrigatório", () => {
+    expect(PASSWORD_POLICY.enforcementState).toBe("ENFORCE");
+    expect(PASSWORD_POLICY.constraints).toEqual({
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumeric: true,
+      requireNonAlphanumeric: false,
+      minLength: 8,
+      maxLength: 128,
+    });
+  });
+
+  it("não obriga quem tem senha antiga (6+) a trocar ao entrar", () => {
+    expect(PASSWORD_POLICY.forceUpgradeOnSignin).toBe(false);
   });
 });

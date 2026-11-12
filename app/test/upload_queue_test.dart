@@ -14,12 +14,14 @@ class FakeUploadBackend implements UploadBackend {
   String? uid;
   bool failSave = false;
   bool failUpload = false;
+  bool failThumbnail = false;
   SessionsFailure? saveError;
 
   /// Internet lenta: o `saveSession` só responde quando o teste completar.
   Completer<void>? saveGate;
   final List<String> savedSessions = [];
   final List<String> uploads = [];
+  final List<String> thumbnails = [];
   final Map<String, StreamController<Map<String, HighlightStatus>>> statuses = {};
 
   @override
@@ -43,6 +45,12 @@ class FakeUploadBackend implements UploadBackend {
   Future<void> uploadVideo({required String storagePath, required File localFile}) async {
     uploads.add(storagePath);
     if (failUpload) throw const SocketException('sem rede');
+  }
+
+  @override
+  Future<void> uploadThumbnail({required String storagePath, required File localFile}) async {
+    thumbnails.add(storagePath);
+    if (failThumbnail) throw const SocketException('sem rede');
   }
 
   @override
@@ -82,6 +90,7 @@ void main() {
     List<Duration> retryDelays = const [],
     Set<String>? existing,
     Duration submitWait = UploadQueue.defaultSubmitWait,
+    Future<String> Function(String videoPath)? makeThumbnail,
   }) =>
       UploadQueue(
         backend: backend,
@@ -90,6 +99,7 @@ void main() {
         localFileExists: (path) async => existing?.contains(path) ?? true,
         retryDelays: retryDelays,
         submitWait: submitWait,
+        makeThumbnail: makeThumbnail,
       );
 
   setUp(() {
@@ -116,6 +126,47 @@ void main() {
     expect(store.saved.single.saved, isTrue);
     expect(backend.uploads, ['sessions/sessao-123456/highlights/highlight_1/video.mp4']);
     expect(store.saved.single.highlights.single.videoSent, isTrue);
+    q.dispose();
+  });
+
+  test('excluir a sessão: sai da fila, apaga o MP4 do aparelho e não volta ao servidor', () async {
+    final q = queue();
+    backend.failSave = true;
+    expect(await q.submit(_session()), SubmitOutcome.queued);
+
+    await q.discard('sessao-123456');
+    expect(q.state.value.isPending('sessao-123456'), isFalse);
+    expect(store.saved, isEmpty);
+    expect(deleted, contains('/data/highlights/highlight_1.mp4'));
+
+    // A internet volta: nada a reenviar.
+    backend.failSave = false;
+    await q.retryNow();
+    expect(backend.savedSessions, ['sessao-123456']);
+    expect(backend.uploads, isEmpty);
+
+    await q.discard('sessao-123456'); // de novo: não é erro
+    q.dispose();
+  });
+
+  test('apagar um lance: só ele sai da fila e do aparelho; os outros continuam subindo', () async {
+    final q = queue();
+    backend.failSave = true;
+    await q.submit(_session(highlights: 2));
+    await q.discardHighlight('sessao-123456', 'highlight_1');
+    expect(store.saved.single.highlights.map((h) => h.highlightId), ['highlight_2']);
+    expect(deleted, contains('/data/highlights/highlight_1.mp4'));
+    expect(deleted, isNot(contains('/data/highlights/highlight_2.mp4')));
+    q.dispose();
+  });
+
+  test('excluir a conta: todas as sessões da pessoa saem da fila; as de outra conta ficam', () async {
+    final q = queue();
+    backend.failSave = true;
+    await q.submit(_session(id: 'sessao-aaaaaa'));
+    await q.submit(_session(id: 'sessao-bbbbbb', owner: 'outra'));
+    await q.discardAllOf('dono');
+    expect(store.saved.map((s) => s.sessionId), ['sessao-bbbbbb']);
     q.dispose();
   });
 
@@ -311,5 +362,110 @@ void main() {
     expect(loaded.single.highlights.map((h) => h.highlightId), ['highlight_1', 'highlight_2']);
     expect(loaded.single.participantIds, ['rafa']);
     expect(loaded.single.startedAt, DateTime.utc(2026, 11, 4, 20));
+  });
+
+  test('lance que só está no celular aparece como "Lance N", o nome que o servidor vai gravar', () {
+    final state = UploadQueueState(sessions: [_session(highlights: 3)]);
+    final shown = state.withLocalVideos('sessao-123456', const []);
+    expect([for (final h in shown) h.title], ['Lance 1', 'Lance 2', 'Lance 3']);
+  });
+
+  group('miniatura do lance', () {
+    Future<String> jpegBeside(String video) async => video.replaceAll('.mp4', '.jpg');
+
+    test('gera um quadro de cada MP4 e envia no thumb.jpg, ao lado do vídeo, uma vez só', () async {
+      final made = <String>[];
+      final q = queue(makeThumbnail: (video) {
+        made.add(video);
+        return jpegBeside(video);
+      });
+      await q.submit(_session());
+      await _settle();
+
+      expect(made, ['/data/highlights/highlight_1.mp4']);
+      expect(backend.thumbnails, ['sessions/sessao-123456/highlights/highlight_1/thumb.jpg']);
+      expect(q.state.value.thumbnails, {'highlight_1': '/data/highlights/highlight_1.jpg'});
+      // A tela Sessão recebe a miniatura do aparelho junto com o vídeo local.
+      final shown = q.state.value.withLocalVideos('sessao-123456', const []);
+      expect(shown.single.localThumbnailPath, '/data/highlights/highlight_1.jpg');
+
+      await q.retryNow();
+      await _settle();
+      expect(made, hasLength(1));
+      expect(backend.thumbnails, hasLength(1));
+      q.dispose();
+    });
+
+    test('sem internet: a miniatura já existe no aparelho, e só sobe depois de a sessão ser salva', () async {
+      final q = queue(makeThumbnail: jpegBeside);
+      backend.failSave = true;
+      await q.submit(_session());
+      await _settle();
+      expect(q.state.value.thumbnails, {'highlight_1': '/data/highlights/highlight_1.jpg'});
+      expect(backend.thumbnails, isEmpty);
+
+      backend.failSave = false;
+      await q.retryNow();
+      await _settle();
+      expect(backend.thumbnails, ['sessions/sessao-123456/highlights/highlight_1/thumb.jpg']);
+      q.dispose();
+    });
+
+    test('falha ao gerar a miniatura: o vídeo sobe e o lance sai da fila do mesmo jeito', () async {
+      final q = queue(makeThumbnail: (_) async => throw StateError('sem quadro'));
+      expect(await q.submit(_session()), SubmitOutcome.saved);
+      await _settle();
+      expect(backend.uploads, ['sessions/sessao-123456/highlights/highlight_1/video.mp4']);
+      expect(backend.thumbnails, isEmpty);
+      expect(q.state.value.thumbnails, isEmpty);
+      expect(q.nextRetryAt, isNull);
+
+      backend.emit('sessao-123456', {'highlight_1': HighlightStatus.uploaded});
+      await _settle();
+      expect(deleted, ['/data/highlights/highlight_1.mp4']);
+      expect(q.state.value.isEmpty, isTrue);
+      q.dispose();
+    });
+
+    test('falha ao enviar a miniatura não marca nova tentativa nem segura o lance', () async {
+      final q = queue(makeThumbnail: jpegBeside, retryDelays: const [Duration(minutes: 1)]);
+      backend.failThumbnail = true;
+      await q.submit(_session());
+      await _settle();
+      expect(store.saved.single.highlights.single.videoSent, isTrue);
+      expect(store.saved.single.attempts, 0);
+      expect(q.nextRetryAt, isNull);
+
+      backend.emit('sessao-123456', {'highlight_1': HighlightStatus.uploaded});
+      await _settle();
+      expect(q.state.value.isEmpty, isTrue);
+      expect(q.state.value.thumbnails, isEmpty);
+      q.dispose();
+    });
+
+    test('miniatura que nunca termina não atrasa o envio do vídeo', () async {
+      final stuck = Completer<String>();
+      final q = queue(makeThumbnail: (_) => stuck.future);
+      expect(await q.submit(_session(highlights: 2)), SubmitOutcome.saved);
+      await _settle();
+      expect(backend.uploads, hasLength(2));
+
+      backend.emit('sessao-123456', {
+        'highlight_1': HighlightStatus.uploaded,
+        'highlight_2': HighlightStatus.uploaded,
+      });
+      await _settle();
+      expect(q.state.value.isEmpty, isTrue);
+      q.dispose();
+    });
+
+    test('sem gerador de miniatura (testes, catálogo), a fila só envia os vídeos', () async {
+      final q = queue();
+      await q.submit(_session());
+      await _settle();
+      expect(backend.uploads, hasLength(1));
+      expect(backend.thumbnails, isEmpty);
+      q.dispose();
+    });
   });
 }

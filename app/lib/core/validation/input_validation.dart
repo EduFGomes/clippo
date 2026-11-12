@@ -11,7 +11,10 @@ library;
 
 const int emailMax = 254;
 const int emailLocalMax = 64;
-const int passwordMin = 6; // mínimo do Firebase Auth
+// Senha nova (desde 10/11/2026): 8+ caracteres com maiúscula, minúscula e número. No servidor,
+// a mesma regra é a política de senha do Firebase Auth (PASSWORD_POLICY em
+// backend/functions/src/users/validation.ts): a senha nunca passa por uma Function.
+const int passwordMin = 8;
 const int passwordMax = 128;
 const int nameMax = 50;
 const int usernameMin = 3;
@@ -38,15 +41,27 @@ String? validateEmail(String raw) {
   return valid ? null : 'Esse e-mail não parece válido.';
 }
 
-/// Senha de quem está criando a conta.
+/// O que falta na senha nova, na ordem em que a tela pede. Base do medidor e de
+/// [validateNewPassword].
+({bool length, bool upper, bool lower, bool number}) passwordChecks(String password) => (
+      length: password.length >= passwordMin,
+      upper: password.contains(RegExp(r'[A-Z]')),
+      lower: password.contains(RegExp(r'[a-z]')),
+      number: password.contains(RegExp(r'[0-9]')),
+    );
+
+/// Senha de quem está criando a conta: 8 a 128 caracteres, com maiúscula, minúscula e número.
 String? validateNewPassword(String password) {
   if (password.isEmpty) return 'Informe a senha.';
-  if (password.length < passwordMin) return 'Use uma senha com pelo menos $passwordMin caracteres.';
   if (password.length > passwordMax) return 'A senha pode ter até $passwordMax caracteres.';
+  final c = passwordChecks(password);
+  if (!c.length) return 'Use uma senha com pelo menos $passwordMin caracteres.';
+  if (!c.upper || !c.lower || !c.number) return 'Use letra maiúscula, minúscula e número na senha.';
   return null;
 }
 
-/// Senha de quem está entrando: só precisa estar preenchida.
+/// Senha de quem está entrando: só precisa estar preenchida. Quem criou a conta com a regra
+/// antiga (6+ caracteres) continua entrando com a senha que tem.
 String? validateExistingPassword(String password) => password.isEmpty ? 'Informe a senha.' : null;
 
 String? validatePasswordConfirmation(String password, String confirmation) {
@@ -67,6 +82,9 @@ String? validateName(String raw) {
 /// Sem "@", minúsculo, sem espaços nas pontas.
 String normalizeUsername(String raw) => raw.trim().replaceFirst(RegExp(r'^@'), '').toLowerCase();
 
+/// A mesma frase do servidor (completeProfile / updateProfile) quando o @ já tem dono.
+const String usernameTakenMessage = 'Esse nome de usuário já está em uso.';
+
 /// Letras a–z, números, "_" e "."; 3 a 20 caracteres; sem ponto no começo, no fim ou repetido.
 String? validateUsername(String raw) {
   final username = normalizeUsername(raw);
@@ -81,16 +99,54 @@ String? validateUsername(String raw) {
   return null;
 }
 
-/// Data de nascimento: obrigatória, de 1900 até hoje.
+/// Idade mínima para usar o Clippo (decidida pelo grupo em 12/11/2026; mesma constante
+/// `MIN_AGE` no servidor). Menores de 12 precisariam do consentimento dos pais (LGPD, art. 14);
+/// 13 também é a idade mínima de uma conta Google, para o "Continuar com Google".
+const int minimumAge = 13;
+
+/// Data de nascimento: obrigatória, de 1900 até hoje, e com pelo menos [minimumAge] anos.
 String? validateBirthDate(DateTime? date, {DateTime? today}) {
   if (date == null) return 'Informe a data de nascimento.';
   final now = today ?? DateTime.now();
+  final todayDay = DateTime(now.year, now.month, now.day);
   final day = DateTime(date.year, date.month, date.day);
-  if (day.isAfter(DateTime(now.year, now.month, now.day)) || date.year < 1900) {
+  if (day.isAfter(todayDay) || date.year < 1900) {
     return 'Data de nascimento inválida.';
+  }
+  if (DateTime(date.year + minimumAge, date.month, date.day).isAfter(todayDay)) {
+    return 'Você precisa ter pelo menos $minimumAge anos para usar o Clippo.';
   }
   return null;
 }
+
+final RegExp _birthDateTextPattern = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$');
+
+/// A data digitada como "dd/mm/aaaa", ou null se não for uma data de verdade (ex.: 31/02/2001
+/// ou "12/03"). O servidor recebe a mesma data em AAAA-MM-DD ([birthDateIso]).
+DateTime? parseBirthDateText(String raw) {
+  final match = _birthDateTextPattern.firstMatch(raw.trim());
+  if (match == null) return null;
+  final day = int.parse(match.group(1)!);
+  final month = int.parse(match.group(2)!);
+  final year = int.parse(match.group(3)!);
+  final date = DateTime(year, month, day);
+  // DateTime "conserta" 31/02 para 03/03: se mudou, a data não existe.
+  if (date.year != year || date.month != month || date.day != day) return null;
+  return date;
+}
+
+/// Data de nascimento digitada (campo "dd/mm/aaaa" do Complete seu perfil). Mesmas mensagens
+/// de [validateBirthDate] e do `normalizeBirthDate` do servidor.
+String? validateBirthDateText(String raw, {DateTime? today}) {
+  if (raw.trim().isEmpty) return 'Informe a data de nascimento.';
+  final date = parseBirthDateText(raw);
+  if (date == null) return 'Data de nascimento inválida.';
+  return validateBirthDate(date, today: today);
+}
+
+/// AAAA-MM-DD, o formato que a Function completeProfile recebe.
+String birthDateIso(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 // --- Sessão ----------------------------------------------------------------
 // Espelho de backend/functions/src/sessions/validation.ts, com as MESMAS mensagens.
@@ -160,6 +216,20 @@ String? validateSessionPeriod(DateTime? startedAt, DateTime? endedAt, {DateTime?
   return null;
 }
 
+/// Corrigir data e horário de uma sessão salva: os lances ficam no mesmo momento dentro dela, então
+/// a nova duração vai até o último, com 1 minuto de folga. Mesma regra e frase do servidor
+/// (`checkPeriodFitsHighlights` em backend/functions/src/sessions/validation.ts).
+String? validatePeriodFitsHighlights(Duration duration, Iterable<Duration> offsets) {
+  var last = Duration.zero;
+  for (final offset in offsets) {
+    if (offset > last) last = offset;
+  }
+  if (last.inSeconds > duration.inSeconds + 60) {
+    return 'A sessão precisa durar até o último lance. Confira o horário do fim.';
+  }
+  return null;
+}
+
 /// Participantes: o dono entra sempre (R9), sem repetidos.
 List<String> normalizeParticipantIds(List<String> raw, {String? ownerId}) {
   final unique = <String>{
@@ -193,6 +263,22 @@ String? validateHighlightTitle(String? raw) {
   }
   return null;
 }
+
+/// Novo nome de um lance (renomear). Diferente do envio da sessão, vazio é erro: a pessoa
+/// está escrevendo um nome. Espelha `normalizeHighlightRename` em
+/// backend/functions/src/highlights/validation.ts.
+String? validateHighlightRename(String? raw) {
+  final title = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (title.isEmpty) return 'Dê um nome ao lance.';
+  if (title.length > highlightTitleMax) {
+    return 'O nome do lance pode ter até $highlightTitleMax caracteres.';
+  }
+  return null;
+}
+
+/// Ids da sessão e do lance ao renomear (espelha `normalizeHighlightRef` no servidor).
+String? validateHighlightRef(String raw) =>
+    _entityIdPattern.hasMatch(raw) ? null : 'Esse lance não foi encontrado. Tente de novo.';
 
 /// Momento do lance dentro da sessão, com 1 min de folga para o arredondamento do corte.
 String? validateHighlightOffset(int offsetSeconds, {required int sessionDurationSeconds}) {

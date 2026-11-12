@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_icon.dart';
@@ -26,6 +27,7 @@ class ClippoTextField extends StatefulWidget {
     this.onSubmitted,
     this.hasError = false,
     this.errorText,
+    this.inputFormatters,
   }) : _variant = _Variant.plain,
        password = null;
 
@@ -49,7 +51,8 @@ class ClippoTextField extends StatefulWidget {
        autocorrect = false,
        prefixText = null,
        readOnly = false,
-       onTap = null;
+       onTap = null,
+       inputFormatters = null;
 
   /// Confirmação de senha: mostra ✓ quando bate com [password] e "Não bate" quando não.
   const ClippoTextField.confirmation({
@@ -71,7 +74,8 @@ class ClippoTextField extends StatefulWidget {
        autocorrect = false,
        prefixText = null,
        readOnly = false,
-       onTap = null;
+       onTap = null,
+       inputFormatters = null;
 
   final String label;
   final String? hint;
@@ -97,6 +101,9 @@ class ClippoTextField extends StatefulWidget {
 
   /// Mensagem de erro só deste campo, mostrada logo abaixo. Também liga a borda de erro.
   final String? errorText;
+
+  /// Máscaras e filtros do que é digitado (ex.: `DateInputFormatter` para "dd/mm/aaaa").
+  final List<TextInputFormatter>? inputFormatters;
 
   /// Senha a comparar (só na variante de confirmação).
   final TextEditingController? password;
@@ -200,6 +207,7 @@ class _ClippoTextFieldState extends State<ClippoTextField> {
                             autofillHints: widget.autofillHints,
                             textCapitalization: widget.textCapitalization,
                             autocorrect: widget.autocorrect,
+                            inputFormatters: widget.inputFormatters,
                             enableSuggestions: !_isSecret,
                             obscureText: _isSecret && _obscured,
                             readOnly: widget.readOnly,

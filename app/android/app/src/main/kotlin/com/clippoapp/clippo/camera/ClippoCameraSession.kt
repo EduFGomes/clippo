@@ -3,15 +3,21 @@ package com.clippoapp.clippo.camera
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
+import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import android.view.OrientationEventListener
 import android.view.WindowManager
@@ -59,7 +65,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Ponte com o Dart:
  * - MethodChannel "clippo/camera": hasPermission, requestPermission, hasMicrophonePermission,
- *   requestMicrophonePermission, startPreview, start, stop, saveHighlight, signalSaved, copyToGallery;
+ *   requestMicrophonePermission, startPreview, start, stop, saveHighlight, signalSaved, copyToGallery,
+ *   extractThumbnail;
  * - EventChannel "clippo/camera/poses": um mapa por quadro analisado (formato em sendPose).
  */
 class ClippoCameraSession(private val activity: FlutterActivity) :
@@ -70,6 +77,10 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         const val POSES_CHANNEL = "clippo/camera/poses"
         const val PREVIEW_VIEW_TYPE = "clippo/camera-preview"
         private const val PERMISSION_REQUEST = 4201 // qualquer número, só para reconhecer a resposta
+        // Miniatura do lance: lado maior em px e qualidade do JPEG (fica em dezenas de KB; o teto
+        // de storage.rules é 1 MB).
+        private const val THUMBNAIL_MAX_SIDE = 640
+        private const val THUMBNAIL_JPEG_QUALITY = 80
         const val LANDMARK_COUNT = 33
         // x, y, z (profundidade) e confiança. Mudou? Mude PoseLandmarkIndex.valuesPerPoint no Dart.
         const val VALUES_PER_LANDMARK = 4
@@ -120,6 +131,11 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     private val saveExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     // Cópia para a galeria (fase de testes) em outra thread: não atrasa a análise dos quadros.
     private val galleryExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    // Miniatura do lance (na hora de enviar): thread própria, de prioridade baixa, para nunca
+    // entrar na fila na frente de um highlight sendo salvo (R2).
+    private val thumbnailExecutor: ExecutorService = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "clippo-thumbnail").apply { priority = Thread.MIN_PRIORITY }
+    }
 
     private var cameraProvider: ProcessCameraProvider? = null
     // A câmera aberta agora: a lanterna do aviso de highlight salvo acende por ela.
@@ -189,6 +205,21 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
+            // Bateria para o standby (toque na tela mostra tempo, lances e bateria). Sem permissão.
+            "batteryLevel" -> {
+                val manager = activity.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                val level = manager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                result.success(if (level == null || level < 0 || level > 100) null else level)
+            }
+            // Permissão negada de vez: só a tela do app nas Configurações do Android devolve.
+            "openAppSettings" -> {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", activity.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(intent)
+                result.success(null)
+            }
             "requestMicrophonePermission" -> requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), result)
             "startPreview" -> startPreview(
                 recordAudio = call.argument<Boolean>("recordAudio") ?: true,
@@ -217,10 +248,22 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 )
                 result.success(null)
             }
+            "signalFailed" -> {
+                signal.fail(
+                    sound = call.argument<Boolean>("sound") ?: false,
+                    vibrate = call.argument<Boolean>("vibrate") ?: false,
+                )
+                result.success(null)
+            }
             "copyToGallery" -> {
                 val path = call.argument<String>("path")
                     ?: return result.error("bad-arguments", "Faltou path.", null)
                 copyToGallery(path, result)
+            }
+            "extractThumbnail" -> {
+                val path = call.argument<String>("path")
+                    ?: return result.error("bad-arguments", "Faltou path.", null)
+                extractThumbnail(path, result)
             }
             "deleteHighlight" -> {
                 val path = call.argument<String>("path")
@@ -726,6 +769,73 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
     }
 
     /**
+     * Tira um quadro do meio de um highlight salvo e grava como JPEG ao lado do MP4 (mesmo nome,
+     * `.jpg`): a miniatura do lance na tela Sessão. Chamado pela fila de envio, nunca pelo gesto.
+     * Só aceita arquivos de `filesDir/highlights/`. Idempotente: se o JPEG já existe, devolve ele.
+     */
+    private fun extractThumbnail(path: String, result: MethodChannel.Result) {
+        thumbnailExecutor.execute {
+            try {
+                val folder = File(activity.filesDir, "highlights").canonicalFile
+                val video = File(path).canonicalFile
+                if (video.parentFile != folder || !video.isFile) {
+                    throw IllegalArgumentException("O vídeo não está na pasta de highlights.")
+                }
+                val target = File(folder, "${video.nameWithoutExtension}.jpg")
+                if (!target.isFile || target.length() == 0L) {
+                    writeThumbnail(video, target)
+                }
+                activity.runOnUiThread { result.success(mapOf("path" to target.absolutePath)) }
+            } catch (e: Exception) {
+                Log.w("ClippoBuffer", "não foi possível gerar a miniatura: $path", e)
+                activity.runOnUiThread { result.error("thumbnail-failed", "Erro ao gerar a miniatura: ${e.message}", null) }
+            }
+        }
+    }
+
+    /** Roda no thumbnailExecutor. O JPEG sai com no máximo [THUMBNAIL_MAX_SIDE] px no lado maior. */
+    private fun writeThumbnail(video: File, target: File) {
+        val retriever = MediaMetadataRetriever()
+        val frame: Bitmap
+        try {
+            retriever.setDataSource(video.absolutePath)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            // O quadro-chave mais perto do meio do trecho: decodifica rápido e costuma mostrar o lance.
+            frame = retriever.getFrameAtTime(durationMs * 1000 / 2, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime()
+                ?: throw IllegalStateException("O vídeo não devolveu nenhum quadro.")
+        } finally {
+            retriever.release()
+        }
+        val scale = THUMBNAIL_MAX_SIDE.toFloat() / maxOf(frame.width, frame.height)
+        val small = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                frame,
+                maxOf(1, (frame.width * scale).toInt()),
+                maxOf(1, (frame.height * scale).toInt()),
+                true,
+            )
+        } else {
+            frame
+        }
+        // Escreve ao lado e troca: um JPEG pela metade nunca fica com o nome final.
+        val temp = File(target.parentFile, "${target.name}.tmp")
+        try {
+            temp.outputStream().use { output ->
+                if (!small.compress(Bitmap.CompressFormat.JPEG, THUMBNAIL_JPEG_QUALITY, output)) {
+                    throw IllegalStateException("Não foi possível comprimir o quadro.")
+                }
+            }
+            if (!temp.renameTo(target)) throw IllegalStateException("Não foi possível gravar a miniatura.")
+        } finally {
+            temp.delete()
+            if (small !== frame) small.recycle()
+            frame.recycle()
+        }
+    }
+
+    /**
      * Apaga um highlight salvo da pasta interna do app (quando a sessão é descartada, R14, ou
      * depois que o vídeo subiu para o banco, R13). Idempotente: se já não existe, conclui sem erro.
      */
@@ -736,6 +846,10 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
                 val target = File(path).canonicalFile
                 if (target.parentFile == folder && target.exists()) {
                     target.delete()
+                }
+                // A miniatura gerada para o envio fica ao lado do MP4: vai junto.
+                if (target.parentFile == folder) {
+                    File(folder, "${target.nameWithoutExtension}.jpg").delete()
                 }
                 activity.runOnUiThread { result.success(null) }
             } catch (e: Exception) {
@@ -896,5 +1010,6 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
         saveExecutor.shutdown()
         signal.release()
         galleryExecutor.shutdown()
+        thumbnailExecutor.shutdown()
     }
 }

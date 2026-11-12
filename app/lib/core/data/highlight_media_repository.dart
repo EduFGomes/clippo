@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueChanged;
+
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -57,7 +59,8 @@ class HighlightVideoStream {
 /// pessoa, sem login, e furaria a R11. Para assistir, o player busca o vídeo aos poucos
 /// ([videoStream]) com o login e o App Check de quem pede, e as regras valem para cada
 /// pedaço. Para baixar e compartilhar, o SDK (que também passa pelas regras) baixa o arquivo
-/// inteiro para uma pasta de cache do app ([videoFile]).
+/// inteiro para uma pasta de cache do app ([videoFile]). A miniatura vem do mesmo jeito
+/// ([thumbnailFile]).
 class HighlightMediaRepository {
   HighlightMediaRepository({
     FirebaseStorage? storage,
@@ -152,10 +155,58 @@ class HighlightMediaRepository {
       File('${(await _cacheDir()).path}/clippo-videos/${storagePath.replaceAll('/', '_')}');
 
   /// O vídeo do lance como arquivo local, baixado uma vez e guardado no cache.
-  Future<File> videoFile(String storagePath) async {
+  ///
+  /// [onProgress] recebe de 0 a 1 enquanto o arquivo chega (o "Baixando 40 %" do Player).
+  /// Já no cache, chama 1 na hora.
+  Future<File> videoFile(String storagePath, {ValueChanged<double>? onProgress}) async {
     final cached = await cachedVideoFile(storagePath);
-    if (cached != null) return cached;
+    if (cached != null) {
+      onProgress?.call(1);
+      return cached;
+    }
     final file = await _cacheFileOf(storagePath);
+    await file.parent.create(recursive: true);
+    final partial = File('${file.path}.part');
+    try {
+      final task = _storage().ref(storagePath).writeToFile(partial);
+      final events = onProgress == null
+          ? null
+          : task.snapshotEvents.listen((s) {
+              if (s.totalBytes > 0) onProgress((s.bytesTransferred / s.totalBytes).clamp(0.0, 1.0));
+            }, onError: (Object _) {});
+      try {
+        await task;
+      } finally {
+        await events?.cancel();
+      }
+      onProgress?.call(1);
+      return await partial.rename(file.path);
+    } catch (e) {
+      if (await partial.exists()) await partial.delete();
+      throw HighlightMediaFailure.from(e);
+    }
+  }
+
+  final Map<String, Future<File>> _thumbnailLoads = {};
+
+  /// A miniatura do lance como arquivo local, baixada uma vez e guardada no cache.
+  ///
+  /// Como o vídeo, **sem `getDownloadURL()`**: o SDK baixa com o login e o App Check de quem
+  /// pede, e as regras do Storage (D17) decidem. Falha (com [HighlightMediaFailure]) quando a
+  /// miniatura ainda não subiu ou o lance é antigo e não tem uma: a tela mostra o desenho de
+  /// quadra no lugar.
+  Future<File> thumbnailFile(String storagePath) {
+    checkPath(storagePath, expectedFile: 'thumb.jpg');
+    // Vários cards pedindo a mesma miniatura ao mesmo tempo dividem um download só.
+    // (Bloco, e não `=>`: o `remove` devolve este mesmo Future, e o whenComplete esperaria por ele.)
+    return _thumbnailLoads[storagePath] ??= _loadThumbnail(storagePath).whenComplete(() {
+      _thumbnailLoads.remove(storagePath);
+    });
+  }
+
+  Future<File> _loadThumbnail(String storagePath) async {
+    final file = File('${(await _cacheDir()).path}/clippo-thumbs/${storagePath.replaceAll('/', '_')}');
+    if (await file.exists() && await file.length() > 0) return file;
     await file.parent.create(recursive: true);
     final partial = File('${file.path}.part');
     try {
@@ -168,7 +219,8 @@ class HighlightMediaRepository {
   }
 
   /// "Baixar": salva o vídeo do lance na galeria do celular (R11: todo participante baixa).
-  Future<void> saveToGallery(String storagePath) async => saveFileToGallery(await videoFile(storagePath));
+  Future<void> saveToGallery(String storagePath, {ValueChanged<double>? onProgress}) async =>
+      saveFileToGallery(await videoFile(storagePath, onProgress: onProgress));
 
   /// "Baixar" de um vídeo que já está no celular (o MP4 da pasta do app, antes de subir):
   /// só copia para a galeria, sem passar pela nuvem.

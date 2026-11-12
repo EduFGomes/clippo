@@ -46,7 +46,7 @@ O Clippo fala como **um amigo do time que entende de tecnologia**: direto, anima
 - **Erros dizem o que fazer**: "E-mail ou senha incorretos.", "Não bate".
 - O gesto se escreve **\ o /** no texto corrido e **\O/** quando é marca gigante em Anton.
 - **Números em algarismos**: "3 sessões juntos", "7 highlights". Durações: "1h 42min", "58min".
-- **Datas**: "11 set 2026"; horários "19:30 – 21:12". 🟡 Para sessões recentes, "Hoje" e "Ontem" podem substituir a data.
+- **Datas**: "11 set 2026"; horários "19:30 – 21:12". Em listas e cabeçalhos, sessões de hoje e de ontem aparecem como **"Hoje"** e **"Ontem"** (`clippoRelativeDate`; grupo, 12/11/2026). Campos de formulário mostram a data exata (`clippoDate`).
 - **Momento dentro da sessão**: "00:12:40" (horas:minutos:segundos desde o início da gravação), seguido da duração do trecho: "00:12:40 · 30s".
 - Evite exclamação; no máximo uma, e só em comemoração. Sem emojis na interface.
 - Separador de informações na mesma linha: ponto médio com espaços ( · ).
@@ -72,17 +72,18 @@ Use exatamente assim.
 | Como funciona — passos | Apoie o celular · Em qualquer canto da quadra, de frente para o jogo. / Jogue normalmente · O Clippo guarda sempre os últimos 30 segundos. / Fez um lance bom? \ o / · Levante os dois braços para a câmera e o lance fica salvo. |
 | Como funciona — ações | Criar conta · Já tenho conta |
 | Criar conta — título | CRIAR / CONTA. · Seus lances ficam guardados na sua conta. |
-| Criar conta — campos | E-mail (voce@email.com) · Senha (mínimo de 6 caracteres) · Confirme a senha (repita a senha) |
-| Medidor de senha | 6+ caracteres → Pronto |
+| Criar conta — campos | E-mail (voce@email.com) · Senha (mínimo de 8 caracteres) · Confirme a senha (repita a senha) |
+| Medidor de senha | 8+ caracteres → falta maiúscula → falta minúscula → falta número → Pronto |
 | Confirmação diferente | Não bate |
 | Criar conta — rodapé | Criar conta · Já tem conta? Entrar |
 | Entrar — título | DE VOLTA / AO JOGO. · Seus highlights estão te esperando. |
 | Entrar — campos | E-mail (voce@email.com) · Senha (sua senha) |
 | Entrar — erro | E-mail ou senha incorretos. |
-| Entrar — link | Esqueci a senha |
+| Entrar — link | Esqueci a senha *(enviando: Enviando…)* |
+| Entrar — link enviado | Se esse e-mail tem conta, o link para criar outra senha já foi. |
 | Entrar — rodapé | Entrar · Ainda não tem conta? Criar conta |
 | Completar perfil — título | QUASE / LÁ. · Escolha como seus amigos vão te achar. |
-| Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa) |
+| Completar perfil — campos | Nome · Nome de usuário (@, letras, números, "_" e ".") · Data de nascimento (dd/mm/aaaa, digitada; teclado numérico) |
 | Completar perfil — nota da data | Não aparece no seu perfil. Usamos só para estatísticas gerais. |
 | Completar perfil — ações | Continuar · Sair |
 | Olho da senha (acessibilidade) | Mostrar senha · Ocultar senha |
@@ -93,7 +94,7 @@ Use exatamente assim.
 | Campo | Texto |
 |---|---|
 | E-mail | Informe seu e-mail. · Esse e-mail não parece válido. |
-| Senha | Informe a senha. · Use uma senha com pelo menos 6 caracteres. · A senha pode ter até 128 caracteres. |
+| Senha | Informe a senha. · Use uma senha com pelo menos 8 caracteres. · Use letra maiúscula, minúscula e número na senha. · A senha pode ter até 128 caracteres. |
 | Confirmação | Repita a senha. · As senhas não são iguais. |
 | Nome | Informe seu nome. · O nome pode ter até 50 caracteres. |
 | Nome de usuário | Escolha um nome de usuário. · O nome de usuário precisa ter de 3 a 20 caracteres. · Use só letras sem acento, números, "_" e ".". · O ponto não pode ficar no começo, no fim ou repetido. |
@@ -107,6 +108,7 @@ Use exatamente assim.
 |---|---|
 | Início — saudação | Boa noite, Gustavo *(Bom dia / Boa tarde / Boa noite + primeiro nome)* |
 | Início — título | Suas sessões |
+| Início — atalho ao lado do título | Gravar *(leitor de tela: Gravar uma sessão)* |
 | Card de sessão | 11 set 2026 · 7 highlights |
 | Card aberto — botão | Ver highlights |
 | Participantes | 10 participantes |
@@ -117,22 +119,36 @@ Use exatamente assim.
 | Gravação — rótulo dos chips | Gravar com |
 | Chip padrão | Gravar sozinho |
 | Chip de amigo | Com Rafa *(primeiro nome)* |
-| Legenda do botão de gravar | Iniciar detecção de gesto \ o / |
-| Aviso ao salvar | **Highlight salvo** · últimos 30s · gesto \ o / detectado |
+| Legenda do botão de gravar | Iniciar detecção de gesto \ o / *(voltou da confirmação com lances: Continuar a sessão · 2 highlights)* |
+| Aviso ao salvar | **Salvando o lance…** · gesto \ o / detectado → **Highlight salvo** · últimos 30s · gesto \ o / detectado |
+| Aviso de falha ao salvar | *(o erro, ex.: Não foi possível salvar o lance.)* · Faça \ o / de novo para tentar outra vez. |
+| Sem microfone (sobre a câmera) | Sem microfone · toque para permitir |
+| Microfone negado (configurações da gravação) | Sem permissão. Toque aqui para liberar nas configurações. |
+| Standby — ao ligar (some sozinho) | Detecção ligada. Toque na tela para encerrar. |
 | Controles do standby | Encerrar sessão · Cancelar gravação |
+| Cancelar gravação — aviso | Cancelar gravação? · Você perde 3 highlights desta gravação. Para guardar, continue e toque em "Encerrar sessão". · Parar e descartar · Continuar gravando *(sem lances: A gravação para e você volta para a câmera. · Parar gravação)* |
+| Sair com lances não salvos — aviso | Sair sem salvar? · Você perde 3 highlights desta sessão. · Voltar e salvar · Sair e descartar |
 | Fim — voltar | Voltar à câmera |
 | Fim — resumo | Gravação encerrada · 4 highlights |
 | Fim — título | Confirme a sessão |
-| Fim — rótulos | Nome da sessão · Data · Horário · Local · sugerido por GPS · Participantes |
+| Editar lance — título | EDITAR / LANCE. · Todos da sessão veem o nome novo. |
+| Editar lance — campo e botões | Nome do lance · Ex.: Voleio do Rafa · Salvar nome · Apagar lance |
+| Apagar lance | Apagar lance? · Lance 3 some para todos da sessão, com o vídeo. Não dá para desfazer. · Apagar lance · Manter lance · Lance apagado. |
+| Renomear lance — confirmação | Lance renomeado. |
+| Renomear lance — erros | Dê um nome ao lance. · O nome do lance pode ter até 50 caracteres. · Só quem gravou a sessão renomeia os lances. |
+| Fim — rótulos | Nome da sessão · Data · Horário · Local (Ex.: Quadra do Parque) · Participantes |
+| Fim — seletores | Data da sessão · Começou às · Terminou às *(Material em PT-BR: Cancelar · OK, relógio de 24 h)* |
 | Fim — participante você | Você |
 | Fim — adicionar | + adicionar |
 | Fim — ações | Salvar sessão · Descartar |
+| Sessão — excluir (dono) | Excluir sessão · Excluir sessão? · Pelada de quinta e 7 highlights somem para todos os participantes. Não dá para desfazer. · Excluir sessão · Manter sessão · Sessão excluída. |
 | Amigos — botão | Convidar |
 | Amigos — busca | Buscar amigo ou usuário |
 | Amigos — linha secundária | 12 sessões juntos · nenhuma sessão ainda |
 | Perfil — estatísticas | sessões · highlights · amigos |
-| Perfil — linhas | Nome · Usuário · Notificações |
-| Sair | Sair da conta |
+| Perfil — linhas | Nome · Usuário |
+| Sair | Sair da conta · Sair da conta? · Lances que ainda não subiram ficam guardados neste celular e sobem quando você entrar de novo. · Sair · Ficar |
+| Excluir conta | Excluir conta · Excluir sua conta? · Seu perfil, suas amizades e as sessões que você gravou somem para todo mundo, com os lances. Das sessões dos outros, você sai. Não dá para desfazer. · Excluir conta · Manter conta |
 
 **Estados** 🟡
 
@@ -143,11 +159,13 @@ Use exatamente assim.
 | Início vazio — botão | Gravar primeira sessão |
 | Sessão sem highlights | Nenhum lance salvo nessa sessão |
 | Highlight ainda subindo | enviando… |
+| Nome padrão do lance | Lance 3 *(pela ordem na sessão; antes, o app sorteava nomes "criativos", que trocavam de lance quando a lista mudava)* |
+| Card de sessão ainda no aparelho | 11 set 2026 · 7 highlights · enviando… *(sem internet: sobe quando conectar; recusada pelo servidor: envio parado)* |
 | Sem internet | Sem internet. Seus highlights sobem quando conectar. |
 | Erro genérico | Algo deu errado. |
 | Botão de erro | Tentar de novo |
 | Amigos vazio | Adicione quem joga com você |
-| Permissão de câmera | O Clippo precisa da câmera para gravar os lances. |
+| Permissão de câmera | O Clippo precisa da câmera para gravar os lances. · Permitir câmera *(negada de vez: Abrir configurações)* |
 | Permissão de localização | Usamos sua localização só para sugerir o local da sessão. |
 | Frase-assinatura | Levantou os braços, o lance está salvo. |
 
@@ -201,6 +219,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 |---|---|---|
 | `captureBackground` | `#000000` | Estados B e C. **Preto puro** — em telas OLED o pixel desliga. Nunca cinza escuro. |
 | `captureOverlay` | `#141013` a 60 % | Voltar e dica flutuando sobre a câmera |
+| `captureScrim` | `#141013` a 85 % | Fundo de rótulo pequeno sobre a câmera ("Gravar com", aviso de amigos): 4,5:1 até sobre imagem branca. Desde 11/11/2026 |
 | `captureChip` / `captureChipBorder` | `onWine` a 12 % / 22 % | Chip não selecionado sobre a câmera |
 | `captureTextMuted` | `onWine` a 70 % | Legendas sobre a câmera |
 | `captureRecordRing` | `onWine` a 35 % | Anel do botão de gravar |
@@ -216,7 +235,7 @@ Todos os valores estão em [`clippo_tokens.dart`](../app/lib/core/theme/clippo_t
 | `text` | `#FFF1E8` | `#241014` | Texto principal e ícones |
 | `textMuted` | `#FFF1E8` a 62 % | `#241014` a 64 % | Subtítulos e descrições |
 | `textLabel` | `#FFF1E8` a 55 % | `#241014` a 58 % | Rótulo dentro do campo, ícone do olho |
-| `placeholder` | `#FFF1E8` a 32 % | `#241014` a 36 % | Texto de exemplo no campo |
+| `placeholder` | `#FFF1E8` a 50 % | `#241014` a 60 % | Texto de exemplo no campo (4,8:1 sobre `surface`; era 32 % / 36 %, abaixo de 3:1, até 11/11/2026) |
 | `accent` | `#FFC6A8` | `#741A2F` | 2ª linha do título, links, borda de foco, medidor, passo em destaque, ✓ |
 | `accentSoft` | `accent` a 18 % | `accent` a 14 % | Sem uso no momento (era a fatia acesa da roda de navegação) |
 | `primary` | `#FFC6A8` | `#741A2F` | Fundo do botão primário |
@@ -290,7 +309,7 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 | `meter` | 4 | Espessura do traço do medidor |
 | `glowHeight` | 460 | Altura do degradê do topo |
 | `icon` | 24 | Ícone da marca (grade 24) |
-| `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel da cor do fundo em volta dele |
+| `navButton` · `navRing` | 56 · 4 | Botão da roda de navegação · anel em volta dele: da cor do fundo no tema claro, `accent` no escuro (vinho sobre o fundo escuro tem ~1,8:1) |
 | `navItem` · `navRadius` | 56 · 118 | Círculo de cada seção · raio do arco onde elas pousam |
 | `navBottom` · `navClearance` | 28 · 130 | Botão até a base (+ área segura) · folga no fim da tela para a roda não cobrir |
 | `navMagnetRange` · `navMagnetPull` | 110 · 10 | Roda: até onde o dedo atrai e amplia as seções (até +16 %) · quanto a seção acesa é puxada na direção do dedo |
@@ -307,7 +326,7 @@ Títulos em Anton com mais de uma linha usam altura de linha **1,3** (era 1,0 no
 
 Espaços ficam em `ClippoSpace` (`spaceXs`…`screenBottom` e os demais respiros), raios em `ClippoRadius` (`radiusField`, `radiusPill`) e tamanhos em `ClippoSize`.
 
-**Opacidades** (`ClippoOpacity`): `disabled` 45 % (controle desabilitado) · `textButton` 85 % (botão de texto).
+**Opacidades** (`ClippoOpacity`): `disabled` 45 % (controle desabilitado) · `textButton` 85 % (botão de texto) · `pressed` 60 % (chip, pílula, voltar e ícone enquanto o dedo está em cima, no `ClippoPressable`).
 
 Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background` e do degradê do topo.
 
@@ -322,6 +341,8 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `enable` | 200 ms | Botão desabilitado → habilitado |
 | `wheelOpen` · `wheelClose` | 360 ms · 180 ms | Roda de navegação abrindo · fechando |
 | `navPreview` | 90 ms | Balão acima da seção surgindo na roda (com a curva `pop`) |
+| `press` | 80 ms | Apagar ao tocar (`ClippoPressable`) |
+| `searchDebounce` | 400 ms | Busca de Amigos: parou de digitar → procura o @ exato no Clippo |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
@@ -347,22 +368,28 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por componente. Os componentes do onboarding foram feitos pelo Gabriel; em 20/10/2026 ele passou os das telas internas para quem estiver fazendo cada tela. Vale a mesma regra de sempre: **procure antes de criar**, e componente novo nasce aqui, nunca dentro de uma feature. A seção 5 é o padrão que quem cria componentes segue.
 
 - **`ClippoScreenGround`** — fundo de toda tela depois da boas-vindas: degradê vertical de `backgroundGlow` para `background` nos primeiros `glowHeight`, depois `background` liso. Padding `gutter` nas laterais, `sectionL` no topo (abaixo da área segura) e `screenBottom` + área segura embaixo. Com `enterFromWelcome: true`, uma camada `wine` cobre a tela e some em 700 ms (`standard`), sem bloquear toques. Recebe o conteúdo em `child` e a pilha de ações em `footer`, que fica presa no rodapé e rola junto quando não cabe (fonte grande, teclado aberto). Já inclui o `Scaffold` e a cor dos ícones da barra de status.
+- **`ClippoPressable(onTap, child)`** — base de tudo que é tocável e não é botão primário (chips, pílulas, voltar, ✕, ícones do Player): enquanto o dedo está em cima, o conteúdo fica a `pressed` (60 %), em `press`. O app é plano, sem ripple; é assim que a pessoa vê que o toque pegou. Quem usa garante a área de `minTouchTarget`. Adotado em 11/11/2026.
+- **`showClippoMessage(message)`** — o aviso depois de uma ação, em todas as telas fora da Gravação: faixa `wine` no rodapé com texto `label` / `onWine`, some em `savedBanner`; um aviso novo troca o anterior. Região viva para o leitor de tela. Ver **Avisos** abaixo. Adotado em 11/11/2026 (antes, Início, Perfil e Amigos avisavam cada uma de um jeito).
 - **`ClippoBackButton`** — círculo `control` com fundo `controlSoft` e chevron para a esquerda (traço 1,8, 22 dp, `text`). Área de toque `minTouchTarget`. Semântica "Voltar".
 - **`ClippoScreenTitle(line1, line2, subtitle?)`** — `displayL` em MAIÚSCULAS, linha 1 em `text`, linha 2 em `accent`; subtítulo em `bodyL` / `textMuted` 12 dp abaixo. Fica `section` abaixo do voltar.
 - **`ClippoPrimaryButton(label, onPressed, enabled, loading)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. `loading` mostra um indicador e ignora toques. Variante `ClippoPrimaryButton.onWine` para a boas-vindas: fundo `peach` (pressionado `peachPressed`), texto `onPeach`.
+- **`ClippoPrimaryButton.danger(label, onPressed)`** — o mesmo botão com fundo `error` e texto `onPrimary` (pressionado: `error` a 85 %). Só para confirmar o que apaga ou não tem volta ("Excluir sessão", "Remover", "Apagar lance"); a saída segura fica no `ClippoTextButton` embaixo. Adotado em 10/11/2026.
+- **`ClippoPillButton(label, icon, onPressed)`** — atalho em pílula ao lado do título da tela: contorno 1,5 e texto `label` em `accent` sobre `accentSoft`, ícone `checkIcon`, toque `minTouchTarget`. "Convidar" em Amigos, "Gravar" na Início.
+- **`showClippoNotice(title, message, closeLabel)`** — o mesmo diálogo do `showClippoConfirm`, com um botão só ("Entendi"): explica algo sem pedir decisão ("Seus dados no Clippo", ao lado da data de nascimento). Adotado em 11/11/2026.
+- **`showClippoConfirm(title, message, confirmLabel, cancelLabel, destructive)`** — diálogo de confirmação sobre `surface` com `radiusField`: título `titleS`, mensagem `body` / `textMuted`, ação principal (`ClippoPrimaryButton`, ou `.danger` com `destructive`) e saída em `ClippoTextButton`. Devolve true só se a pessoa confirmou.
 - **`ClippoTextButton(label)`** — sem fundo, altura `textButtonHeight`, `link` em `text` a 85 % (na boas-vindas, `ClippoTextButton.onWine`: `onWine` a 85 %).
 - **`ClippoLinkLine(prefix, action, onPressed)`** — centralizado, altura `textButtonHeight`: `prefix` em `bodyL` / `textMuted` + `action` em `linkStrong` / `accent`. A linha inteira é tocável. Ex.: "Já tem conta?" + "Entrar".
 - **`ClippoTextField(label, hint, …)`** — bloco `surface`, `radiusField`, padding 12 · 18 (direita 8 quando há botão), sem borda em repouso, borda 1,5 em `accent` com foco (`focus`), em `error` com erro. Rótulo `label` / `textLabel` em cima; valor `input` / `text` 3 dp abaixo; hint em `placeholder`; cursor `accent`. Também aceita `prefixText` (o "@" do usuário), `readOnly` + `onTap` (campo que abre o seletor de data), `hasError` (só a borda) e `errorText` (borda + mensagem em `label` / `error` logo abaixo).
   - **Senha** (`ClippoTextField.password`): botão do olho à direita (`control`, transparente, ícone 20 em `textLabel`) alterna mostrar/ocultar, com a semântica "Mostrar senha" / "Ocultar senha".
   - **Confirmação** (`ClippoTextField.confirmation`, recebe o controller da senha): à direita, círculo `check` em `accent` com ✓ (traço 3) em `onPrimary` quando igual à senha; "Não bate" em `label` / `error` quando o tamanho já alcançou o da senha e é diferente.
   - **Mensagem de erro geral:** `label` / `error`, abaixo dos campos.
-- **`ClippoPasswordMeter(length)`** — 6 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles; acesos (`min(length, 6)`) em `accent`, os outros em `line`; legenda à direita em `label`: "6+ caracteres" (`textMuted`) ou "Pronto" (`accent`). Fica 10 dp abaixo do campo de senha, com recuo lateral de 6. Fora da semântica (o requisito já está no hint).
+- **`ClippoPasswordMeter(password)`** — 4 traços de espessura `meter`, largura flexível, `radiusPill`, `spaceXs` entre eles, um por exigência da senha nova (8+ caracteres, maiúscula, minúscula, número): aceso em `accent` quando cumprida, em `line` quando não. Legenda à direita em `label`, com o que falta ("8+ caracteres", "falta maiúscula"…) em `textMuted` ou "Pronto" em `accent`; a legenda é região viva para o leitor de tela. Fica 10 dp abaixo do campo de senha, com recuo lateral de 6.
 - **`ClippoStepList(steps, highlightIndex)`** — uma linha por passo: círculo `step` com número em Archivo 600 15 e contorno 1,5 em `outline`; o destacado é preenchido em `accent`, número em `onPrimary`; linha vertical 1,5 em `line` ligando os círculos; texto a `spaceL`: título `titleS`, descrição `body` / `textMuted` 6 dp abaixo; 36 dp entre passos. Cada passo é um `ClippoStep(title, description, titleAccent)`; `titleAccent` é o trecho final do título em `accent` (o "\ o /").
 - **`ClippoAvatar(name, photoUrl?, size, ring?)`** — foto redonda de uma pessoa. Sem foto, mostra a inicial do nome em `textMuted` sobre `controlSoft`; a inicial fica atrás da foto, então ela reaparece se a imagem não carregar. `ring` desenha um anel da cor do fundo, para separar avatares sobrepostos. Tamanhos: `avatar` na lista, `avatarLarge` no topo da Início.
 - **`ClippoAvatarRow(people, hidden, size, ring?)`** — os participantes de uma sessão, cada um cobrindo o anterior em `avatarOverlap`, com um círculo **"+N"** no fim quando sobra gente (a Início mostra até 5). Recebe `ClippoAvatarPerson(name, photoUrl?)`, não o modelo de dados. A fileira inteira tem um único rótulo de acessibilidade com os nomes.
-- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"); o chevron gira meia volta. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
-- **`ClippoHighlightTile(title, timing, onTap, thumbnailUrl?, uploading)`** — uma linha de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura `thumbnailWidth` × `thumbnailHeight` à esquerda com botão de play circular (`playBadge`) sobreposto; à direita, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`).
-- **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. Baseado no protótipo v2, adotado em 20/10/2026.
+- **`ClippoSessionCard(title, summary, expanded, onToggle, …)`** — um jogo na lista da Início, em sanfona sobre `surface` com `radiusField` e respiro `cardPadding`. Fechado: nome em `titleS` e `summary` em `label` / `textMuted` ("11 set 2026 · 7 highlights"), com o chevron apontando para baixo. Aberto: local, `ClippoAvatarRow`, `details` ("1h 42min · 10 participantes") e um `ClippoPrimaryButton` ("Ver highlights"; sem `onAction`, o botão não aparece); o chevron gira meia volta. Com `onAction`, tocar no card já faz a ação (um toque da Início até os highlights) e o chevron vira um botão próprio de `minTouchTarget` ("Mostrar detalhes de …") que abre e fecha; sem `onAction`, o card inteiro abre e fecha. Desde 11/11/2026. Quem decide qual card está aberto é a tela — só um por vez —, por isso `expanded` e `onToggle` vêm de fora. Recebe texto já formatado (ver `core/format/clippo_format.dart`), não o modelo.
+- **`ClippoHighlightTile(title, timing, onTap, thumbnail?, uploading, onRename?)`** — um card de highlight na tela Sessão sobre `surface` com `radiusField`. Miniatura com altura `thumbnailHeight` em cima, com botão de play circular (`playBadge`) sobreposto; embaixo, título em `titleS` e linha de tempo (`clock` + "00:12:40 · 30s" ou "00:12:40 · enviando…") em `label` tabular (`accent` quando `uploading`). `thumbnail` é um `ImageProvider` (no app, um `FileImage` da miniatura no aparelho); sem ele, enquanto carrega ou se a imagem não abrir, aparece o desenho de quadra. `onRename` (só o dono da sessão) mostra o ícone `edit` em `textMuted` ao lado do título, com área de toque `minTouchTarget`, e uma ação "Renomear lance" para o leitor de tela.
+- **`ClippoRadialNav(items, currentIndex, onSelected)`** — a navegação de nível superior: um botão vinho no centro inferior com o ícone da seção atual. Toque abre a roda; segurar e arrastar (do botão ou de uma seção) faz as seções reagirem ao dedo como um ímã com lupa — crescem até +16 % conforme ele se aproxima (`navMagnetRange`) e a seção acesa é puxada até `navMagnetPull` na direção dele, tudo calculado direto da posição do dedo, sem atraso; ao soltar, voltam ao lugar em `focus` — e soltar confirma; soltar perto do botão cancela; "Voltar" do Android fecha. Enquanto o dedo está em cima do ícone de uma seção, um balão vinho pequeno, sem ponta, aparece preso logo acima dela com o ícone e o nome, como a tecla do teclado; saiu do ícone, ele some (com "reduzir movimento", some só a animação, não o balão). As seções pousam num arco de 144° a `navRadius` do botão, com o nome embaixo, sem linha-guia e sem texto de dica acima. Fica por cima do conteúdo, e a tela embaixo precisa de `navClearance` de folga no fim — o `AppShell` faz isso aumentando a área segura, então nenhuma tela precisa saber da roda. O `ClippoScreenGround` põe essa área segura como espaço no fim da rolagem (a lista passa por trás da roda até a base da tela), não como corte. Com o teclado aberto a roda some, a folga também, e só a tela encolhe para o teclado (o `AppShell` não). Desde 11/11/2026. Baseado no protótipo v2, adotado em 20/10/2026.
 - **`ClippoSvgIcon(name, color, size)`** — desenha um SVG de `assets/icons/`. Passe só o nome, sem pasta nem extensão. Para os ícones dos controles (voltar, olho, ✓), use o `ClippoIcon`, que desenha em código e não depende de asset.
 - **`ClippoIcon(shape, size, color)`** — apoio dos componentes: chevron, olho, olho cortado e ✓ desenhados em código na grade de 24, com os traços dos SVGs da marca. Telas não usam direto.
 
@@ -370,7 +397,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 
 - **`ClippoRecordButton(caption, onPressed)`** — círculo `recordButton` em `wine` (pressionado `wineDeep`) com o ícone `capture` em `onWine` (`recordIcon`), anel `recordRing` em `captureRecordRing`; legenda em `label` / `captureTextMuted` `spaceM` abaixo. A legenda é o rótulo de acessibilidade.
 - **`ClippoCaptureChip(label, selected, onPressed)`** — pílula de altura `captureChip` (toque `minTouchTarget`), texto `label`. Não selecionado: `captureChip` com borda 1,5 em `captureChipBorder`, texto `onWine`. Selecionado: `peach`, texto `onPeach`. A troca anima em `focus`. Semântica com o estado "selecionado".
-- **`ClippoPulseDot()`** — ponto `pulseDot` em `wine` que acende e apaga num ciclo de `standbyPulse` (de 45 % a 100 %). Parado com "reduzir movimento". Semântica "Detecção do gesto ligada".
+- **`ClippoPulseDot()`** — ponto `pulseDot` em `peach` que acende e apaga num ciclo de `standbyPulse` (de 45 % a 100 %). Era `wine` até 10/11/2026; vinho sobre o preto tem contraste de ~1,9:1 e sumia no sol. Parado com "reduzir movimento". Semântica "Detecção do gesto ligada".
 - **`ClippoCaptureToast(title, detail?, success)`** — aviso centralizado: círculo `check` em `peach` com ✓ em `onPeach` (só quando `success`), título em `titleS` / `onWine`, detalhe em `label` / `captureTextMuted`. Região viva para o leitor de tela. Sem fundo nem tarja.
 - **`ClippoGhostButton(label, onPressed)`** — pílula contornada de altura `buttonHeight`, borda 1,5 em `captureGhostBorder`, texto `button` em `onWine` a 85 %. Ação que desfaz sobre o preto ("Cancelar gravação"); a ação principal ao lado é o `ClippoPrimaryButton.onWine`.
 
@@ -379,6 +406,16 @@ Para ver todos os componentes nos dois temas: catálogo do app › **Componentes
 🟡 **Componentes das telas internas que ainda faltam** (cabeçalho de impacto da Sessão, linha de highlight, chips fora da gravação, switch, estatísticas): desenhe na direção C, nesta pasta, seguindo a seção 5. Card de sessão, avatares, a roda de navegação e os componentes da gravação já estão prontos. A especificação antiga (direção v1) está no histórico do Git, no `docs/04-design-system.md` do commit `51247d6`, só para consulta.
 
 ---
+
+### Avisos
+
+Três lugares, cada um para uma coisa:
+
+- **Resultado de uma ação** ("Pedido enviado.", "Lance apagado.", erro do servidor numa ação): `showClippoMessage`, no rodapé. Nunca uma linha no topo da lista.
+- **Erro de formulário**: embaixo do campo (`ClippoTextField.errorText`), e o erro geral embaixo do botão de enviar.
+- **Gravação**: `ClippoCaptureToast` sobre o preto, porque a pessoa está longe do celular.
+
+Um estado que continua valendo (sem internet, lista que não carregou) não é aviso: fica na própria tela, no lugar do conteúdo.
 
 ## 5. Como criar um componente no padrão Clippo
 

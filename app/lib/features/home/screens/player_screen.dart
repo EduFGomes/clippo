@@ -11,6 +11,7 @@ import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 
@@ -74,8 +75,8 @@ class PlayerScreen extends StatefulWidget {
   /// Substitui `mediaRepository.videoFile` (testes).
   final HighlightVideoLoader? loadVideo;
 
-  /// Substitui `mediaRepository.saveToGallery` (testes).
-  final Future<void> Function(String storagePath)? saveToGallery;
+  /// Substitui `mediaRepository.saveToGallery` (testes). Chama `onProgress` de 0 a 1.
+  final Future<void> Function(String storagePath, ValueChanged<double> onProgress)? saveToGallery;
 
   /// Substitui o compartilhamento do sistema (testes).
   final HighlightVideoSharer? shareVideo;
@@ -103,10 +104,11 @@ class PlayerScreen extends StatefulWidget {
 enum _Stage { uploading, unavailable, loading, ready, error }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final List<Highlight> _items = ensureDistinctHighlightTitles(widget.highlights);
+  late final List<Highlight> _items = List<Highlight>.unmodifiable(widget.highlights);
   late int _currentIndex =
       _items.isEmpty ? 0 : widget.initialIndex.clamp(0, _items.length - 1);
   late final PageController _pageController = PageController(initialPage: _currentIndex);
+  final GlobalKey _pagesKey = GlobalKey();
 
   _Stage _stage = _Stage.loading;
   String? _message;
@@ -115,6 +117,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _loadToken = 0;
   late bool _wantsPlay = widget.autoPlay;
   bool _saving = false;
+
+  /// Quanto do vídeo já chegou no "Baixar" (0 a 1); nulo enquanto não se sabe.
+  double? _downloadProgress;
   bool _sharing = false;
 
   Highlight get _current => _items[_currentIndex];
@@ -362,7 +367,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _download() async {
     final highlight = _current;
     if (!_canAct(highlight) || _saving) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _downloadProgress = null;
+    });
+    void progress(double value) {
+      if (mounted && _saving) setState(() => _downloadProgress = value);
+    }
+
     try {
       // No celular: só copia da pasta do app para a galeria. Se não: baixa da nuvem.
       final local = _isLocal(highlight) && await _localExists(highlight.localPath!);
@@ -373,13 +385,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (highlight.hasLocalVideo) _localMissing.add(highlight.id);
         if (!_canFetch(highlight)) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
         final path = highlight.videoPath!;
-        await (widget.saveToGallery != null ? widget.saveToGallery!(path) : _media.saveToGallery(path));
+        await (widget.saveToGallery != null
+            ? widget.saveToGallery!(path, progress)
+            : _media.saveToGallery(path, onProgress: progress));
       }
       if (mounted) showHomeMessage(context, 'Lance salvo na galeria.');
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _downloadProgress = null;
+        });
+      }
     }
   }
 
@@ -501,12 +520,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final canFetch = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _topBar(counter: '${_currentIndex + 1} de ${_items.length}'),
-        Expanded(
-          child: PageView.builder(
+    final counter = '${_currentIndex + 1} de ${_items.length}';
+    // A mesma chave nos dois desenhos: virar o celular não recria as páginas nem perde o lance.
+    final pages = PageView.builder(
+            key: _pagesKey,
             controller: _pageController,
             itemCount: _items.length,
             onPageChanged: _onPageChanged,
@@ -548,8 +565,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               );
             },
+          );
+    final bar = _ProgressBar(
+      progress: progress,
+      buffered: buffered,
+      elapsedLabel: clippoPlayerProgress(position),
+      totalLabel: clippoPlayerProgress(total),
+      onSeek: ready ? _seekToFraction : null,
+    );
+
+    // Celular deitado: o vídeo ocupa a tela toda (é o gesto natural para ver um lance gravado
+    // na horizontal). Ficam só fechar, o contador e a barra, por cima; tocar no vídeo pausa.
+    // Baixar, compartilhar e as setas voltam ao levantar o celular; deslizar troca de lance.
+    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          pages,
+          Align(alignment: Alignment.topCenter, child: _topBar(counter: counter)),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+              child: bar,
+            ),
           ),
-        ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _topBar(counter: counter),
+        Expanded(child: pages),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             ClippoSpace.gutter,
@@ -591,7 +640,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   runSpacing: ClippoSpace.spaceS,
                   children: [
                     ClippoCaptureChip(
-                      label: _saving ? 'Baixando…' : 'Baixar',
+                      label: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
                       selected: false,
                       onPressed: canFetch ? _download : null,
                     ),
@@ -604,13 +653,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
               const SizedBox(height: ClippoSpace.spaceM),
-              _ProgressBar(
-                progress: progress,
-                buffered: buffered,
-                elapsedLabel: clippoPlayerProgress(position),
-                totalLabel: clippoPlayerProgress(total),
-                onSeek: ready ? _seekToFraction : null,
-              ),
+              bar,
               const SizedBox(height: ClippoSpace.spaceL),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -667,8 +710,7 @@ class _CircleAction extends StatelessWidget {
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          child: ClippoPressable(
             onTap: enabled ? onPressed : null,
             child: SizedBox.square(
               dimension: ClippoSize.minTouchTarget,
@@ -717,8 +759,7 @@ class _PlayPauseButton extends StatelessWidget {
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          child: ClippoPressable(
             onTap: enabled ? onPressed : null,
             child: Container(
               width: ClippoSize.playerPlayButton,
@@ -769,9 +810,10 @@ class _ProgressBar extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTapDown: seek == null ? null : (details) => seek(details.localPosition.dx / width),
               onHorizontalDragUpdate: seek == null ? null : (details) => seek(details.localPosition.dx / width),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: ClippoSpace.spaceM),
-                child: ClipRRect(
+              // 48 dp de altura para o dedo (eram 24); o traço continua fino no meio.
+              child: SizedBox(
+                height: ClippoSize.minTouchTarget,
+                child: Center(child: ClipRRect(
                   borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
                   child: SizedBox(
                     height: ClippoSize.meter,
@@ -795,7 +837,7 @@ class _ProgressBar extends StatelessWidget {
                       ],
                     ),
                   ),
-                ),
+                )),
               ),
             );
           },

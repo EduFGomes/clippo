@@ -10,7 +10,7 @@ import 'body_pose.dart';
 
 /// Os limites da regra, juntos num lugar para serem calibrados.
 ///
-/// 🟡 Valores iniciais, ainda não medidos em quadra: a calibração a 2, 4, 6 e 8 m vai ajustá-los.
+/// Valores testados pelo grupo e confirmados em 12/11/2026. Mudou algum? Atualize o README do gesto.
 /// Ângulos em graus.
 class GestureThresholds {
   const GestureThresholds({

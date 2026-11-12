@@ -1,20 +1,34 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/format/date_input_formatter.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
 import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/core/widgets/clippo_text_field.dart';
 
+/// O que o "Como cuidamos dos seus dados" explica, ao lado da data de nascimento.
+/// 🟡 Resumo até o grupo ter uma política de privacidade completa para linkar aqui.
+const String clippoPrivacySummary =
+    'Seu nome, seu @ e sua foto aparecem para quem usa o Clippo, para seus amigos te acharem. '
+    'A data de nascimento fica guardada à parte: só você e o servidor do Clippo leem, e ela não '
+    'aparece no seu perfil. Seus lances aparecem só para quem participou da sessão. '
+    'Para apagar tudo, use Perfil › Excluir conta.';
+
 /// Entrada · Complete seu perfil (não desenhada na C; segue o padrão das outras telas).
 /// Vale para quem criou conta por e-mail e, no futuro, pelo Google.
 /// Envia os dados para a Cloud Function completeProfile, que valida e grava no Firestore.
 class CompleteProfileScreen extends StatefulWidget {
-  const CompleteProfileScreen({super.key, this.onCompleted});
+  const CompleteProfileScreen({super.key, this.onCompleted, this.usernameTaken});
+
+  /// Confere se o @ já é de outra pessoa ao sair do campo. Nulo = o do `authRepository`
+  /// (com alguém logado); sem login (catálogo, testes), não confere.
+  final Future<bool> Function(String username)? usernameTaken;
 
   /// Chamado quando o perfil foi criado (o AuthGate usa para seguir em frente).
   final VoidCallback? onCompleted;
@@ -26,9 +40,41 @@ class CompleteProfileScreen extends StatefulWidget {
 class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   final _name = TextEditingController();
   final _username = TextEditingController();
+  /// Digitada como "dd/mm/aaaa" (a máscara põe as barras). O seletor de calendário saiu em
+  /// 10/11/2026: para data de nascimento, caçar o ano no calendário era pior que digitar.
   final _birthDateText = TextEditingController();
-  DateTime? _birthDate;
+  final _usernameFocus = FocusNode();
   bool _loading = false;
+
+  /// O @ conferido por último ao sair do campo (para não ler de novo o mesmo).
+  String? _checkedUsername;
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameFocus.addListener(_onUsernameFocus);
+  }
+
+  /// Saiu do campo do @: confere o formato e se já é de alguém, antes de enviar. Antes, a
+  /// pessoa só descobria no "Continuar", depois de preencher tudo.
+  Future<void> _onUsernameFocus() async {
+    if (_usernameFocus.hasFocus) return;
+    final raw = _username.text;
+    if (raw.trim().isEmpty) return;
+    final error = validateUsername(raw);
+    if (error != null) {
+      setState(() => _fieldErrors['username'] = error);
+      return;
+    }
+    final username = normalizeUsername(raw);
+    if (username == _checkedUsername) return;
+    _checkedUsername = username;
+    final check = widget.usernameTaken ?? (isUserSignedIn ? authRepository.isUsernameTaken : null);
+    if (check == null) return;
+    final taken = await check(username);
+    if (!mounted || normalizeUsername(_username.text) != username) return;
+    if (taken) setState(() => _fieldErrors['username'] = usernameTakenMessage);
+  }
 
   /// Erro de cada campo (validação do app ou resposta da Function).
   final Map<String, String> _fieldErrors = {};
@@ -40,31 +86,9 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   void dispose() {
     _name.dispose();
     _username.dispose();
+    _usernameFocus.dispose();
     _birthDateText.dispose();
     super.dispose();
-  }
-
-  static String _iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static String _display(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  Future<void> _pickBirthDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _birthDate ?? DateTime(now.year - 20),
-      firstDate: DateTime(1900),
-      lastDate: now,
-    );
-    if (picked != null) {
-      setState(() {
-        _birthDate = picked;
-        _birthDateText.text = _display(picked);
-        _fieldErrors.remove('birthDate');
-      });
-    }
   }
 
   void _clearError(String field) {
@@ -80,7 +104,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     final errors = <String, String?>{
       'name': validateName(_name.text),
       'username': validateUsername(_username.text),
-      'birthDate': validateBirthDate(_birthDate),
+      'birthDate': validateBirthDateText(_birthDateText.text),
     }..removeWhere((_, error) => error == null);
     setState(() {
       _fieldErrors
@@ -95,7 +119,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       await authRepository.completeProfile(
         name: _name.text,
         username: _username.text,
-        birthDate: _iso(_birthDate!),
+        birthDate: birthDateIso(parseBirthDateText(_birthDateText.text)!),
       );
       widget.onCompleted?.call();
     } on AuthFailure catch (e) {
@@ -151,6 +175,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             label: 'Nome de usuário',
             hint: 'letras, números, "_" e "."',
             controller: _username,
+            focusNode: _usernameFocus,
             prefixText: '@',
             autocorrect: false,
             textInputAction: TextInputAction.next,
@@ -162,9 +187,15 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             label: 'Data de nascimento',
             hint: 'dd/mm/aaaa',
             controller: _birthDateText,
-            readOnly: true,
-            onTap: _pickBirthDate,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.birthday],
+            inputFormatters: const [DateInputFormatter()],
             errorText: _fieldErrors['birthDate'],
+            onChanged: (_) => _clearError('birthDate'),
+            onSubmitted: (_) {
+              if (!_loading) _submit();
+            },
           ),
           const SizedBox(height: ClippoSpace.spaceS),
           Padding(
@@ -172,6 +203,17 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             child: Text(
               'Não aparece no seu perfil. Usamos só para estatísticas gerais.',
               style: ClippoText.label.copyWith(color: colors.textMuted),
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ClippoTextButton(
+              label: 'Como cuidamos dos seus dados',
+              onPressed: () => showClippoNotice(
+                context,
+                title: 'Seus dados no Clippo',
+                message: clippoPrivacySummary,
+              ),
             ),
           ),
           if (generalError != null) ...[

@@ -10,7 +10,19 @@ class ClippoPrimaryButton extends StatefulWidget {
     required this.onPressed,
     this.enabled = true,
     this.loading = false,
-  }) : onWine = false;
+  })  : onWine = false,
+        danger = false;
+
+  /// Ação que apaga ou não tem volta ("Excluir sessão", "Remover"): fundo `error`, texto
+  /// `onPrimary`. Só na confirmação; a saída segura fica no botão de texto embaixo.
+  const ClippoPrimaryButton.danger({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.enabled = true,
+    this.loading = false,
+  })  : onWine = false,
+        danger = true;
 
   /// Variante da boas-vindas, sobre o fundo vinho: pêssego com texto escuro.
   const ClippoPrimaryButton.onWine({
@@ -19,7 +31,8 @@ class ClippoPrimaryButton extends StatefulWidget {
     required this.onPressed,
     this.enabled = true,
     this.loading = false,
-  }) : onWine = true;
+  })  : onWine = true,
+        danger = false;
 
   final String label;
   final VoidCallback? onPressed;
@@ -30,6 +43,7 @@ class ClippoPrimaryButton extends StatefulWidget {
   /// Mostra que está trabalhando e ignora novos toques.
   final bool loading;
   final bool onWine;
+  final bool danger;
 
   @override
   State<ClippoPrimaryButton> createState() => _ClippoPrimaryButtonState();
@@ -49,7 +63,9 @@ class _ClippoPrimaryButtonState extends State<ClippoPrimaryButton> {
     final colors = ClippoColors.of(context);
     final background = widget.onWine
         ? (_pressed ? ClippoBrand.peachPressed : ClippoBrand.peach)
-        : (_pressed ? colors.primaryPressed : colors.primary);
+        : widget.danger
+            ? (_pressed ? colors.error.withValues(alpha: ClippoOpacity.textButton) : colors.error)
+            : (_pressed ? colors.primaryPressed : colors.primary);
     final foreground = widget.onWine ? ClippoBrand.onPeach : colors.onPrimary;
     final dim = !widget.enabled || widget.onPressed == null;
 

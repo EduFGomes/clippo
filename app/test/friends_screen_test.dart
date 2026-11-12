@@ -207,6 +207,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, ['acceptFriendRequest:diego']);
     expect(find.text('Agora você e Diego são amigos.'), findsOneWidget);
+    // O resultado vai para o aviso do rodapé, como no resto do app (não mais no topo da lista).
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Agora você e Diego são amigos.')), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('Recusar convite de Diego Souza'));
     await tester.pumpAndSettle();
@@ -241,11 +243,44 @@ void main() {
     expect(find.text('Rafa Costa'), findsNothing);
     expect(find.text('Convites recebidos'), findsNothing);
 
-    await tester.enterText(find.byType(TextField).first, '@zeca');
-    await tester.pumpAndSettle();
-    expect(find.text('Nenhum amigo com "@zeca"'), findsOneWidget);
-    expect(find.text('Procurar @zeca'), findsOneWidget);
+    // "brun" achou um amigo: não procura @brun no Clippo.
+    await tester.pump(ClippoMotion.searchDebounce);
     expect(repo.calls, isEmpty);
+
+    await tester.enterText(find.byType(TextField).first, '@zeca');
+    await tester.pump();
+    expect(find.text('Nenhum amigo com "@zeca"'), findsOneWidget);
+    expect(find.text('Procurando @zeca…'), findsOneWidget);
+    await tester.pump(ClippoMotion.searchDebounce);
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['findByUsername:zeca']);
+    expect(find.text('Ninguém usa @zeca'), findsOneWidget);
+    // Sem link para baixar enquanto o app não está na Play Store.
+    expect(find.textContaining('link'), findsNothing);
+  });
+
+  testWidgets('a busca acha pelo @ quem ainda não é amigo e já adiciona dali', (tester) async {
+    _phone(tester);
+    const pedro = Friend(uid: 'pedro', name: 'Pedro Rocha', username: 'pedro.rocha');
+    final repo = _FakeFriendsRepository()..found = pedro;
+    await tester.pumpWidget(_app(_screen(repo)));
+    await tester.pumpAndSettle();
+
+    // Digitando rápido, procura uma vez só, quando a pessoa para.
+    await tester.enterText(find.byType(TextField).first, 'pedro.ro');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(find.byType(TextField).first, 'pedro.rocha');
+    await tester.pump(ClippoMotion.searchDebounce);
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['findByUsername:pedro.rocha']);
+    expect(find.text('No Clippo'), findsOneWidget);
+    expect(find.text('Pedro Rocha'), findsOneWidget);
+
+    await tester.ensureVisible(find.bySemanticsLabel('Adicionar amigo Pedro Rocha'));
+    await tester.tap(find.bySemanticsLabel('Adicionar amigo Pedro Rocha'));
+    await tester.pumpAndSettle();
+    expect(repo.calls.last, 'sendFriendRequest:pedro.rocha');
+    expect(find.text('Pedido enviado para Pedro. Quando aceitar, vocês viram amigos.'), findsOneWidget);
   });
 
   testWidgets('@ inválido mostra o erro embaixo do campo sem chamar nada', (tester) async {
@@ -295,7 +330,7 @@ void main() {
     expect(find.text('Agora você e Pedro são amigos.'), findsOneWidget);
   });
 
-  testWidgets('@ que ninguém usa diz isso e oferece o link para baixar', (tester) async {
+  testWidgets('@ que ninguém usa diz isso, sem link para baixar (ainda não está na Play Store)', (tester) async {
     _phone(tester);
     final repo = _FakeFriendsRepository();
     await tester.pumpWidget(_app(_screen(repo)));
@@ -308,10 +343,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Ninguém usa @ninguem no Clippo. Confira o @ ou mande o link abaixo.'),
+      find.text('Ninguém usa @ninguem no Clippo. Confira o @ com a pessoa.'),
       findsOneWidget,
     );
-    expect(find.text('https://clippo.app/baixar'), findsOneWidget);
+    expect(find.textContaining('clippo.app'), findsNothing);
   });
 
   testWidgets('remover pelo menu ⋮ pede confirmação e chama removeFriend', (tester) async {

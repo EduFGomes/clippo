@@ -14,6 +14,35 @@ export const EMAIL_LOCAL_MAX = 64;
 export const SESSION_NAME_MAX = 50;
 export const SESSION_LOCATION_MAX = 80;
 
+/** Senha nova: igual a `validateNewPassword` do app (input_validation.dart). */
+/** Idade mínima para usar o Clippo (grupo, 12/11/2026). Mesma `minimumAge` do app. */
+export const MIN_AGE = 13;
+
+export const PASSWORD_MIN = 8;
+export const PASSWORD_MAX = 128;
+
+/**
+ * A regra da senha nova no servidor. A senha nunca passa por uma Function (vai direto do app
+ * para o Firebase Auth, e a função de bloqueio não a recebe), então quem confere é a política
+ * de senha do próprio Auth, aplicada ao projeto por `scripts/apply-password-policy.mjs`.
+ *
+ * ENFORCE: o Auth recusa criar conta (ou trocar a senha) fora da regra, com o erro
+ * `password-does-not-meet-requirements`, que o app traduz. `forceUpgradeOnSignin` desligado:
+ * quem criou a conta com a regra antiga (6+) continua entrando com a senha que tem.
+ */
+export const PASSWORD_POLICY = {
+  enforcementState: "ENFORCE",
+  forceUpgradeOnSignin: false,
+  constraints: {
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumeric: true,
+    requireNonAlphanumeric: false,
+    minLength: PASSWORD_MIN,
+    maxLength: PASSWORD_MAX,
+  },
+} as const;
+
 /** Erro de validação com uma mensagem pronta para mostrar ao usuário. */
 export class ValidationError extends Error {
   constructor(
@@ -97,6 +126,15 @@ export function normalizeBirthDate(raw: unknown, today: Date = new Date()): stri
   if (!valid) throw new ValidationError("birthDate", "Data de nascimento inválida.");
   if (date.getTime() > today.getTime() || y < 1900) {
     throw new ValidationError("birthDate", "Data de nascimento inválida.");
+  }
+  // Faz MIN_AGE anos hoje ou antes (dia do aniversário conta, como no app).
+  const birthday = Date.UTC(y + MIN_AGE, m - 1, d);
+  const todayDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (birthday > todayDay) {
+    throw new ValidationError(
+      "birthDate",
+      `Você precisa ter pelo menos ${MIN_AGE} anos para usar o Clippo.`,
+    );
   }
   return raw;
 }

@@ -284,3 +284,179 @@ describe("juntar sessões: tênis com um celular de cada lado (D18)", () => {
     expect(r.error?.message).toMatch(/^Só dá para juntar sessões gravadas no mesmo jogo/);
   });
 });
+
+
+// Storage do Emulator, como administrador: põe e confere arquivos sem passar pelas regras.
+const STORAGE = "http://127.0.0.1:9199/v0/b/demo-clippo.appspot.com/o";
+async function porArquivo(caminho: string) {
+  const r = await fetch(`${STORAGE}?name=${encodeURIComponent(caminho)}`, {
+    method: "POST",
+    headers: { Authorization: "Bearer owner", "Content-Type": "video/mp4" },
+    body: new Uint8Array([0, 0, 0, 24]),
+  });
+  expect(r.ok).toBe(true);
+}
+async function existeArquivo(caminho: string) {
+  const r = await fetch(`${STORAGE}/${encodeURIComponent(caminho)}`, { headers: { Authorization: "Bearer owner" } });
+  return r.ok;
+}
+
+describe("excluir a sessão (R12)", () => {
+  const ID = "e2e-excluir-01";
+  let antes: { sessoes: number; lances: number };
+
+  beforeAll(async () => {
+    const perfil = await ler(`users/${beto.uid}`, beto);
+    antes = { sessoes: Number(stat(perfil, "sessions") ?? 0), lances: Number(stat(perfil, "highlights") ?? 0) };
+    const r = await chamar("saveSession", ana, {
+      sessionId: ID,
+      name: "Racha de domingo",
+      startedAt: "2026-11-04T10:00:00.000Z",
+      endedAt: "2026-11-04T11:00:00.000Z",
+      participantIds: [beto.uid],
+      highlights: [
+        { highlightId: "e2e-ex-lance1", offsetSeconds: 60, durationSeconds: 30 },
+        { highlightId: "e2e-ex-lance2", offsetSeconds: 600, durationSeconds: 30 },
+      ],
+    });
+    expect(r.status).toBe(200);
+    await porArquivo(`sessions/${ID}/highlights/e2e-ex-lance1/video.mp4`);
+    await porArquivo(`sessions/${ID}/highlights/e2e-ex-lance1/thumb.jpg`);
+    await porArquivo("sessions/e2e-excluir-012/highlights/outro/video.mp4"); // id parecido: fica
+  });
+
+  it("participante não exclui", async () => {
+    const r = await chamar("deleteSession", beto, { sessionId: ID });
+    expect(r.error?.message).toBe("Só quem gravou a sessão pode excluir.");
+    expect(await ler(`sessions/${ID}`, beto)).not.toBeNull();
+  });
+
+  it("sem login, não exclui; id torto é recusado antes do banco", async () => {
+    expect((await chamar("deleteSession", null, { sessionId: ID })).error?.message)
+      .toBe("Entre na sua conta para excluir a sessão.");
+    expect((await chamar("deleteSession", ana, { sessionId: "../x" })).error?.status).toBe("INVALID_ARGUMENT");
+  });
+
+  it("o dono exclui: some para todos, com os lances, e sai do perfil de quem jogou", async () => {
+    const r = await chamar("deleteSession", ana, { sessionId: ID });
+    expect(r.status).toBe(200);
+    expect(await lerComoAdmin(`sessions/${ID}`)).toBeNull();
+    expect(await lerComoAdmin(`sessions/${ID}/highlights/e2e-ex-lance1`)).toBeNull();
+    expect(await existeArquivo(`sessions/${ID}/highlights/e2e-ex-lance1/video.mp4`)).toBe(false);
+    expect(await existeArquivo(`sessions/${ID}/highlights/e2e-ex-lance1/thumb.jpg`)).toBe(false);
+    expect(await existeArquivo("sessions/e2e-excluir-012/highlights/outro/video.mp4")).toBe(true);
+    const perfil = await ler(`users/${beto.uid}`, beto);
+    expect(Number(stat(perfil, "sessions"))).toBe(antes.sessoes);
+    expect(Number(stat(perfil, "highlights"))).toBe(antes.lances);
+  });
+
+  it("excluir de novo não é erro", async () => {
+    expect((await chamar("deleteSession", ana, { sessionId: ID })).status).toBe(200);
+  });
+
+  it("sessão com outra juntada ainda não exclui (D18)", async () => {
+    const r = await chamar("deleteSession", ana, { sessionId: "e2e-tenis-ana" });
+    expect(r.error?.message).toBe("Essa sessão tem lances de outra sessão juntada e ainda não dá para excluir.");
+  });
+});
+
+describe("apagar um lance (R12)", () => {
+  const ID = "e2e-apagar-lance";
+
+  beforeAll(async () => {
+    const r = await chamar("saveSession", ana, {
+      sessionId: ID,
+      name: "Altinha",
+      startedAt: "2026-11-05T10:00:00.000Z",
+      endedAt: "2026-11-05T11:00:00.000Z",
+      participantIds: [beto.uid],
+      highlights: [
+        { highlightId: "e2e-al-lance1", offsetSeconds: 60, durationSeconds: 30 },
+        { highlightId: "e2e-al-lance2", offsetSeconds: 600, durationSeconds: 30 },
+      ],
+    });
+    expect(r.status).toBe(200);
+    await porArquivo(`sessions/${ID}/highlights/e2e-al-lance1/video.mp4`);
+    await porArquivo(`sessions/${ID}/highlights/e2e-al-lance2/video.mp4`);
+  });
+
+  it("participante não apaga", async () => {
+    const r = await chamar("deleteHighlight", beto, { sessionId: ID, highlightId: "e2e-al-lance1" });
+    expect(r.error?.message).toBe("Só quem gravou a sessão apaga os lances.");
+  });
+
+  it("o dono apaga: some para todos e sai das contagens", async () => {
+    const antes = Number(stat(await ler(`users/${beto.uid}`, beto), "highlights"));
+    const r = await chamar("deleteHighlight", ana, { sessionId: ID, highlightId: "e2e-al-lance1" });
+    expect(r.status).toBe(200);
+    expect(await lerComoAdmin(`sessions/${ID}/highlights/e2e-al-lance1`)).toBeNull();
+    expect(await existeArquivo(`sessions/${ID}/highlights/e2e-al-lance1/video.mp4`)).toBe(false);
+    expect(await existeArquivo(`sessions/${ID}/highlights/e2e-al-lance2/video.mp4`)).toBe(true);
+    expect(numero((await ler(`sessions/${ID}`, beto))?.highlightCount)).toBe("1");
+    expect(Number(stat(await ler(`users/${beto.uid}`, beto), "highlights"))).toBe(antes - 1);
+  });
+
+  it("apagar de novo não é erro nem desconta outra vez", async () => {
+    expect((await chamar("deleteHighlight", ana, { sessionId: ID, highlightId: "e2e-al-lance1" })).status).toBe(200);
+    expect(numero((await ler(`sessions/${ID}`, ana))?.highlightCount)).toBe("1");
+  });
+});
+
+describe("excluir a conta (LGPD)", () => {
+  let eva: Pessoa;
+  let fabio: Pessoa;
+
+  beforeAll(async () => {
+    [eva, fabio] = await Promise.all([criarPessoa("eva", "Eva Luz"), criarPessoa("fabio", "Fabio Dias")]);
+    await fazerAmigos(eva, fabio);
+    const [a, b] = await Promise.all([
+      chamar("saveSession", eva, {
+        sessionId: "e2e-conta-eva",
+        name: "Da Eva",
+        startedAt: "2026-11-06T10:00:00.000Z",
+        endedAt: "2026-11-06T11:00:00.000Z",
+        participantIds: [fabio.uid],
+        highlights: [{ highlightId: "e2e-ce-lance1", offsetSeconds: 60, durationSeconds: 30 }],
+      }),
+      chamar("saveSession", fabio, {
+        sessionId: "e2e-conta-fabio",
+        name: "Do Fabio",
+        startedAt: "2026-11-07T10:00:00.000Z",
+        endedAt: "2026-11-07T11:00:00.000Z",
+        participantIds: [eva.uid],
+      }),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+  }, 60_000);
+
+  it("sem login, nada acontece", async () => {
+    expect((await chamar("deleteMyAccount", null, {})).error?.message).toBe("Entre na sua conta para excluí-la.");
+  });
+
+  it("apaga perfil, @, amizades e sessões dela; nas dos outros ela só sai", async () => {
+    const r = await chamar("deleteMyAccount", eva, {});
+    expect(r.status).toBe(200);
+
+    expect(await lerComoAdmin(`users/${eva.uid}`)).toBeNull();
+    expect(await lerComoAdmin(`usernames/${eva.username}`)).toBeNull();
+    expect(await lerComoAdmin(`userPrivate/${eva.uid}`)).toBeNull();
+    expect(await lerComoAdmin(`sessions/e2e-conta-eva`)).toBeNull();
+    expect(await lerComoAdmin(`friendships/${par(eva, fabio)}`)).toBeNull();
+
+    const doFabio = await ler(`sessions/e2e-conta-fabio`, fabio);
+    expect(lista(doFabio?.participantIds)).toEqual([fabio.uid]);
+    const perfil = await ler(`users/${fabio.uid}`, fabio);
+    expect(stat(perfil, "friends")).toBe("0");
+    expect(stat(perfil, "sessions")).toBe("1");
+  });
+
+  it("a conta do Auth também sai", async () => {
+    const r = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:lookup?key=demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken: eva.token }),
+    });
+    const body = (await r.json()) as { users?: unknown[]; error?: unknown };
+    expect(body.users ?? []).toHaveLength(0);
+  });
+});

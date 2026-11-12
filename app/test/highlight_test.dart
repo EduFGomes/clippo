@@ -27,49 +27,20 @@ void main() {
     expect(highlight.isUploading, isFalse);
   });
 
-  test('tolera campos faltando, gera nome criativo e marca pending como enviando', () {
+  test('tolera campos faltando, dá "Lance N" pela posição e marca pending como enviando', () {
     final highlight = Highlight.fromMap('hl-2', const {
       'status': 'pending',
-    });
+    }, index: 2);
 
-    expect(highlight.title, 'Jogada de cinema');
+    expect(highlight.title, 'Lance 3');
     expect(highlight.offset, Duration.zero);
     expect(highlight.duration, const Duration(seconds: 30));
     expect(highlight.isUploading, isTrue);
   });
 
-  test('ensureDistinctHighlightTitles dá nomes criativos e nunca repete na mesma sessão', () {
-    final list = ensureDistinctHighlightTitles([
-      Highlight(
-        id: '1',
-        title: 'Lance 1',
-        offset: const Duration(minutes: 2),
-        duration: const Duration(seconds: 30),
-        savedAt: DateTime(2026, 9, 11),
-        createdBy: 'alice',
-      ),
-      Highlight(
-        id: '2',
-        title: 'Lance 2',
-        offset: const Duration(minutes: 5),
-        duration: const Duration(seconds: 30),
-        savedAt: DateTime(2026, 9, 11),
-        createdBy: 'alice',
-      ),
-      Highlight(
-        id: '3',
-        title: 'Jogada de cinema',
-        offset: const Duration(minutes: 9),
-        duration: const Duration(seconds: 30),
-        savedAt: DateTime(2026, 9, 11),
-        createdBy: 'alice',
-      ),
-    ]);
-
-    final titles = list.map((h) => h.title).toList();
-    expect(titles.toSet().length, list.length);
-    expect(titles[0], 'Jogada de cinema');
-    expect(titles[1], 'Ponto antológico');
-    expect(titles[2], 'Defesa no reflexo');
+  test('mostra o título como o servidor gravou: "Lance N" e nomes dados pelo dono', () {
+    expect(Highlight.fromMap('a', const {'title': 'Lance 1'}).title, 'Lance 1');
+    expect(Highlight.fromMap('b', const {'title': 'Lance 1'}, index: 4).title, 'Lance 1');
+    expect(Highlight.fromMap('c', const {'title': '  Voleio do Rafa '}).title, 'Voleio do Rafa');
   });
 }

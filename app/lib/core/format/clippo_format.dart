@@ -12,11 +12,19 @@ const List<String> _months = [
   'jul', 'ago', 'set', 'out', 'nov', 'dez',
 ];
 
-/// "11 set 2026".
-///
-/// 🟡 Para sessões recentes, o design prevê trocar por "Hoje" e "Ontem"
-/// (docs/design.md › Regras de escrita). Ainda não decidido, por isso não é feito aqui.
+/// "11 set 2026". Data exata: campos de formulário e o que precisa do dia certo.
 String clippoDate(DateTime date) => '${date.day} ${_months[date.month - 1]} ${date.year}';
+
+/// "Hoje", "Ontem" ou "11 set 2026": a data de uma sessão em listas e cabeçalhos
+/// (docs/design.md › Regras de escrita; decidido pelo grupo em 12/11/2026).
+String clippoRelativeDate(DateTime date, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  final day = DateTime(date.year, date.month, date.day);
+  final todayDay = DateTime(today.year, today.month, today.day);
+  if (day == todayDay) return 'Hoje';
+  if (day == DateTime(todayDay.year, todayDay.month, todayDay.day - 1)) return 'Ontem';
+  return clippoDate(date);
+}
 
 /// "19:30".
 String clippoTime(DateTime time) =>
@@ -33,6 +41,16 @@ String clippoDuration(Duration duration) {
   if (hours == 0) return '${minutes}min';
   if (minutes == 0) return '${hours}h';
   return '${hours}h ${minutes}min';
+}
+
+/// Tempo de gravação no standby, como relógio: "0:42", "12:05", "1:02:05".
+String clippoRecordingTime(Duration elapsed) {
+  final total = elapsed.isNegative ? 0 : elapsed.inSeconds;
+  final hours = total ~/ 3600;
+  final minutes = (total % 3600) ~/ 60;
+  final seconds = (total % 60).toString().padLeft(2, '0');
+  if (hours == 0) return '$minutes:$seconds';
+  return '$hours:${minutes.toString().padLeft(2, '0')}:$seconds';
 }
 
 /// "7 highlights", "1 highlight", "nenhum highlight".
@@ -77,6 +95,14 @@ String clippoPlayerProgress(Duration position) {
   final minutes = totalSeconds ~/ 60;
   final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+/// O "Baixar" do Player enquanto o vídeo chega: "Baixando 40 %". Sem saber quanto falta
+/// (o começo, ou um lance que já está no celular), só "Baixando…".
+String clippoDownloadProgress(double? fraction) {
+  if (fraction == null) return 'Baixando…';
+  final percent = (fraction.clamp(0.0, 1.0) * 100).floor();
+  return percent >= 100 ? 'Salvando na galeria…' : 'Baixando $percent %';
 }
 
 /// "10 participantes", "1 participante".

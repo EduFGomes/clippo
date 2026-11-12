@@ -56,7 +56,8 @@ class _ClippoPulseDotState extends State<ClippoPulseDot> with SingleTickerProvid
           child: Container(
             width: ClippoSize.pulseDot,
             height: ClippoSize.pulseDot,
-            decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
+            // Pêssego, não vinho: vinho sobre o preto tem contraste de ~1,9:1 e some no sol.
+            decoration: const BoxDecoration(color: ClippoBrand.peach, shape: BoxShape.circle),
           ),
         ),
       ),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -5,6 +7,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_password_meter.dart';
+import 'package:clippo/core/widgets/clippo_pill_button.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -49,6 +52,31 @@ void main() {
     expect(find.text('Seus lances ficam guardados na sua conta.'), findsOneWidget);
   });
 
+  testWidgets('botão destrutivo usa a cor de erro do tema e responde ao toque', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_app(Scaffold(
+      body: ClippoPrimaryButton.danger(label: 'Excluir', onPressed: () => taps++),
+    )));
+    final box = tester.widget<Container>(
+      find.descendant(of: find.byType(ClippoPrimaryButton), matching: find.byType(Container)).first,
+    );
+    expect((box.decoration as BoxDecoration).color, ClippoColors.light.error);
+    await tester.tap(find.text('Excluir'));
+    expect(taps, 1);
+  });
+
+  testWidgets('pílula tem 48 dp de toque, rótulo próprio e avisa ao tocar', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_app(Scaffold(
+      body: Center(
+        child: ClippoPillButton(label: 'Gravar', icon: 'capture', semanticLabel: 'Gravar uma sessão', onPressed: () => taps++),
+      ),
+    )));
+    expect(tester.getSize(find.byType(ClippoPillButton)).height, greaterThanOrEqualTo(ClippoSize.minTouchTarget));
+    await tester.tap(find.bySemanticsLabel('Gravar uma sessão'));
+    expect(taps, 1);
+  });
+
   testWidgets('botão primário desabilitado não responde', (tester) async {
     var taps = 0;
     await tester.pumpWidget(_app(Scaffold(
@@ -63,11 +91,17 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('medidor diz "Pronto" a partir de 6 caracteres', (tester) async {
-    await tester.pumpWidget(_app(const Scaffold(body: ClippoPasswordMeter(length: 5))));
-    expect(find.text('6+ caracteres'), findsOneWidget);
-    await tester.pumpWidget(_app(const Scaffold(body: ClippoPasswordMeter(length: 6))));
-    expect(find.text('Pronto'), findsOneWidget);
+  testWidgets('medidor diz o que falta até a senha ficar forte', (tester) async {
+    for (final (password, caption) in [
+      ('Abc123', '8+ caracteres'),
+      ('abcd1234', 'falta maiúscula'),
+      ('ABCD1234', 'falta minúscula'),
+      ('Abcdefgh', 'falta número'),
+      ('Abcd1234', 'Pronto'),
+    ]) {
+      await tester.pumpWidget(_app(Scaffold(body: ClippoPasswordMeter(password: password))));
+      expect(find.text(caption), findsOneWidget, reason: password);
+    }
   });
 
   testWidgets('olho alterna mostrar e ocultar senha', (tester) async {
@@ -180,9 +214,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(actions, 1);
 
+    // Com ação, tocar no card já faz a ação; o chevron é quem abre e fecha.
+    await tester.tap(find.text('Pelada de quinta'));
+    await tester.pumpAndSettle();
+    expect(actions, 2);
+    expect(toggles, 0);
+
+    await tester.tap(find.bySemanticsLabel('Esconder detalhes de Pelada de quinta'));
+    await tester.pumpAndSettle();
+    expect(toggles, 1);
+    expect(tester.getSize(find.bySemanticsLabel('Esconder detalhes de Pelada de quinta')),
+        const Size.square(ClippoSize.minTouchTarget));
+  });
+
+  testWidgets('card sem ação abre e fecha pelo toque no card inteiro', (tester) async {
+    await _setPhoneSize(tester);
+    var toggles = 0;
+    await tester.pumpWidget(_app(ClippoSessionCard(
+      title: 'Pelada de quinta',
+      summary: '11 set 2026 · 7 highlights',
+      expanded: false,
+      onToggle: () => toggles++,
+    )));
+
     await tester.tap(find.text('Pelada de quinta'));
     await tester.pumpAndSettle();
     expect(toggles, 1);
+    expect(find.bySemanticsLabel(RegExp('detalhes de')), findsNothing);
+  });
+
+  testWidgets('chip, pílula e voltar apagam enquanto o dedo está em cima', (tester) async {
+    await _setPhoneSize(tester);
+    var taps = 0;
+    await tester.pumpWidget(_app(ClippoPillButton(label: 'Gravar', icon: 'capture', onPressed: () => taps++)));
+
+    double opacity() => tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
+    expect(opacity(), 1);
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Gravar')));
+    await tester.pumpAndSettle();
+    expect(opacity(), ClippoOpacity.pressed);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(opacity(), 1);
+    expect(taps, 1);
   });
 
   testWidgets('linha de highlight mostra título, momento e avisa ao tocar', (tester) async {
@@ -202,5 +276,26 @@ void main() {
     await tester.tap(find.text('Lance 3'));
     await tester.pumpAndSettle();
     expect(taps, 1);
+  });
+
+  testWidgets('linha de highlight mostra a miniatura quando recebe uma, e a quadra sem ela', (tester) async {
+    await _setPhoneSize(tester);
+    Widget tile(ImageProvider? thumbnail) => _app(Scaffold(
+          body: ClippoHighlightTile(
+            title: 'Lance 3',
+            timing: '00:12:40 · 30s',
+            thumbnail: thumbnail,
+            onTap: () {},
+          ),
+        ));
+    Finder inTile(Type type) =>
+        find.descendant(of: find.byType(ClippoHighlightTile), matching: find.byType(type));
+
+    await tester.pumpWidget(tile(null));
+    expect(inTile(Image), findsNothing);
+
+    final image = FileImage(File('/data/highlights/lance-3.jpg'));
+    await tester.pumpWidget(tile(image));
+    expect(tester.widget<Image>(inTile(Image)).image, image);
   });
 }

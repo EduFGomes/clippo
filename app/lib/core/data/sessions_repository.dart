@@ -191,7 +191,7 @@ class SessionsRepository {
         .snapshots()
         .map(
           (snapshot) => HighlightsSnapshot(
-            highlights: ensureDistinctHighlightTitles([
+            highlights: List<Highlight>.unmodifiable([
               for (var i = 0; i < snapshot.docs.length; i++)
                 Highlight.fromDocument(snapshot.docs[i], index: i),
             ]),
@@ -295,6 +295,10 @@ class SessionsRepository {
     String? location,
     bool clearLocation = false,
     List<String>? participantIds,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    Iterable<Duration> highlightOffsets = const [],
+    DateTime? now,
   }) async {
     _check('sessionId', validateEntityId(sessionId));
     if (name != null) _check('name', validateSessionName(name));
@@ -302,16 +306,60 @@ class SessionsRepository {
     if (participantIds != null) {
       _check('participantIds', validateParticipantIds(participantIds));
     }
+    // Data e horário vão juntos, com as regras do saveSession; os lances que a tela conhece
+    // ([highlightOffsets]) precisam caber. O servidor confere de novo com os do banco.
+    final period = startedAt != null || endedAt != null;
+    if (period) {
+      _check('endedAt', validateSessionPeriod(startedAt, endedAt, now: now));
+      _check('endedAt', validatePeriodFitsHighlights(endedAt!.difference(startedAt!), highlightOffsets));
+    }
 
     await _call('updateSession', {
       'sessionId': sessionId,
       if (name != null) 'name': normalizeSessionName(name),
       if (clearLocation) 'location': null else if (location != null) 'location': normalizeLocation(location),
       if (participantIds != null) 'participantIds': normalizeParticipantIds(participantIds),
+      if (period) 'startedAt': startedAt!.toUtc().toIso8601String(),
+      if (period) 'endedAt': endedAt!.toUtc().toIso8601String(),
     }, fallback: 'Não foi possível salvar as mudanças. Tente de novo.');
   }
 
   /// Um participante sai da sessão (🟡 a confirmar com o grupo). O dono não sai.
+  /// O dono da sessão troca o nome de um lance (a Function `renameHighlight`). Valida antes
+  /// de chamar, com as mesmas regras do servidor. Devolve o nome como ficou gravado.
+  Future<String> renameHighlight({
+    required String sessionId,
+    required String highlightId,
+    required String title,
+  }) async {
+    _check('sessionId', validateHighlightRef(sessionId));
+    _check('highlightId', validateHighlightRef(highlightId));
+    _check('title', validateHighlightRename(title));
+    final normalized = title.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final data = await _call(
+      'renameHighlight',
+      {'sessionId': sessionId, 'highlightId': highlightId, 'title': normalized},
+      fallback: 'Não foi possível renomear o lance. Tente de novo.',
+    );
+    return data['title'] as String? ?? normalized;
+  }
+
+  /// O dono exclui a sessão para todos, com os lances e os vídeos (Function deleteSession).
+  /// Excluir de novo, ou uma sessão que nunca chegou ao servidor, não é erro.
+  Future<void> deleteSession(String sessionId) async {
+    _check('sessionId', validateEntityId(sessionId));
+    await _call('deleteSession', {'sessionId': sessionId},
+        fallback: 'Não foi possível excluir a sessão. Tente de novo.');
+  }
+
+  /// O dono apaga um lance para todos, com o vídeo e a miniatura (Function deleteHighlight).
+  Future<void> deleteHighlight({required String sessionId, required String highlightId}) async {
+    _check('sessionId', validateHighlightRef(sessionId));
+    _check('highlightId', validateHighlightRef(highlightId));
+    await _call('deleteHighlight', {'sessionId': sessionId, 'highlightId': highlightId},
+        fallback: 'Não foi possível apagar o lance. Tente de novo.');
+  }
+
   Future<void> leaveSession(String sessionId) async {
     _check('sessionId', validateEntityId(sessionId));
     await _call('leaveSession', {'sessionId': sessionId},
