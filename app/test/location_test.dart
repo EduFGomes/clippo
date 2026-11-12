@@ -13,23 +13,22 @@ Widget _app(Widget child) =>
 
 void main() {
   group('nome do lugar', () {
-    test('rua e bairro; sem rua, bairro e cidade', () {
+    test('só o bairro; sem bairro, a cidade; sem os dois, a rua', () {
       expect(placeLabel(street: 'Rua das Flores', neighborhood: 'Vila Mariana', city: 'São Paulo'),
-          'Rua das Flores, Vila Mariana');
-      expect(placeLabel(neighborhood: 'Vila Mariana', city: 'São Paulo'), 'Vila Mariana, São Paulo');
-      expect(placeLabel(city: 'Campinas'), 'Campinas');
+          'Vila Mariana');
+      expect(placeLabel(street: 'Rua das Flores', city: 'Campinas'), 'Campinas');
+      expect(placeLabel(street: 'Rua das Flores'), 'Rua das Flores');
     });
 
     test('sem nada útil, nulo; espaços e repetidos limpos', () {
       expect(placeLabel(), isNull);
       expect(placeLabel(street: '  ', neighborhood: ''), isNull);
-      expect(placeLabel(street: ' Av.  Paulista ', neighborhood: 'Av. Paulista'), 'Av. Paulista');
+      expect(placeLabel(street: 'Rua A', neighborhood: '  Bela   Vista '), 'Bela Vista');
     });
 
     test('nome longo é cortado numa palavra inteira, dentro do limite do campo', () {
       final label = placeLabel(
-        street: 'Avenida Doutor Ricardo Jafet Engenheiro Armando de Arruda Pereira',
-        neighborhood: 'Jardim da Saúde',
+        neighborhood: 'Conjunto Habitacional Doutor Ricardo Jafet Engenheiro Armando de Arruda Pereira',
       )!;
       expect(label.length, lessThanOrEqualTo(locationMax));
       expect(label.endsWith(' '), isFalse);
@@ -58,9 +57,9 @@ void main() {
       await tester.tap(find.text('Buscando onde você está…'));
       expect(asked, 1);
 
-      gps.complete('Rua das Flores, Vila Mariana');
+      gps.complete('Vila Mariana');
       await tester.pumpAndSettle();
-      expect(place, 'Rua das Flores, Vila Mariana');
+      expect(place, 'Vila Mariana');
       expect(find.text('Usar localização atual'), findsOneWidget);
     });
 

@@ -22,7 +22,7 @@ class LocationFailure implements Exception {
 /// pedido quando a pessoa toca no botão, nunca sozinho. O resultado é um texto comum, que a
 /// pessoa pode editar ou apagar (o local não precisa ser um lugar real).
 ///
-/// A posição vira nome de rua e bairro pelo serviço do próprio Android (sem custo), que precisa
+/// A posição vira o nome do bairro pelo serviço do próprio Android (sem custo), que precisa
 /// de internet.
 class CurrentPlace {
   const CurrentPlace();
@@ -79,24 +79,18 @@ class CurrentPlace {
   }
 }
 
-/// "Rua das Flores, Vila Mariana": rua e bairro; sem rua, bairro e cidade. Cabe no limite do
-/// campo Local ([locationMax]), cortado numa palavra inteira. Nulo quando não há nada útil.
+/// "Vila Mariana": só o bairro, que é curto e é como se fala de onde foi a partida (decidido
+/// em 12/11/2026; "Rua, Bairro" ficava comprido). Sem bairro, a cidade; sem os dois, a rua.
+/// Cabe no limite do campo Local ([locationMax]), cortado numa palavra inteira. Nulo quando
+/// não há nada útil.
 String? placeLabel({String? street, String? neighborhood, String? city}) {
   String? clean(String? s) {
     final t = s?.trim().replaceAll(RegExp(r'\s+'), ' ');
     return t == null || t.isEmpty ? null : t;
   }
 
-  final rua = clean(street);
-  final bairro = clean(neighborhood);
-  final cidade = clean(city);
-  final parts = <String>[
-    ?rua,
-    if (bairro != null && bairro != rua) bairro,
-    if (rua == null && cidade != null && cidade != bairro) cidade,
-  ];
-  if (parts.isEmpty) return null;
-  var label = parts.join(', ');
+  var label = clean(neighborhood) ?? clean(city) ?? clean(street);
+  if (label == null) return null;
   if (label.length > locationMax) {
     final cut = label.substring(0, locationMax);
     final space = cut.lastIndexOf(' ');

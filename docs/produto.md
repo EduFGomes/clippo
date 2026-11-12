@@ -311,7 +311,7 @@ A gravação ignora o tema claro/escuro.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
-- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; texto livre, não precisa ser um lugar real; **"Usar localização atual"** pede o GPS só quando tocado e põe rua e bairro no campo, editável; também no Editar sessão), **Participantes** (inclui "Você") + "+ adicionar".
+- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; texto livre, não precisa ser um lugar real; **"Usar localização atual"** pede o GPS só quando tocado e põe o bairro no campo, editável; também no Editar sessão), **Participantes** (inclui "Você") + "+ adicionar".
 - Botão primário **"Salvar sessão"** → volta à **Início**, com a nova sessão no topo.
 - Link **"Descartar"** → descarta a sessão e todos os highlights dela e volta à câmera (R14).
 

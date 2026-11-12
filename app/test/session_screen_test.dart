@@ -408,7 +408,7 @@ void main() {
       currentUserId: 'alice',
       repository: _repo(calls),
       highlights: _noHighlights(),
-      findPlace: () async => 'Rua das Flores, Vila Mariana',
+      findPlace: () async => 'Vila Mariana',
     )));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Editar sessão'));
@@ -417,12 +417,12 @@ void main() {
     await tester.ensureVisible(find.text('Usar localização atual'));
     await tester.tap(find.text('Usar localização atual'));
     await tester.pumpAndSettle();
-    expect(find.text('Rua das Flores, Vila Mariana'), findsOneWidget);
+    expect(find.text('Vila Mariana'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Salvar alterações'));
     await tester.tap(find.text('Salvar alterações'));
     await tester.pumpAndSettle();
-    expect(calls.single.$2['location'], 'Rua das Flores, Vila Mariana');
+    expect(calls.single.$2['location'], 'Vila Mariana');
   });
 
   testWidgets('dono edita: valida e chama updateSession com os dados normalizados (R12)',
