@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/firebase/firebase_setup.dart';
@@ -31,14 +33,60 @@ class AuthFailure implements Exception {
 /// Todo método que envia dados valida antes (core/validation/input_validation.dart) e
 /// lança [AuthFailure] sem chamar o Firebase se algo não passar. O servidor valida de novo.
 class AuthRepository {
-  AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore, FirebaseFunctions? functions})
-      : _auth = auth ?? FirebaseAuth.instance,
+  AuthRepository({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+    FirebaseStorage? storage,
+  })  : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instanceFor(region: functionsRegion);
+        _functions = functions ?? FirebaseFunctions.instanceFor(region: functionsRegion),
+        _storage = (() => storage ?? FirebaseStorage.instance);
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
+  /// O Storage só é aberto quando a foto sobe (os testes do login não precisam dele).
+  final FirebaseStorage Function() _storage;
+
+  /// Troca a foto do perfil: valida (tipo e tamanho, as regras do servidor), envia para
+  /// `users/{uid}/avatar` no Storage e chama a Function setProfilePhoto, que grava o endereço no
+  /// perfil e nas cópias. Devolve o endereço novo. [watchMyProfile] emite o perfil novo sozinho.
+  Future<String?> setProfilePhoto(File file) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw const AuthFailure('Entre na sua conta para trocar a foto.');
+    final contentType = profilePhotoContentType(file.path);
+    _check('photo', validateProfilePhoto(await file.length(), contentType));
+    try {
+      await _storage()
+          .ref('users/$uid/avatar')
+          .putFile(file, SettableMetadata(contentType: contentType));
+    } on FirebaseException catch (e) {
+      throw AuthFailure(
+        e.code == 'unauthorized'
+            ? 'Não foi possível enviar a foto. Use JPEG ou PNG de até 2 MB.'
+            : 'Não foi possível enviar a foto. Confira a internet e tente de novo.',
+        field: 'photo',
+      );
+    }
+    final data = await _callPhoto(const {});
+    return data['photoUrl'] as String?;
+  }
+
+  /// Tira a foto do perfil (a Function apaga do Storage e volta para as iniciais).
+  Future<void> removeProfilePhoto() => _callPhoto(const {'remove': true});
+
+  Future<Map<String, dynamic>> _callPhoto(Map<String, dynamic> payload) async {
+    try {
+      final result = await _functions.httpsCallable('setProfilePhoto').call<Map<String, dynamic>>(payload);
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        throw const AuthFailure('Sem conexão. Confira a internet e tente de novo.', field: 'photo');
+      }
+      throw AuthFailure(e.message ?? 'Não foi possível trocar a foto.', field: 'photo');
+    }
+  }
 
   /// Emite o usuário logado (ou null) sempre que entra ou sai alguém.
   Stream<User?> authStateChanges() => _auth.authStateChanges();

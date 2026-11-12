@@ -19,7 +19,7 @@ import { CALLABLE_OPTIONS } from "../config";
 import { deleteSessionAs } from "../sessions/deleteSession";
 import { leaveSessionAs } from "../sessions/leaveSession";
 import { mergedFromOf, mergedIntoOf } from "../sessions/sessionDocs";
-import { db } from "../shared/admin";
+import { bucket, db } from "../shared/admin";
 
 export const deleteMyAccount = onCall<unknown, Promise<{ deleted: true }>>(CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
@@ -75,6 +75,9 @@ export const deleteMyAccount = onCall<unknown, Promise<{ deleted: true }>>(CALLA
     tx.delete(userRef);
     tx.delete(db().doc(`userPrivate/${uid}`));
   });
+
+  // A foto do perfil, se tiver (users/{uid}/avatar no Storage).
+  await bucket().file(`users/${uid}/avatar`).delete({ ignoreNotFound: true });
 
   // 6. A conta.
   try {

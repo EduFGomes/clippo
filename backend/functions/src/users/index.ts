@@ -9,5 +9,6 @@
  */
 export { completeProfile } from "./completeProfile";
 export { updateProfile } from "./updateProfile";
+export { setProfilePhoto } from "./setProfilePhoto";
 export { validateNewAccount } from "./validateNewAccount";
 export { deleteMyAccount } from "./deleteMyAccount";
