@@ -377,6 +377,7 @@ class ClippoMotion {
   static const Duration wheelClose = Duration(milliseconds: 180); // roda fechando
   static const Duration navPreview = Duration(milliseconds: 90); // balão acima da seção surgindo
   static const Duration press = Duration(milliseconds: 80); // apagar ao tocar (ClippoPressable)
+  static const Duration searchDebounce = Duration(milliseconds: 400); // parou de digitar → procura o @
 
   /// Sem animação quando o sistema pede "reduzir movimento".
   static bool reduced(BuildContext context) => MediaQuery.of(context).disableAnimations;

@@ -75,8 +75,8 @@ class PlayerScreen extends StatefulWidget {
   /// Substitui `mediaRepository.videoFile` (testes).
   final HighlightVideoLoader? loadVideo;
 
-  /// Substitui `mediaRepository.saveToGallery` (testes).
-  final Future<void> Function(String storagePath)? saveToGallery;
+  /// Substitui `mediaRepository.saveToGallery` (testes). Chama `onProgress` de 0 a 1.
+  final Future<void> Function(String storagePath, ValueChanged<double> onProgress)? saveToGallery;
 
   /// Substitui o compartilhamento do sistema (testes).
   final HighlightVideoSharer? shareVideo;
@@ -117,6 +117,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _loadToken = 0;
   late bool _wantsPlay = widget.autoPlay;
   bool _saving = false;
+
+  /// Quanto do vídeo já chegou no "Baixar" (0 a 1); nulo enquanto não se sabe.
+  double? _downloadProgress;
   bool _sharing = false;
 
   Highlight get _current => _items[_currentIndex];
@@ -364,7 +367,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _download() async {
     final highlight = _current;
     if (!_canAct(highlight) || _saving) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _downloadProgress = null;
+    });
+    void progress(double value) {
+      if (mounted && _saving) setState(() => _downloadProgress = value);
+    }
+
     try {
       // No celular: só copia da pasta do app para a galeria. Se não: baixa da nuvem.
       final local = _isLocal(highlight) && await _localExists(highlight.localPath!);
@@ -375,13 +385,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (highlight.hasLocalVideo) _localMissing.add(highlight.id);
         if (!_canFetch(highlight)) throw const HighlightMediaFailure('Esse lance ainda está sendo enviado.');
         final path = highlight.videoPath!;
-        await (widget.saveToGallery != null ? widget.saveToGallery!(path) : _media.saveToGallery(path));
+        await (widget.saveToGallery != null
+            ? widget.saveToGallery!(path, progress)
+            : _media.saveToGallery(path, onProgress: progress));
       }
       if (mounted) showHomeMessage(context, 'Lance salvo na galeria.');
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _downloadProgress = null;
+        });
+      }
     }
   }
 
@@ -623,7 +640,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   runSpacing: ClippoSpace.spaceS,
                   children: [
                     ClippoCaptureChip(
-                      label: _saving ? 'Baixando…' : 'Baixar',
+                      label: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
                       selected: false,
                       onPressed: canFetch ? _download : null,
                     ),

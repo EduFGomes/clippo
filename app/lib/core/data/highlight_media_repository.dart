@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueChanged;
+
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -153,14 +155,31 @@ class HighlightMediaRepository {
       File('${(await _cacheDir()).path}/clippo-videos/${storagePath.replaceAll('/', '_')}');
 
   /// O vídeo do lance como arquivo local, baixado uma vez e guardado no cache.
-  Future<File> videoFile(String storagePath) async {
+  ///
+  /// [onProgress] recebe de 0 a 1 enquanto o arquivo chega (o "Baixando 40 %" do Player).
+  /// Já no cache, chama 1 na hora.
+  Future<File> videoFile(String storagePath, {ValueChanged<double>? onProgress}) async {
     final cached = await cachedVideoFile(storagePath);
-    if (cached != null) return cached;
+    if (cached != null) {
+      onProgress?.call(1);
+      return cached;
+    }
     final file = await _cacheFileOf(storagePath);
     await file.parent.create(recursive: true);
     final partial = File('${file.path}.part');
     try {
-      await _storage().ref(storagePath).writeToFile(partial);
+      final task = _storage().ref(storagePath).writeToFile(partial);
+      final events = onProgress == null
+          ? null
+          : task.snapshotEvents.listen((s) {
+              if (s.totalBytes > 0) onProgress((s.bytesTransferred / s.totalBytes).clamp(0.0, 1.0));
+            }, onError: (Object _) {});
+      try {
+        await task;
+      } finally {
+        await events?.cancel();
+      }
+      onProgress?.call(1);
       return await partial.rename(file.path);
     } catch (e) {
       if (await partial.exists()) await partial.delete();
@@ -200,7 +219,8 @@ class HighlightMediaRepository {
   }
 
   /// "Baixar": salva o vídeo do lance na galeria do celular (R11: todo participante baixa).
-  Future<void> saveToGallery(String storagePath) async => saveFileToGallery(await videoFile(storagePath));
+  Future<void> saveToGallery(String storagePath, {ValueChanged<double>? onProgress}) async =>
+      saveFileToGallery(await videoFile(storagePath, onProgress: onProgress));
 
   /// "Baixar" de um vídeo que já está no celular (o MP4 da pasta do app, antes de subir):
   /// só copia para a galeria, sem passar pela nuvem.

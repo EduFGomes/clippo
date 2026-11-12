@@ -102,6 +102,21 @@ class AuthRepository {
     return snap.exists;
   }
 
+  /// O @ já é de outra pessoa? Lê só `usernames/{@}` (um @ exato, como a busca de Amigos), para
+  /// "Complete seu perfil" avisar ao sair do campo, antes de enviar. Quem decide de verdade é a
+  /// Function, na transação: entre esta leitura e o envio, outra pessoa pode pegar o @.
+  /// Sem internet ou erro na leitura: false (não trava a pessoa; o envio confere de novo).
+  Future<bool> isUsernameTaken(String raw) async {
+    _check('username', validateUsername(raw));
+    try {
+      final lock = await _firestore.doc('usernames/${normalizeUsername(raw)}').get();
+      final owner = lock.data()?['uid'] as String?;
+      return owner != null && owner != _auth.currentUser?.uid;
+    } on FirebaseException {
+      return false;
+    }
+  }
+
   /// O perfil público de quem está logado, atualizado sozinho quando mudar
   /// (a Início usa para a saudação e o avatar do topo).
   ///

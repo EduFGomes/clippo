@@ -189,6 +189,21 @@ function wholeSeconds(raw: unknown): number | null {
 }
 
 /**
+ * Mudar a data e o horário de uma sessão salva (updateSession): os lances continuam no mesmo
+ * momento dentro da sessão (`offsetSeconds`), então a nova duração precisa ir até o último deles,
+ * com a mesma folga de 1 minuto do [normalizeHighlights].
+ */
+export function checkPeriodFitsHighlights(durationSeconds: number, offsets: number[]): void {
+  const last = offsets.reduce((max, offset) => Math.max(max, offset), 0);
+  if (last > durationSeconds + 60) {
+    throw new SessionValidationError(
+      "endedAt",
+      "A sessão precisa durar até o último lance. Confira o horário do fim.",
+    );
+  }
+}
+
+/**
  * Os lances salvos pelo gesto. Uma sessão pode não ter nenhum (R14 🟡) — a lista
  * vazia é aceita de propósito.
  *

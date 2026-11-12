@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/features/onboarding/screens/complete_profile_screen.dart';
 import 'package:clippo/features/onboarding/screens/how_it_works_screen.dart';
@@ -83,6 +84,63 @@ void main() {
     await tester.enterText(fields.at(0), 'capovill@gmail.com');
     await tester.pump();
     expect(find.text('Esse e-mail não parece válido.'), findsNothing); // some ao corrigir
+  });
+
+  testWidgets('Criar conta confere o e-mail ao sair do campo, sem esperar o envio', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const SignUpScreen()));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'capovill@g');
+    await tester.pump();
+    expect(find.text('Esse e-mail não parece válido.'), findsNothing); // digitando, sem bronca
+
+    await tester.tap(fields.at(1));
+    await tester.pump();
+    expect(find.text('Esse e-mail não parece válido.'), findsOneWidget);
+  });
+
+  testWidgets('Complete seu perfil avisa ao sair do campo que o @ já é de alguém', (tester) async {
+    await _phone(tester);
+    final asked = <String>[];
+    await tester.pumpWidget(_app(CompleteProfileScreen(
+      usernameTaken: (username) async {
+        asked.add(username);
+        return username == 'rafa';
+      },
+    )));
+    final fields = find.byType(TextField);
+
+    await tester.enterText(fields.at(1), '@Rafa');
+    await tester.tap(fields.at(2));
+    await tester.pumpAndSettle();
+    expect(asked, ['rafa']);
+    expect(find.text(usernameTakenMessage), findsOneWidget);
+
+    // Formato errado nem chega a perguntar.
+    await tester.enterText(fields.at(1), 'ra..fa');
+    await tester.tap(fields.at(0));
+    await tester.pumpAndSettle();
+    expect(asked, ['rafa']);
+    expect(find.text('O ponto não pode ficar no começo, no fim ou repetido.'), findsOneWidget);
+
+    await tester.enterText(fields.at(1), 'rafa.costa');
+    await tester.tap(fields.at(2));
+    await tester.pumpAndSettle();
+    expect(asked, ['rafa', 'rafa.costa']);
+    expect(find.text(usernameTakenMessage), findsNothing);
+  });
+
+  testWidgets('a data de nascimento explica como os dados são cuidados', (tester) async {
+    await _phone(tester);
+    await tester.pumpWidget(_app(const CompleteProfileScreen()));
+    await tester.ensureVisible(find.text('Como cuidamos dos seus dados'));
+    await tester.tap(find.text('Como cuidamos dos seus dados'));
+    await tester.pumpAndSettle();
+    expect(find.text('Seus dados no Clippo'), findsOneWidget);
+    expect(find.textContaining('Excluir conta'), findsOneWidget);
+    await tester.tap(find.text('Entendi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Seus dados no Clippo'), findsNothing);
   });
 
   testWidgets('Entrar pede e-mail e senha antes de enviar', (tester) async {

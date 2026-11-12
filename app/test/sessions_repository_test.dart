@@ -445,4 +445,64 @@ void main() {
       expect(calls, hasLength(1));
     });
   });
+
+  group('SessionsRepository.updateSession — data e horário (regra 0)', () {
+    final inicio = DateTime.utc(2026, 10, 29, 22, 30);
+    final fim = DateTime.utc(2026, 10, 30, 0, 12);
+    final agora = DateTime.utc(2026, 10, 30, 1);
+
+    test('manda início e fim juntos, em ISO 8601 UTC', () async {
+      final calls = <(String, Map<String, dynamic>)>[];
+      final repo = SessionsRepository(callFunction: (name, payload) async {
+        calls.add((name, payload));
+        return const {};
+      });
+      await repo.updateSession(
+        sessionId: 'sessao-0001',
+        startedAt: inicio,
+        endedAt: fim,
+        highlightOffsets: const [Duration(minutes: 30)],
+        now: agora,
+      );
+      expect(calls.single.$1, 'updateSession');
+      expect(calls.single.$2, {
+        'sessionId': 'sessao-0001',
+        'startedAt': '2026-10-29T22:30:00.000Z',
+        'endedAt': '2026-10-30T00:12:00.000Z',
+      });
+    });
+
+    test('período inválido ou que corta lances nem chega ao servidor', () async {
+      var calls = 0;
+      final repo = SessionsRepository(callFunction: (_, _) async {
+        calls++;
+        return const {};
+      });
+      await expectLater(
+        repo.updateSession(sessionId: 'sessao-0001', startedAt: fim, endedAt: inicio, now: agora),
+        throwsA(isA<SessionsFailure>()
+            .having((f) => f.code, 'code', 'endedAt')
+            .having((f) => f.message, 'message', 'O fim da sessão precisa vir depois do início.')),
+      );
+      await expectLater(
+        repo.updateSession(sessionId: 'sessao-0001', startedAt: inicio, now: agora),
+        throwsA(isA<SessionsFailure>().having((f) => f.code, 'code', 'endedAt')),
+      );
+      await expectLater(
+        repo.updateSession(
+          sessionId: 'sessao-0001',
+          startedAt: inicio,
+          endedAt: fim,
+          highlightOffsets: const [Duration(hours: 2)],
+          now: agora,
+        ),
+        throwsA(isA<SessionsFailure>().having(
+          (f) => f.message,
+          'message',
+          'A sessão precisa durar até o último lance. Confira o horário do fim.',
+        )),
+      );
+      expect(calls, 0);
+    });
+  });
 }

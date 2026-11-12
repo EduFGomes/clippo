@@ -338,6 +338,49 @@ void main() {
     expect(find.bySemanticsLabel('Compartilhar sessão'), findsNothing);
   });
 
+  testWidgets('editar sessão: sair com mudanças pergunta antes de descartar; sem mudanças, só sai',
+      (tester) async {
+    _phone(tester);
+    final calls = <(String, Map<String, dynamic>)>[];
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      currentUserId: 'alice',
+      repository: _repo(calls),
+      highlights: _noHighlights(),
+    )));
+    await tester.pumpAndSettle();
+
+    // Sem mudanças: volta direto.
+    await tester.tap(find.bySemanticsLabel('Editar sessão'));
+    await tester.pumpAndSettle();
+    expect(find.text('Data'), findsOneWidget);
+    expect(find.text('11 set 2026'), findsOneWidget);
+    expect(find.text('19:30 – 21:12'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsNothing);
+
+    // Com mudanças: pergunta; "Continuar editando" fica, "Descartar" sai sem chamar o servidor.
+    await tester.tap(find.bySemanticsLabel('Editar sessão'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Outro nome');
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sair sem salvar?'), findsOneWidget);
+    await tester.tap(find.text('Continuar editando'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Voltar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Descartar alterações'));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR\nSESSÃO.'), findsNothing);
+    expect(find.text('PELADA DE\nQUINTA.'), findsOneWidget);
+    expect(calls, isEmpty);
+  });
+
   testWidgets('dono edita: valida e chama updateSession com os dados normalizados (R12)',
       (tester) async {
     _phone(tester);

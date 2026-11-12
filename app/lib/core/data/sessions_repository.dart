@@ -295,6 +295,10 @@ class SessionsRepository {
     String? location,
     bool clearLocation = false,
     List<String>? participantIds,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    Iterable<Duration> highlightOffsets = const [],
+    DateTime? now,
   }) async {
     _check('sessionId', validateEntityId(sessionId));
     if (name != null) _check('name', validateSessionName(name));
@@ -302,12 +306,21 @@ class SessionsRepository {
     if (participantIds != null) {
       _check('participantIds', validateParticipantIds(participantIds));
     }
+    // Data e horário vão juntos, com as regras do saveSession; os lances que a tela conhece
+    // ([highlightOffsets]) precisam caber. O servidor confere de novo com os do banco.
+    final period = startedAt != null || endedAt != null;
+    if (period) {
+      _check('endedAt', validateSessionPeriod(startedAt, endedAt, now: now));
+      _check('endedAt', validatePeriodFitsHighlights(endedAt!.difference(startedAt!), highlightOffsets));
+    }
 
     await _call('updateSession', {
       'sessionId': sessionId,
       if (name != null) 'name': normalizeSessionName(name),
       if (clearLocation) 'location': null else if (location != null) 'location': normalizeLocation(location),
       if (participantIds != null) 'participantIds': normalizeParticipantIds(participantIds),
+      if (period) 'startedAt': startedAt!.toUtc().toIso8601String(),
+      if (period) 'endedAt': endedAt!.toUtc().toIso8601String(),
     }, fallback: 'Não foi possível salvar as mudanças. Tente de novo.');
   }
 

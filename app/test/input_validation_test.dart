@@ -172,6 +172,22 @@ void main() {
     });
   });
 
+  // Os mesmos casos de checkPeriodFitsHighlights em backend/functions/test/sessions.validation.test.ts.
+  group('corrigir data e horário: a sessão vai até o último lance', () {
+    test('aceita duração que vai até o último lance, com 1 minuto de folga', () {
+      const s = Duration(seconds: 1);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 30, s * 300, s * 600]), isNull);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 660]), isNull);
+      expect(validatePeriodFitsHighlights(s * 600, const []), isNull);
+    });
+
+    test('recusa encurtar a sessão para antes do último lance', () {
+      const s = Duration(seconds: 1);
+      expect(validatePeriodFitsHighlights(s * 600, [s * 30, s * 661]),
+          'A sessão precisa durar até o último lance. Confira o horário do fim.');
+    });
+  });
+
   group('início e fim da sessão', () {
     final inicio = DateTime.utc(2026, 10, 29, 22, 30);
     final fim = DateTime.utc(2026, 10, 30, 0, 12);

@@ -35,6 +35,16 @@ String clippoDuration(Duration duration) {
   return '${hours}h ${minutes}min';
 }
 
+/// Tempo de gravação no standby, como relógio: "0:42", "12:05", "1:02:05".
+String clippoRecordingTime(Duration elapsed) {
+  final total = elapsed.isNegative ? 0 : elapsed.inSeconds;
+  final hours = total ~/ 3600;
+  final minutes = (total % 3600) ~/ 60;
+  final seconds = (total % 60).toString().padLeft(2, '0');
+  if (hours == 0) return '$minutes:$seconds';
+  return '$hours:${minutes.toString().padLeft(2, '0')}:$seconds';
+}
+
 /// "7 highlights", "1 highlight", "nenhum highlight".
 String clippoHighlightCount(int count) {
   if (count == 0) return 'nenhum highlight';
@@ -77,6 +87,14 @@ String clippoPlayerProgress(Duration position) {
   final minutes = totalSeconds ~/ 60;
   final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+/// O "Baixar" do Player enquanto o vídeo chega: "Baixando 40 %". Sem saber quanto falta
+/// (o começo, ou um lance que já está no celular), só "Baixando…".
+String clippoDownloadProgress(double? fraction) {
+  if (fraction == null) return 'Baixando…';
+  final percent = (fraction.clamp(0.0, 1.0) * 100).floor();
+  return percent >= 100 ? 'Salvando na galeria…' : 'Baixando $percent %';
 }
 
 /// "10 participantes", "1 participante".

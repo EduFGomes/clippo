@@ -54,3 +54,40 @@ Future<bool> showClippoConfirm(
   );
   return confirmed ?? false;
 }
+
+/// Explica algo sem pedir decisão ("Como cuidamos dos seus dados"): o mesmo diálogo do
+/// [showClippoConfirm], com um botão só para fechar.
+Future<void> showClippoNotice(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String closeLabel = 'Entendi',
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      final colors = ClippoColors.of(dialogContext);
+      return Dialog(
+        backgroundColor: colors.surface,
+        insetPadding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(ClippoSpace.cardPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: ClippoText.titleS.copyWith(color: colors.text)),
+              const SizedBox(height: ClippoSpace.spaceS),
+              Text(message, style: ClippoText.body.copyWith(color: colors.textMuted)),
+              const SizedBox(height: ClippoSpace.spaceL),
+              ClippoPrimaryButton(label: closeLabel, onPressed: () => Navigator.of(dialogContext).pop()),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}

@@ -342,6 +342,7 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `wheelOpen` · `wheelClose` | 360 ms · 180 ms | Roda de navegação abrindo · fechando |
 | `navPreview` | 90 ms | Balão acima da seção surgindo na roda (com a curva `pop`) |
 | `press` | 80 ms | Apagar ao tocar (`ClippoPressable`) |
+| `searchDebounce` | 400 ms | Busca de Amigos: parou de digitar → procura o @ exato no Clippo |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
@@ -374,6 +375,7 @@ Ficam em [`app/lib/core/widgets/`](../app/lib/core/widgets/), um arquivo por com
 - **`ClippoPrimaryButton(label, onPressed, enabled, loading)`** — largura total, altura `buttonHeight`, `radiusPill`, fundo `primary` (pressionado `primaryPressed`), texto `button` em `onPrimary`. Desabilitado = 45 % de opacidade, animando em `enable`. `loading` mostra um indicador e ignora toques. Variante `ClippoPrimaryButton.onWine` para a boas-vindas: fundo `peach` (pressionado `peachPressed`), texto `onPeach`.
 - **`ClippoPrimaryButton.danger(label, onPressed)`** — o mesmo botão com fundo `error` e texto `onPrimary` (pressionado: `error` a 85 %). Só para confirmar o que apaga ou não tem volta ("Excluir sessão", "Remover", "Apagar lance"); a saída segura fica no `ClippoTextButton` embaixo. Adotado em 10/11/2026.
 - **`ClippoPillButton(label, icon, onPressed)`** — atalho em pílula ao lado do título da tela: contorno 1,5 e texto `label` em `accent` sobre `accentSoft`, ícone `checkIcon`, toque `minTouchTarget`. "Convidar" em Amigos, "Gravar" na Início.
+- **`showClippoNotice(title, message, closeLabel)`** — o mesmo diálogo do `showClippoConfirm`, com um botão só ("Entendi"): explica algo sem pedir decisão ("Seus dados no Clippo", ao lado da data de nascimento). Adotado em 11/11/2026.
 - **`showClippoConfirm(title, message, confirmLabel, cancelLabel, destructive)`** — diálogo de confirmação sobre `surface` com `radiusField`: título `titleS`, mensagem `body` / `textMuted`, ação principal (`ClippoPrimaryButton`, ou `.danger` com `destructive`) e saída em `ClippoTextButton`. Devolve true só se a pessoa confirmou.
 - **`ClippoTextButton(label)`** — sem fundo, altura `textButtonHeight`, `link` em `text` a 85 % (na boas-vindas, `ClippoTextButton.onWine`: `onWine` a 85 %).
 - **`ClippoLinkLine(prefix, action, onPressed)`** — centralizado, altura `textButtonHeight`: `prefix` em `bodyL` / `textMuted` + `action` em `linkStrong` / `accent`. A linha inteira é tocável. Ex.: "Já tem conta?" + "Entrar".

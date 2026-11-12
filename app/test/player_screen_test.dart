@@ -171,7 +171,7 @@ void main() {
         baixou++;
         return File(path);
       },
-      saveToGallery: (path) async => salvou++,
+      saveToGallery: (path, _) async => salvou++,
     )));
     await tester.pump();
 
@@ -302,7 +302,7 @@ void main() {
         loadVideo: _neverLoads,
         controllerFactory: (file) => throw StateError('sem plugin de vídeo nos testes'),
         saveFileToGallery: (file) async => copiados.add(file.path),
-        saveToGallery: (path) async => daNuvem++,
+        saveToGallery: (path, _) async => daNuvem++,
       )));
       await tester.pumpAndSettle();
 
@@ -337,7 +337,7 @@ void main() {
           return Completer<File>().future;
         },
         saveFileToGallery: (file) async => copiados++,
-        saveToGallery: (path) async => salvos.add(path),
+        saveToGallery: (path, _) async => salvos.add(path),
       )));
       await tester.pump();
       await tester.pump();
@@ -382,7 +382,7 @@ void main() {
       highlights: _highlights(),
       initialIndex: 1,
       loadVideo: _neverLoads,
-      saveToGallery: (path) async => salvos.add(path),
+      saveToGallery: (path, _) async => salvos.add(path),
     )));
     await tester.pump();
 
@@ -391,6 +391,42 @@ void main() {
     await tester.pump();
 
     expect(salvos, [_videoH2]);
+    expect(find.text('Lance salvo na galeria.'), findsOneWidget);
+  });
+
+  testWidgets('Baixar mostra quanto do vídeo já chegou', (tester) async {
+    _phone(tester);
+    late ValueChanged<double> report;
+    final done = Completer<void>();
+
+    await tester.pumpWidget(_app(PlayerScreen(
+      sessionName: 'Pelada de quinta',
+      highlights: _highlights(),
+      initialIndex: 1,
+      loadVideo: _neverLoads,
+      saveToGallery: (path, onProgress) {
+        report = onProgress;
+        return done.future;
+      },
+    )));
+    await tester.pump();
+
+    await tester.tap(find.text('Baixar'));
+    await tester.pump();
+    expect(find.text('Baixando…'), findsOneWidget);
+
+    report(0.42);
+    await tester.pump();
+    expect(find.text('Baixando 42 %'), findsOneWidget);
+
+    report(1);
+    await tester.pump();
+    expect(find.text('Salvando na galeria…'), findsOneWidget);
+
+    done.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Baixar'), findsOneWidget);
     expect(find.text('Lance salvo na galeria.'), findsOneWidget);
   });
 

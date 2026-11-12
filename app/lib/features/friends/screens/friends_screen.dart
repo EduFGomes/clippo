@@ -127,6 +127,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
   /// Uids com uma ação em andamento (aceitar, recusar, cancelar, remover).
   final Set<String> _busy = <String>{};
 
+  // Busca pelo @ exato direto na lista (sem abrir o "Convidar"). Só o @ exato: ninguém lista
+  // users/ (D16), então nome de quem ainda não é amigo não dá para procurar.
+  Timer? _lookupTimer;
+
+  /// O @ procurado (normalizado), quem usa e se a resposta já chegou.
+  String? _lookupQuery;
+  Friend? _lookupFound;
+  bool _lookupDone = false;
+  bool _lookupFailed = false;
+
   late final String _myUid = widget.myUid ?? _signedInUid();
 
   FriendsRepository get _repository => widget.repository ?? friendsRepository;
@@ -155,6 +165,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     _friendshipsSub?.cancel();
     _sessionsSub?.cancel();
     _data.dispose();
+    _lookupTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -226,6 +237,75 @@ class _FriendsScreenState extends State<FriendsScreen> {
     () => _repository.removeFriend(person.uid),
     'Pedido para ${person.firstName} cancelado.',
   );
+
+  /// Os amigos aceitos, em ordem de nome, que batem com [raw] (nome ou @). Vazio = todos.
+  List<Friend> _matchingFriends(List<Friendship> list, String raw) {
+    final text = raw.trim();
+    final query = normalizeUsername(text);
+    final friends = list.where((f) => f.isAccepted).map((f) => f.other).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    if (text.isEmpty) return friends;
+    return friends
+        .where((f) => f.name.toLowerCase().contains(text.toLowerCase()) || f.username.toLowerCase().contains(query))
+        .toList();
+  }
+
+  /// O @ a procurar no Clippo para o que está digitado, ou nulo. Procura quando é um @ válido e
+  /// a pessoa começou com "@" ou nenhum amigo bate com o texto ("brun" acha o Bruno e para aí).
+  String? _lookupFor(String raw, List<Friend> matchingFriends) {
+    final text = raw.trim();
+    if (text.isEmpty || validateUsername(text) != null) return null;
+    final username = normalizeUsername(text);
+    if (matchingFriends.any((f) => f.username.toLowerCase() == username)) return null;
+    if (!text.startsWith('@') && matchingFriends.isNotEmpty) return null;
+    return username;
+  }
+
+  /// Espera a pessoa parar de digitar e lê `usernames/{@}` (uma leitura, como no "Convidar").
+  void _scheduleLookup(String? username) {
+    if (username == _lookupQuery) return;
+    _lookupTimer?.cancel();
+    setState(() {
+      _lookupQuery = username;
+      _lookupFound = null;
+      _lookupDone = false;
+      _lookupFailed = false;
+    });
+    if (username == null) return;
+    _lookupTimer = Timer(ClippoMotion.searchDebounce, () async {
+      try {
+        final found = await _repository.findByUsername(username);
+        if (!mounted || _lookupQuery != username) return;
+        setState(() {
+          _lookupFound = found == null || found.uid == _myUid ? null : found;
+          _lookupDone = true;
+        });
+      } catch (_) {
+        if (!mounted || _lookupQuery != username) return;
+        setState(() {
+          _lookupDone = true;
+          _lookupFailed = true;
+        });
+      }
+    });
+  }
+
+  /// Manda o pedido para quem a busca achou pelo @. Se a pessoa já tinha me pedido, viram
+  /// amigos na hora (sendFriendRequest devolve `accepted`).
+  Future<void> _addFound(Friend person) async {
+    if (_busy.contains(person.uid)) return;
+    setState(() => _busy.add(person.uid));
+    try {
+      final status = await _repository.sendFriendRequest(person.username);
+      _tell(status == FriendshipStatus.accepted
+          ? 'Agora você e ${person.firstName} são amigos.'
+          : 'Pedido enviado para ${person.firstName}. Quando aceitar, vocês viram amigos.');
+    } catch (error) {
+      _tell(FriendsFailure.from(error).message);
+    } finally {
+      if (mounted) setState(() => _busy.remove(person.uid));
+    }
+  }
 
   /// Pergunta antes e desfaz a amizade. true = removeu.
   Future<bool> _confirmAndRemove(BuildContext sheetHost, Friend friend) async {
@@ -343,19 +423,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final colors = ClippoColors.of(context);
     final raw = _searchController.text.trim();
     final query = normalizeUsername(raw);
-    final friends = list.where((f) => f.isAccepted).map((f) => f.other).toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final friends = _matchingFriends(list, '');
     final incoming = list.where((f) => f.isIncomingFor(_myUid)).map((f) => f.other).toList();
     final outgoing = list.where((f) => f.isOutgoingFor(_myUid)).map((f) => f.other).toList();
-    final filtered = query.isEmpty
-        ? friends
-        : friends
-              .where(
-                (f) =>
-                    f.name.toLowerCase().contains(raw.toLowerCase()) ||
-                    f.username.toLowerCase().contains(query),
-              )
-              .toList();
+    final filtered = _matchingFriends(list, raw);
+    // O @ procurado no Clippo vale para o texto de agora (a resposta pode ser de antes).
+    final lookup = _lookupQuery != null && _lookupQuery == _lookupFor(raw, filtered) ? _lookupQuery : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -366,7 +439,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
           controller: _searchController,
           autocorrect: false,
           textInputAction: TextInputAction.search,
-          onChanged: (_) => setState(() {}),
+          onChanged: (text) {
+            setState(() {});
+            _scheduleLookup(_lookupFor(text, _matchingFriends(list, text)));
+          },
         ),
         if (data.failure != null) ...[
           // Já tinha uma lista e a leitura caiu: mostra o aviso e mantém o que tinha.
@@ -418,15 +494,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ] else if (filtered.isEmpty) ...[
           Text('Nenhum amigo com "$raw"', style: ClippoText.titleS.copyWith(color: colors.text)),
           const SizedBox(height: ClippoSpace.spaceS),
-          Text(
-            'A busca olha só seus amigos. Para achar alguém novo, procure pelo @ exato.',
-            style: ClippoText.body.copyWith(color: colors.textMuted),
-          ),
-          const SizedBox(height: ClippoSpace.spaceL),
-          ClippoPrimaryButton(
-            label: validateUsername(raw) == null ? 'Procurar @$query' : 'Procurar pelo @',
-            onPressed: () => _openAddFriend(initial: validateUsername(raw) == null ? query : ''),
-          ),
+          if (lookup == null) ...[
+            const SizedBox(height: ClippoSpace.spaceS),
+            Text(
+              'Para achar alguém que ainda não é seu amigo, digite o @ exato.',
+              style: ClippoText.body.copyWith(color: colors.textMuted),
+            ),
+          ],
         ] else
           for (var i = 0; i < filtered.length; i++) ...[
             if (i > 0) const SizedBox(height: ClippoSpace.cardGap),
@@ -437,7 +511,116 @@ class _FriendsScreenState extends State<FriendsScreen> {
               onMore: () => _showFriendOptions(filtered[i]),
             ),
           ],
+        if (lookup != null) ...[
+          const SizedBox(height: ClippoSpace.section),
+          _SectionHeader(title: 'No Clippo', count: _lookupFound == null ? 0 : 1),
+          const SizedBox(height: ClippoSpace.spaceM),
+          _lookupResult(lookup, list, colors),
+        ],
       ],
+    );
+  }
+
+  /// Quem usa o @ procurado, com a ação certa para a situação de vocês dois.
+  Widget _lookupResult(String username, List<Friendship> list, ClippoColors colors) {
+    final found = _lookupFound;
+    if (!_lookupDone) {
+      return Semantics(
+        liveRegion: true,
+        child: Text('Procurando @$username…', style: ClippoText.body.copyWith(color: colors.textMuted)),
+      );
+    }
+    if (_lookupFailed) {
+      return Text(
+        'Não deu para procurar agora. Confira a internet e tente de novo.',
+        style: ClippoText.body.copyWith(color: colors.textMuted),
+      );
+    }
+    if (found == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Ninguém usa @$username', style: ClippoText.titleS.copyWith(color: colors.text)),
+          const SizedBox(height: ClippoSpace.spaceS),
+          Text(
+            'Confira o @ com a pessoa ou mande o link para ela baixar o app.',
+            style: ClippoText.body.copyWith(color: colors.textMuted),
+          ),
+          const SizedBox(height: ClippoSpace.spaceS),
+          ClippoTextButton(
+            label: 'Mandar o link para baixar',
+            onPressed: () => _openAddFriend(initial: username),
+          ),
+        ],
+      );
+    }
+    Friendship? existing;
+    for (final f in list) {
+      if (f.other.uid == found.uid) existing = f;
+    }
+    final busy = _busy.contains(found.uid);
+    if (existing != null && existing.isIncomingFor(_myUid)) {
+      return _RequestTile.incoming(
+        person: found,
+        busy: busy,
+        onAccept: () => _accept(found),
+        onDecline: () => _decline(found),
+      );
+    }
+    if (existing != null && existing.isOutgoingFor(_myUid)) {
+      return _RequestTile.outgoing(person: found, busy: busy, onCancel: () => _cancel(found));
+    }
+    return _FoundPersonTile(person: found, busy: busy, onAdd: () => _addFound(found));
+  }
+}
+
+/// Alguém que a busca achou pelo @ e ainda não é amigo: nome, @ e "Adicionar".
+class _FoundPersonTile extends StatelessWidget {
+  const _FoundPersonTile({required this.person, required this.busy, required this.onAdd});
+
+  final Friend person;
+  final bool busy;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ClippoColors.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(ClippoSpace.cardPadding),
+        child: Row(
+          children: [
+            ClippoAvatar(name: person.name, photoUrl: person.photoUrl, size: ClippoSize.avatarLarge),
+            const SizedBox(width: ClippoSpace.spaceM),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    person.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: ClippoText.titleS.copyWith(color: colors.text),
+                  ),
+                  const SizedBox(height: ClippoSpace.labelToValue),
+                  Text('@${person.username}', style: ClippoText.label.copyWith(color: colors.textMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: ClippoSpace.spaceS),
+            _Pill(
+              label: busy ? 'Enviando…' : 'Adicionar',
+              icon: busy ? null : 'plus',
+              semanticsLabel: 'Adicionar amigo ${person.name}',
+              onTap: busy ? null : onAdd,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -710,6 +893,8 @@ class _RequestTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
 
+    // Ações embaixo do texto, não ao lado: com nome, @ e dois botões na mesma linha, o texto
+    // ficava cortado ("@mariahalabi04 · e…") num celular comum.
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surface,
@@ -718,81 +903,65 @@ class _RequestTile extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(ClippoSpace.cardPadding),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClippoAvatar(
-              name: person.name,
-              photoUrl: person.photoUrl,
-              size: ClippoSize.avatarLarge,
-            ),
-            const SizedBox(width: ClippoSpace.spaceM),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    person.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ClippoText.titleS.copyWith(color: colors.text),
-                  ),
-                  const SizedBox(height: ClippoSpace.labelToValue),
-                  Text(
-                    incoming
-                        ? '@${person.username} · quer jogar com você'
-                        : '@${person.username} · esperando aceitar',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ClippoText.label.copyWith(color: colors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: ClippoSpace.spaceS),
-            if (incoming) ...[
-              Semantics(
-                button: true,
-                enabled: !busy,
-                label: 'Recusar convite de ${person.name}',
-                child: ExcludeSemantics(
-                  child: ClippoPressable(
-                    onTap: busy ? null : onDecline,
-                    child: SizedBox.square(
-                      dimension: ClippoSize.minTouchTarget,
-                      child: Center(
-                        child: Container(
-                          width: ClippoSize.step,
-                          height: ClippoSize.step,
-                          decoration: BoxDecoration(
-                            color: colors.controlSoft,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: ClippoSvgIcon(
-                            'close',
-                            size: ClippoSize.checkIcon,
-                            color: colors.textMuted,
-                          ),
-                        ),
+            Row(
+              children: [
+                ClippoAvatar(
+                  name: person.name,
+                  photoUrl: person.photoUrl,
+                  size: ClippoSize.avatarLarge,
+                ),
+                const SizedBox(width: ClippoSpace.spaceM),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        person.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: ClippoText.titleS.copyWith(color: colors.text),
                       ),
-                    ),
+                      const SizedBox(height: ClippoSpace.labelToValue),
+                      Text(
+                        incoming
+                            ? '@${person.username} · quer jogar com você'
+                            : '@${person.username} · esperando aceitar',
+                        style: ClippoText.label.copyWith(color: colors.textMuted),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              // Longe o bastante do "Aceitar" para não recusar sem querer.
-              const SizedBox(width: ClippoSpace.spaceM),
-              _Pill(
-                label: 'Aceitar',
-                semanticsLabel: 'Aceitar convite de ${person.name}',
-                filled: true,
-                onTap: busy ? null : onAccept,
-              ),
-            ] else
-              _Pill(
-                label: 'Cancelar',
-                semanticsLabel: 'Cancelar pedido para ${person.name}',
-                onTap: busy ? null : onCancel,
-              ),
+              ],
+            ),
+            const SizedBox(height: ClippoSpace.spaceS),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: ClippoSpace.spaceM,
+              children: incoming
+                  ? [
+                      _Pill(
+                        label: 'Recusar',
+                        semanticsLabel: 'Recusar convite de ${person.name}',
+                        onTap: busy ? null : onDecline,
+                      ),
+                      _Pill(
+                        label: 'Aceitar',
+                        semanticsLabel: 'Aceitar convite de ${person.name}',
+                        filled: true,
+                        onTap: busy ? null : onAccept,
+                      ),
+                    ]
+                  : [
+                      _Pill(
+                        label: 'Cancelar',
+                        semanticsLabel: 'Cancelar pedido para ${person.name}',
+                        onTap: busy ? null : onCancel,
+                      ),
+                    ],
+            ),
           ],
         ),
       ),

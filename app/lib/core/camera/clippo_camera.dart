@@ -194,6 +194,17 @@ class ClippoCamera {
   Future<void> signalSaved({bool sound = true, bool flash = true, bool vibration = false}) =>
       _call<void>('signalSaved', {'sound': sound, 'flash': flash, 'vibrate': vibration});
 
+  /// Quanto de bateria o celular tem (0 a 100), para o standby mostrar ao tocar na tela.
+  /// Nulo quando o Android não diz (ou nos testes, sem o nativo): a tela só não mostra.
+  Future<int?> batteryLevel() async {
+    try {
+      final level = await _commands.invokeMethod<int>('batteryLevel');
+      return level == null || level < 0 || level > 100 ? null : level;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Abre a tela do Clippo nas Configurações do Android, onde a pessoa libera a câmera ou o
   /// microfone depois de negar de vez (o Android para de perguntar).
   Future<void> openAppSettings() => _call<void>('openAppSettings');

@@ -243,11 +243,43 @@ void main() {
     expect(find.text('Rafa Costa'), findsNothing);
     expect(find.text('Convites recebidos'), findsNothing);
 
-    await tester.enterText(find.byType(TextField).first, '@zeca');
-    await tester.pumpAndSettle();
-    expect(find.text('Nenhum amigo com "@zeca"'), findsOneWidget);
-    expect(find.text('Procurar @zeca'), findsOneWidget);
+    // "brun" achou um amigo: não procura @brun no Clippo.
+    await tester.pump(ClippoMotion.searchDebounce);
     expect(repo.calls, isEmpty);
+
+    await tester.enterText(find.byType(TextField).first, '@zeca');
+    await tester.pump();
+    expect(find.text('Nenhum amigo com "@zeca"'), findsOneWidget);
+    expect(find.text('Procurando @zeca…'), findsOneWidget);
+    await tester.pump(ClippoMotion.searchDebounce);
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['findByUsername:zeca']);
+    expect(find.text('Ninguém usa @zeca'), findsOneWidget);
+    expect(find.text('Mandar o link para baixar'), findsOneWidget);
+  });
+
+  testWidgets('a busca acha pelo @ quem ainda não é amigo e já adiciona dali', (tester) async {
+    _phone(tester);
+    const pedro = Friend(uid: 'pedro', name: 'Pedro Rocha', username: 'pedro.rocha');
+    final repo = _FakeFriendsRepository()..found = pedro;
+    await tester.pumpWidget(_app(_screen(repo)));
+    await tester.pumpAndSettle();
+
+    // Digitando rápido, procura uma vez só, quando a pessoa para.
+    await tester.enterText(find.byType(TextField).first, 'pedro.ro');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(find.byType(TextField).first, 'pedro.rocha');
+    await tester.pump(ClippoMotion.searchDebounce);
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['findByUsername:pedro.rocha']);
+    expect(find.text('No Clippo'), findsOneWidget);
+    expect(find.text('Pedro Rocha'), findsOneWidget);
+
+    await tester.ensureVisible(find.bySemanticsLabel('Adicionar amigo Pedro Rocha'));
+    await tester.tap(find.bySemanticsLabel('Adicionar amigo Pedro Rocha'));
+    await tester.pumpAndSettle();
+    expect(repo.calls.last, 'sendFriendRequest:pedro.rocha');
+    expect(find.text('Pedido enviado para Pedro. Quando aceitar, vocês viram amigos.'), findsOneWidget);
   });
 
   testWidgets('@ inválido mostra o erro embaixo do campo sem chamar nada', (tester) async {

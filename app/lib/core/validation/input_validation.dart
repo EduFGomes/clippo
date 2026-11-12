@@ -82,6 +82,9 @@ String? validateName(String raw) {
 /// Sem "@", minúsculo, sem espaços nas pontas.
 String normalizeUsername(String raw) => raw.trim().replaceFirst(RegExp(r'^@'), '').toLowerCase();
 
+/// A mesma frase do servidor (completeProfile / updateProfile) quando o @ já tem dono.
+const String usernameTakenMessage = 'Esse nome de usuário já está em uso.';
+
 /// Letras a–z, números, "_" e "."; 3 a 20 caracteres; sem ponto no começo, no fim ou repetido.
 String? validateUsername(String raw) {
   final username = normalizeUsername(raw);
@@ -201,6 +204,20 @@ String? validateSessionPeriod(DateTime? startedAt, DateTime? endedAt, {DateTime?
   }
   final limit = (now ?? DateTime.now()).add(const Duration(minutes: 5));
   if (endedAt.isAfter(limit)) return 'A sessão não pode terminar no futuro.';
+  return null;
+}
+
+/// Corrigir data e horário de uma sessão salva: os lances ficam no mesmo momento dentro dela, então
+/// a nova duração vai até o último, com 1 minuto de folga. Mesma regra e frase do servidor
+/// (`checkPeriodFitsHighlights` em backend/functions/src/sessions/validation.ts).
+String? validatePeriodFitsHighlights(Duration duration, Iterable<Duration> offsets) {
+  var last = Duration.zero;
+  for (final offset in offsets) {
+    if (offset > last) last = offset;
+  }
+  if (last.inSeconds > duration.inSeconds + 60) {
+    return 'A sessão precisa durar até o último lance. Confira o horário do fim.';
+  }
   return null;
 }
 

@@ -81,7 +81,11 @@ Regras de modelagem:
 Telas: **amigos** = `uids` contém eu e `status == accepted`; **pedidos recebidos** = o mesmo com
 `requestedTo == eu` e `status == pending`. A busca da tela Amigos é por **@ exato** (ninguém lista
 `users/` nem `usernames/`, para um script não baixar a base inteira); filtrar por nome é só dentro da
-lista de amigos já carregada.
+lista de amigos já carregada. Desde 11/11/2026 a própria busca da lista procura o @ exato quando o texto
+começa com "@" ou nenhum amigo bate (uma leitura de `usernames/{@}` depois de `searchDebounce`), e mostra
+quem achou com "Adicionar": não precisa abrir o "Convidar". Achar por nome quem ainda não é amigo continua
+fora (🟡 decisão de privacidade do grupo). O "Complete seu perfil" usa a mesma leitura para avisar, ao sair
+do campo, que o @ já é de alguém (`AuthRepository.isUsernameTaken`); quem decide é a Function.
 
 **"X sessões juntos" (R16)** é contado **no aparelho**, a partir das sessões que a Início já leu
 (`participantIds` contém os dois). O Firestore não consegue filtrar duas vezes por `array-contains`, e
@@ -95,8 +99,12 @@ alguém ficar grande demais, vira contador.
 - Todo participante vê, assiste e **baixa** todos os highlights (R11). Download = ler o vídeo pelo Storage.
 - Depois de salva, só o dono renomeia um lance: `renameHighlight` (domínio `highlights/`; o
   nome nasce "Lance N" no `saveSession`).
-- Depois de salva, só o dono muda nome, local e participantes: `updateSession` (R12). Quem entra
-  também precisa ser amigo do dono; quem sai perde o acesso aos vídeos na hora.
+- Depois de salva, só o dono muda nome, local, data e horário e participantes: `updateSession` (R12). Quem entra
+  também precisa ser amigo do dono; quem sai perde o acesso aos vídeos na hora. Data e horário vão juntos
+  (`startedAt` + `endedAt`, as regras do `saveSession`); os lances ficam no mesmo momento dentro da sessão
+  (`offsetSeconds`), o `savedAt` de cada um é recalculado, e a nova duração precisa ir até o último lance
+  (`checkPeriodFitsHighlights`, espelhada em `validatePeriodFitsHighlights` no app). Sessão com lances de outra
+  juntada (D18) não muda de data.
 - Um participante pode sair sozinho: `leaveSession` (o dono não sai; 🟡 decisão de produto em aberto).
 - O dono exclui a sessão para todos: `deleteSession` apaga numa transação os highlights, os
   pedidos de juntar que citam a sessão e a própria sessão, e desconta a sessão e os lances do

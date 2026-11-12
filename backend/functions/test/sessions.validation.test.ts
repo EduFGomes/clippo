@@ -6,6 +6,7 @@ import {
   PARTICIPANTS_MAX,
   SESSION_NAME_MAX,
   SessionValidationError,
+  checkPeriodFitsHighlights,
   normalizeHighlights,
   normalizeId,
   normalizeLocation,
@@ -85,6 +86,25 @@ describe("início e fim", () => {
       "A sessão não pode terminar no futuro.",
     );
     expect(normalizePeriod(INICIO, "2026-10-30T01:04:00Z", AGORA).durationSeconds).toBeGreaterThan(0);
+  });
+});
+
+describe("corrigir data e horário (updateSession)", () => {
+  it("aceita duração que vai até o último lance, com 1 minuto de folga", () => {
+    expect(() => checkPeriodFitsHighlights(600, [30, 300, 600])).not.toThrow();
+    expect(() => checkPeriodFitsHighlights(600, [660])).not.toThrow();
+    expect(() => checkPeriodFitsHighlights(600, [])).not.toThrow();
+  });
+
+  it("recusa encurtar a sessão para antes do último lance", () => {
+    expect(() => checkPeriodFitsHighlights(600, [30, 661])).toThrow(
+      "A sessão precisa durar até o último lance. Confira o horário do fim.",
+    );
+    try {
+      checkPeriodFitsHighlights(60, [500]);
+    } catch (e) {
+      expect((e as SessionValidationError).field).toBe("endedAt");
+    }
   });
 });
 

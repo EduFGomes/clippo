@@ -185,6 +185,9 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _leaving = false;
   bool _deleting = false;
 
+  /// Os lances que a tela mostrou por último: o Editar sessão confere a nova data com eles.
+  List<Highlight> _knownHighlights = const [];
+
   final List<StreamSubscription<Object?>> _subscriptions = [];
 
   SessionsRepository get _repository => widget.repository ?? sessionsRepository;
@@ -355,6 +358,7 @@ class _SessionScreenState extends State<SessionScreen> {
           participants: _participantsOf(_session),
           friends: _friends,
           repository: _repository,
+          highlightOffsets: [for (final h in _knownHighlights) h.offset],
         ),
       ),
     );
@@ -565,6 +569,7 @@ class _SessionScreenState extends State<SessionScreen> {
               final data = snapshot.data;
               // Os lances que ainda estão no celular aparecem mesmo sem internet (R13).
               final withLocal = queue.withLocalVideos(session.id, data?.highlights ?? const []);
+              _knownHighlights = withLocal;
               if (withLocal.any((h) => h.hasLocalVideo)) {
                 return _HighlightList(
                   highlights: withLocal,
@@ -1021,10 +1026,15 @@ class _EditSessionScreen extends StatefulWidget {
     required this.participants,
     required this.friends,
     required this.repository,
+    this.highlightOffsets = const [],
   });
 
   final Session session;
   final List<SessionParticipant> participants;
+
+  /// O momento de cada lance que a Sessão já mostrou: a nova data e horário precisam ir até o
+  /// último (o servidor confere de novo com os do banco).
+  final List<Duration> highlightOffsets;
 
   /// Amigos aceitos do dono: só eles podem entrar (R10, conferido de novo no servidor).
   final List<Friend> friends;
@@ -1040,6 +1050,109 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
       TextEditingController(text: widget.session.location?.label ?? '');
   late final List<SessionParticipant> _selected = List<SessionParticipant>.of(widget.participants);
 
+  /// Data e horário (R12: o dono corrige se o relógio ou o dia saíram errados).
+  late DateTime _startedAt = widget.session.startedAt;
+  late DateTime _endedAt = _originalEnd;
+  late final TextEditingController _dateController = TextEditingController(text: clippoDate(_startedAt));
+  late final TextEditingController _timeController =
+      TextEditingController(text: clippoTimeRange(_startedAt, _endedAt));
+  String? _periodError;
+
+  DateTime get _originalEnd => widget.session.endedAt ?? widget.session.startedAt.add(widget.session.duration);
+
+  /// Sessão com lances de outra juntada (D18) não muda de data (o servidor também recusa).
+  bool get _periodLocked => widget.session.mergedFrom.isNotEmpty;
+
+  bool get _periodChanged => _startedAt != widget.session.startedAt || _endedAt != _originalEnd;
+
+  /// Mudou alguma coisa desde que abriu? Sair assim pergunta antes de descartar.
+  bool get _dirty {
+    final before = {
+      for (final uid in widget.session.participantIds)
+        if (uid != _ownerId) uid,
+    };
+    return _nameController.text.trim() != widget.session.name.trim() ||
+        _locationController.text.trim() != (widget.session.location?.label ?? '').trim() ||
+        !setEquals(before, _selectedIds.toSet()) ||
+        _periodChanged;
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      helpText: 'Data da sessão',
+      initialDate: _startedAt.isAfter(now) ? now : _startedAt,
+      firstDate: DateTime(2020),
+      lastDate: now,
+    );
+    if (picked == null || !mounted) return;
+    final length = _endedAt.difference(_startedAt);
+    final start = DateTime(picked.year, picked.month, picked.day, _startedAt.hour, _startedAt.minute);
+    _setPeriod(start, start.add(length));
+  }
+
+  Future<void> _pickTimeRange() async {
+    final pickedStart = await showTimePicker(
+      context: context,
+      helpText: 'Começou às',
+      initialTime: TimeOfDay.fromDateTime(_startedAt),
+    );
+    if (pickedStart == null || !mounted) return;
+    final pickedEnd = await showTimePicker(
+      context: context,
+      helpText: 'Terminou às',
+      initialTime: TimeOfDay.fromDateTime(_endedAt),
+    );
+    if (pickedEnd == null || !mounted) return;
+    final start = DateTime(_startedAt.year, _startedAt.month, _startedAt.day, pickedStart.hour, pickedStart.minute);
+    var end = DateTime(start.year, start.month, start.day, pickedEnd.hour, pickedEnd.minute);
+    // Terminou "antes" de começar = passou da meia-noite (jogo à noite).
+    if (!end.isAfter(start)) end = end.add(const Duration(days: 1));
+    _setPeriod(start, end);
+  }
+
+  void _setPeriod(DateTime start, DateTime end) {
+    setState(() {
+      _startedAt = start;
+      _endedAt = end;
+      _dateController.text = clippoDate(start);
+      _timeController.text = clippoTimeRange(start, end);
+      _periodError = _validatePeriod();
+    });
+  }
+
+  String? _validatePeriod() =>
+      validateSessionPeriod(_startedAt, _endedAt) ??
+      validatePeriodFitsHighlights(_endedAt.difference(_startedAt), widget.highlightOffsets);
+
+  @override
+  void initState() {
+    super.initState();
+    // O PopScope decide pelo [_dirty]: a tela precisa se redesenhar quando o texto muda.
+    _nameController.addListener(_onTextChanged);
+    _locationController.addListener(_onTextChanged);
+  }
+
+  bool _wasDirty = false;
+
+  void _onTextChanged() {
+    final dirty = _dirty;
+    if (dirty != _wasDirty && mounted) setState(() => _wasDirty = dirty);
+  }
+
+  Future<void> _confirmLeave() async {
+    final leave = await confirmHomeAction(
+      context,
+      title: 'Sair sem salvar?',
+      message: 'O que você mudou nesta sessão vai ser descartado.',
+      confirmLabel: 'Descartar alterações',
+      cancelLabel: 'Continuar editando',
+      destructive: true,
+    );
+    if (leave && mounted) Navigator.of(context).pop();
+  }
+
   String? _nameError;
   String? _locationError;
   String? _participantsError;
@@ -1052,6 +1165,8 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
   void dispose() {
     _nameController.dispose();
     _locationController.dispose();
+    _dateController.dispose();
+    _timeController.dispose();
     super.dispose();
   }
 
@@ -1090,13 +1205,16 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
     final nameErr = validateSessionName(_nameController.text);
     final locErr = validateLocation(_locationController.text);
     final partErr = validateParticipantIds(ids, ownerId: _ownerId);
+    final periodChanged = _periodChanged;
+    final periodErr = periodChanged ? _validatePeriod() : null;
     setState(() {
       _nameError = nameErr;
       _locationError = locErr;
       _participantsError = partErr;
+      _periodError = periodErr;
       _generalError = null;
     });
-    if (nameErr != null || locErr != null || partErr != null) return;
+    if (nameErr != null || locErr != null || partErr != null || periodErr != null) return;
 
     final location = normalizeLocation(_locationController.text);
     final hadLocation = (widget.session.location?.label ?? '').trim().isNotEmpty;
@@ -1114,6 +1232,9 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
         location: location,
         clearLocation: location == null && hadLocation,
         participantIds: participantsChanged ? ids : null,
+        startedAt: periodChanged ? _startedAt : null,
+        endedAt: periodChanged ? _endedAt : null,
+        highlightOffsets: widget.highlightOffsets,
       );
       if (!mounted) return;
       final allIds = normalizeParticipantIds(ids, ownerId: _ownerId);
@@ -1124,6 +1245,9 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
         participantIds: allIds,
         participants: List<SessionParticipant>.unmodifiable(_selected),
         participantCount: allIds.length,
+        startedAt: _startedAt,
+        endedAt: _endedAt,
+        duration: _endedAt.difference(_startedAt),
       ));
     } catch (e) {
       if (!mounted) return;
@@ -1138,6 +1262,8 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
             _locationError = failure.message;
           case 'participantIds':
             _participantsError = failure.message;
+          case 'startedAt' || 'endedAt':
+            _periodError = failure.message;
           default:
             _generalError = failure.message;
         }
@@ -1150,7 +1276,13 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
     final colors = ClippoColors.of(context);
     final addable = _addable;
 
-    return ClippoScreenGround(
+    // Voltar (o botão ou o do Android) com mudanças pergunta antes de descartar.
+    return PopScope(
+      canPop: _saving || !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: ClippoScreenGround(
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1169,7 +1301,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
           const ClippoScreenTitle(
             line1: 'Editar',
             line2: 'sessão.',
-            subtitle: 'Só quem gravou muda o nome, o local e quem jogou.',
+            subtitle: 'Só quem gravou muda o nome, o local, a data e quem jogou.',
           ),
           const SizedBox(height: ClippoSpace.section),
           ClippoTextField(
@@ -1193,6 +1325,38 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
               if (_locationError != null) setState(() => _locationError = null);
             },
           ),
+          const SizedBox(height: ClippoSpace.spaceM),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClippoTextField(
+                  label: 'Data',
+                  controller: _dateController,
+                  readOnly: true,
+                  onTap: _periodLocked ? null : _pickDate,
+                  hasError: _periodError != null,
+                ),
+              ),
+              const SizedBox(width: ClippoSpace.spaceM),
+              Expanded(
+                child: ClippoTextField(
+                  label: 'Horário',
+                  controller: _timeController,
+                  readOnly: true,
+                  onTap: _periodLocked ? null : _pickTimeRange,
+                  hasError: _periodError != null,
+                ),
+              ),
+            ],
+          ),
+          if (_periodError != null || _periodLocked) ...[
+            const SizedBox(height: ClippoSpace.spaceS),
+            Text(
+              _periodError ?? 'Essa sessão tem lances de outra sessão juntada e a data não dá para mudar.',
+              style: ClippoText.label.copyWith(color: _periodError != null ? colors.error : colors.textMuted),
+            ),
+          ],
           const SizedBox(height: ClippoSpace.section),
           Text(
             'Participantes (${_selected.length})',
@@ -1266,6 +1430,7 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
               ],
             ),
         ],
+      ),
       ),
     );
   }

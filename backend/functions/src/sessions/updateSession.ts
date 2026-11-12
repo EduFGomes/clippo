@@ -3,6 +3,9 @@
  *
  * Campos opcionais: só muda o que vier no pedido.
  *   - name, location: mesmas regras do saveSession;
+ *   - startedAt + endedAt: corrigir data e horário (mesmas regras do saveSession). Os lances
+ *     ficam no mesmo momento dentro da sessão e a duração nova precisa ir até o último deles;
+ *     sessão com lances de outra juntada (D18) não muda de data.
  *   - participantIds: a lista inteira, nova. Quem ENTRA precisa ser amigo do dono (R10);
  *     quem sai perde o acesso à sessão e aos vídeos na hora (R11). O dono não sai.
  *
@@ -10,7 +13,7 @@
  * entrou ou saiu e a lista de participantes das sessões juntadas a esta (D18), que é o
  * que as regras do Storage conferem para liberar os vídeos delas.
  */
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { CALLABLE_OPTIONS } from "../config";
@@ -22,8 +25,10 @@ import {
   normalizeId,
   normalizeLocation,
   normalizeParticipantIds,
+  normalizePeriod,
   normalizeSessionName,
   participantChanges,
+  checkPeriodFitsHighlights,
 } from "./validation";
 
 export interface UpdateSessionRequest {
@@ -31,6 +36,9 @@ export interface UpdateSessionRequest {
   name?: string;
   location?: string | null;
   participantIds?: string[];
+  /** Corrigir data e horário: os dois juntos, em ISO 8601 (as mesmas regras do saveSession). */
+  startedAt?: string;
+  endedAt?: string;
 }
 
 export const updateSession = onCall<UpdateSessionRequest, Promise<{ sessionId: string }>>(
@@ -46,12 +54,16 @@ export const updateSession = onCall<UpdateSessionRequest, Promise<{ sessionId: s
     let name: string | undefined;
     let location: string | null | undefined;
     let participantIds: string[] | undefined;
+    let period: ReturnType<typeof normalizePeriod> | undefined;
     try {
       sessionId = normalizeId(data.sessionId, "sessionId");
       if (data.name !== undefined) name = normalizeSessionName(data.name);
       if (data.location !== undefined) location = normalizeLocation(data.location);
       if (data.participantIds !== undefined) {
         participantIds = normalizeParticipantIds(data.participantIds, uid);
+      }
+      if (data.startedAt !== undefined || data.endedAt !== undefined) {
+        period = normalizePeriod(data.startedAt, data.endedAt);
       }
     } catch (e) {
       if (e instanceof SessionValidationError) {
@@ -95,8 +107,37 @@ export const updateSession = onCall<UpdateSessionRequest, Promise<{ sessionId: s
         throw new HttpsError("failed-precondition", "Essa sessão foi juntada a outra. Edite a principal.");
       }
 
+      // Data e horário: lidos antes de qualquer escrita (regra da transação do Firestore).
+      let highlightSnaps: QueryDocumentSnapshot[] = [];
+      if (period) {
+        if (mergedFromOf(snap).length > 0) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Essa sessão tem lances de outra sessão juntada e a data não dá para mudar.",
+            { field: "startedAt" },
+          );
+        }
+        highlightSnaps = (await tx.get(sessionRef.collection("highlights"))).docs;
+        try {
+          checkPeriodFitsHighlights(
+            period.durationSeconds,
+            highlightSnaps.map((h) => (h.get("offsetSeconds") as number | undefined) ?? 0),
+          );
+        } catch (e) {
+          if (e instanceof SessionValidationError) {
+            throw new HttpsError("invalid-argument", e.message, { field: e.field });
+          }
+          throw e;
+        }
+      }
+
       const now = FieldValue.serverTimestamp();
       const updates: Record<string, unknown> = { updatedAt: now };
+      if (period) {
+        updates.startedAt = period.startedAt;
+        updates.endedAt = period.endedAt;
+        updates.durationSeconds = period.durationSeconds;
+      }
       if (name !== undefined) updates.name = name;
       if (location !== undefined) updates.location = location === null ? null : { label: location };
 
@@ -128,6 +169,17 @@ export const updateSession = onCall<UpdateSessionRequest, Promise<{ sessionId: s
           for (const fromId of mergedFrom) {
             tx.update(db().doc(`sessions/${fromId}`), { participantIds, updatedAt: now });
           }
+        }
+      }
+
+      // Os lances andam junto com a sessão: mesmo momento dentro dela, nova hora no relógio.
+      if (period) {
+        for (const h of highlightSnaps) {
+          const offset = (h.get("offsetSeconds") as number | undefined) ?? 0;
+          tx.update(h.ref, {
+            savedAt: new Date(period.startedAt.getTime() + offset * 1000),
+            updatedAt: now,
+          });
         }
       }
 

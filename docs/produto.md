@@ -157,7 +157,7 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
 | R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
-| R12 | Só o dono edita nome/local da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
+| R12 | Só o dono edita nome/local/data e horário da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
 | R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) guarda os highlights já salvos numa sessão padrão; **"Descartar"** (na confirmação) joga fora todos os highlights da sessão. 🟡 Falta definir a sessão padrão (nome, quem participa) e se sessão sem nenhum highlight pode ser salva. |
 

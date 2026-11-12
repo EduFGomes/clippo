@@ -12,6 +12,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
@@ -204,6 +205,12 @@ class ClippoCameraSession(private val activity: FlutterActivity) :
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
             "hasMicrophonePermission" -> result.success(hasMicrophonePermission())
+            // Bateria para o standby (toque na tela mostra tempo, lances e bateria). Sem permissão.
+            "batteryLevel" -> {
+                val manager = activity.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                val level = manager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                result.success(if (level == null || level < 0 || level > 100) null else level)
+            }
             // Permissão negada de vez: só a tela do app nas Configurações do Android devolve.
             "openAppSettings" -> {
                 val intent = Intent(

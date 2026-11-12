@@ -179,6 +179,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   bool _showControls = false;
   Timer? _controlsTimer;
+
+  /// Bateria lida no último toque na tela preta (0 a 100); nula se o Android não disse.
+  int? _battery;
   Timer? _toastTimer;
   String? _saveError;
 
@@ -442,6 +445,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void _revealControls() {
     _controlsTimer?.cancel();
     setState(() => _showControls = true);
+    // A bateria é lida a cada toque: sem ninguém olhando, a tela fica só com o ponto (R7).
+    widget.camera.batteryLevel().then((level) {
+      if (mounted) setState(() => _battery = level);
+    });
     _controlsTimer = Timer(ClippoMotion.stopControls, () {
       if (mounted) setState(() => _showControls = false);
     });
@@ -1437,6 +1444,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _recordingStatus(),
+                      const SizedBox(height: ClippoSpace.spaceL),
                       ClippoPrimaryButton.onWine(label: 'Encerrar sessão', onPressed: _finishSession),
                       const SizedBox(height: ClippoSpace.spaceM),
                       ClippoGhostButton(label: 'Cancelar gravação', onPressed: _confirmCancelRecording),
@@ -1447,6 +1456,32 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// "12:05 · 3 highlights · bateria 64 %": aparece com os controles, ao tocar na tela, e
+  /// conta os segundos enquanto está à vista. O resto do tempo, só o ponto (R7).
+  Widget _recordingStatus() {
+    return StreamBuilder<void>(
+      stream: Stream<void>.periodic(const Duration(seconds: 1)),
+      builder: (context, _) {
+        final start = _recordingStartTime;
+        final battery = _battery;
+        final text = clippoDotList([
+          if (start != null) clippoRecordingTime(DateTime.now().difference(start)),
+          clippoHighlightCount(_highlights.length),
+          if (battery != null) 'bateria $battery %',
+        ]);
+        return Semantics(
+          label: 'Gravando: $text',
+          excludeSemantics: true,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
+          ),
+        );
+      },
     );
   }
 

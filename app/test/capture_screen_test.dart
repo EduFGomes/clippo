@@ -57,6 +57,11 @@ class _FakeCamera extends ClippoCamera {
   @override
   Future<void> openAppSettings() async => settingsOpened++;
 
+  int? battery = 64;
+
+  @override
+  Future<int?> batteryLevel() async => battery;
+
   /// Ordem das fases pedidas: 'preview' (só a imagem) ou 'start' (análise e buffer, sem imagem).
   final List<String> phases = [];
   bool? lastWithPreview;
@@ -392,6 +397,30 @@ void main() {
     await tester.pump();
     expect(camera.phases, ['preview', 'start', 'preview']);
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('tocar na tela preta mostra tempo de gravação, lances e bateria', (tester) async {
+    final camera = _FakeCamera()..battery = 37;
+    await open(tester, camera: camera);
+    await tester.tap(find.bySemanticsLabel(startLabel));
+    await tester.pump();
+    // Só o ponto enquanto ninguém toca (R7).
+    expect(find.textContaining('bateria'), findsNothing);
+
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('0:00 · nenhum highlight · bateria 37 %'), findsOneWidget);
+
+    // Sem a bateria (Android não disse), o resto continua.
+    camera.battery = null;
+    await tester.pump(ClippoMotion.stopControls);
+    await tester.tapAt(const Offset(206, 400));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('nenhum highlight'), findsOneWidget);
+    expect(find.textContaining('bateria'), findsNothing);
+    await tester.pump(ClippoMotion.stopControls);
   });
 
   testWidgets('enquanto a análise liga, a gravação diz que está ligando, não que já detecta', (tester) async {

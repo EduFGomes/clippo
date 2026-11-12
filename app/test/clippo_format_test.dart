@@ -69,6 +69,20 @@ void main() {
     expect(clippoPlayerProgress(const Duration(seconds: 30)), '0:30');
   });
 
+  test('tempo de gravação do standby como relógio', () {
+    expect(clippoRecordingTime(const Duration(seconds: 42)), '0:42');
+    expect(clippoRecordingTime(const Duration(minutes: 12, seconds: 5)), '12:05');
+    expect(clippoRecordingTime(const Duration(hours: 1, minutes: 2, seconds: 5)), '1:02:05');
+    expect(clippoRecordingTime(const Duration(seconds: -3)), '0:00');
+  });
+
+  test('progresso do Baixar: sem saber, reticências; no fim, salvando na galeria', () {
+    expect(clippoDownloadProgress(null), 'Baixando…');
+    expect(clippoDownloadProgress(0), 'Baixando 0 %');
+    expect(clippoDownloadProgress(0.999), 'Baixando 99 %');
+    expect(clippoDownloadProgress(1), 'Salvando na galeria…');
+  });
+
   test('saudação muda com a hora e usa o primeiro nome', () {
     expect(clippoGreeting(DateTime(2026, 9, 11, 8)), 'Bom dia');
     expect(clippoGreeting(DateTime(2026, 9, 11, 12)), 'Boa tarde');
