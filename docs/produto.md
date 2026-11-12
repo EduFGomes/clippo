@@ -128,7 +128,7 @@ Usuário ──< Participante >── Sessão ──< Highlight
 
 ### 2.6 Perfil
 - Foto, nome, estatísticas rápidas: nº de sessões, nº de highlights, nº de amigos.
-- Editar nome e nome de usuário. Trocar a **foto do perfil** entra em breve (a fazer); notificações ficam para o futuro. Os dois não aparecem na tela enquanto não existirem.
+- Editar nome e nome de usuário. **Foto do perfil**: adicionar, trocar (galeria ou câmera) e remover, desde 12/11/2026. Notificações ficam para o futuro e não aparecem na tela.
 - Sair da conta (com confirmação).
 - Excluir a conta (LGPD): some o perfil, as amizades e as sessões que a pessoa gravou; das sessões dos outros, ela sai.
 
@@ -311,7 +311,7 @@ A gravação ignora o tema claro/escuro.
 
 **Estado D — Confirme a sessão**
 - Cabeçalho: "‹ Voltar à câmera", "Gravação encerrada · 4 highlights" e o título **"Confirme a sessão"**.
-- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; texto livre, não precisa ser um lugar real; **"Usar localização atual"** pede o GPS só quando tocado, a fazer), **Participantes** (inclui "Você") + "+ adicionar".
+- Campos preenchidos automaticamente e editáveis: **Nome da sessão**, **Data** e **Horário** (início – fim), **Local** (vazio, opcional; texto livre, não precisa ser um lugar real; **"Usar localização atual"** pede o GPS só quando tocado e põe rua e bairro no campo, editável; também no Editar sessão), **Participantes** (inclui "Você") + "+ adicionar".
 - Botão primário **"Salvar sessão"** → volta à **Início**, com a nova sessão no topo.
 - Link **"Descartar"** → descarta a sessão e todos os highlights dela e volta à câmera (R14).
 

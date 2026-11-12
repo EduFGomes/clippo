@@ -49,7 +49,7 @@ Estado atual. Coleções novas entram aqui **antes** de serem implementadas.
 
 | Coleção / documento | Campos | Quem lê | Quem grava |
 |---|---|---|---|
-| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp · `updatedAt` timestamp (só depois de editar) | Qualquer usuário logado, **um documento por vez** (ninguém lista a coleção) | Só Functions (`completeProfile`; `updateProfile` muda `name`/`username`; `stats` atualizado pelas Functions de sessão e de amizade) |
+| `users/{uid}` — perfil público | `name` string · `username` string · `photoUrl` string\|null · `stats` {`sessions`, `highlights`, `friends`} números · `createdAt` timestamp · `updatedAt` timestamp (só depois de editar) | Qualquer usuário logado, **um documento por vez** (ninguém lista a coleção) | Só Functions (`completeProfile`; `updateProfile` muda `name`/`username`; `setProfilePhoto` muda `photoUrl`; `stats` atualizado pelas Functions de sessão e de amizade) |
 | `usernames/{username}` — trava do @ único | `uid` string · `createdAt` timestamp | Qualquer usuário logado, **um @ exato por vez** (é a busca da tela Amigos) | Só Functions (`completeProfile`; `updateProfile` libera o antigo e reserva o novo na mesma transação) |
 | `friendships/{uidA_uidB}` — amizade ou pedido (D16) | `uids` [uidA, uidB] em ordem · `status` `pending`\|`accepted` · `requestedBy` · `requestedTo` · `profiles` {uid: {`name`, `username`, `photoUrl`}} · `createdAt` · `updatedAt` · `acceptedAt` timestamp\|null | Só as duas pessoas | Só Functions (`sendFriendRequest`, `acceptFriendRequest`, `removeFriend`; `updateProfile` regrava `profiles.{uid}`) |
 | `sessionMergeRequests/{intoId__fromId}` — pedido para juntar sessões (D18) | `uids` [quem pediu, dono da outra] · `intoSessionId` · `fromSessionId` · `requestedBy` · `requestedTo` · `intoName` · `fromName` · `createdAt` | Só as duas pessoas | Só Functions (`requestSessionMerge`, `acceptSessionMerge`, `cancelSessionMerge`) |
@@ -209,6 +209,17 @@ servidor. A Function é chamada no "Salvar sessão"; sem internet, o app guarda 
 tenta de novo sozinho quando a conexão voltar (WorkManager), mesmo com o app fechado. O
 vídeo sobe do app direto para o Storage, e um gatilho marca o highlight como `uploaded`;
 só depois disso o app apaga a cópia local (R13).
+
+#### Foto do perfil no Storage (12/11/2026)
+
+O app reduz a foto para 512 px e envia para `users/{uid}/avatar` (`storage.rules`: qualquer pessoa logada lê;
+só a própria pessoa envia, JPEG ou PNG de até 2 MB; ninguém apaga pelo app). Depois chama `setProfilePhoto`,
+que confere de novo tipo e tamanho (`checkProfilePhoto`, espelhada em `validateProfilePhoto` no app), grava
+`photoUrl` em `users/{uid}` e nas cópias (`friendships.profiles`, `participantsPreview`), como o
+`updateProfile` faz com o nome. `{ remove: true }` apaga e grava `null`; `deleteMyAccount` também apaga a foto.
+O `photoUrl` usa o token de download do Storage (quem tem o link vê): aceito para foto de perfil, que todo
+mundo logado vê; os vídeos continuam sem link (D17). O `v=` no fim muda a cada envio, para o celular não
+mostrar a foto antiga guardada.
 
 #### Acesso aos vídeos no Storage (D17)
 

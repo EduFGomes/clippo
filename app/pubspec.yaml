@@ -20,6 +20,8 @@ dependencies:
     sdk: flutter
   flutter_svg: ^2.3.0
   gal: ^2.3.3
+  geocoding: ^5.0.1
+  geolocator: ^14.1.2
   image_picker: ^1.2.4
   path_provider: ^2.1.6
   share_plus: ^13.3.1

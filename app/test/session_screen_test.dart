@@ -399,6 +399,32 @@ void main() {
     expect(calls, isEmpty);
   });
 
+  testWidgets('editar sessão: "Usar localização atual" põe o lugar no campo Local, editável',
+      (tester) async {
+    _phone(tester);
+    final calls = <(String, Map<String, dynamic>)>[];
+    await tester.pumpWidget(_app(SessionScreen(
+      session: _session(),
+      currentUserId: 'alice',
+      repository: _repo(calls),
+      highlights: _noHighlights(),
+      findPlace: () async => 'Rua das Flores, Vila Mariana',
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Editar sessão'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Usar localização atual'));
+    await tester.tap(find.text('Usar localização atual'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rua das Flores, Vila Mariana'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Salvar alterações'));
+    await tester.tap(find.text('Salvar alterações'));
+    await tester.pumpAndSettle();
+    expect(calls.single.$2['location'], 'Rua das Flores, Vila Mariana');
+  });
+
   testWidgets('dono edita: valida e chama updateSession com os dados normalizados (R12)',
       (tester) async {
     _phone(tester);
