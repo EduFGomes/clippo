@@ -442,7 +442,6 @@ class _Content extends StatelessWidget {
           sessions: me.sessionCount,
           highlights: me.highlightCount,
           friends: me.friendCount,
-          onTapFriends: onTapFriends,
         ),
         const SizedBox(height: ClippoSpace.section),
         ProfileActionTile(
