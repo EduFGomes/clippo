@@ -402,7 +402,6 @@ class _ClippoRadialNavState extends State<ClippoRadialNav> with TickerProviderSt
                 _scrim(colors),
                 for (var i = 0; i < widget.items.length; i++) _item(i, _center, colors),
                 _button(_center, current, colors),
-                _previewBubble(box.maxWidth),
               ],
             ),
           );

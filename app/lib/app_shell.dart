@@ -40,8 +40,8 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   /// Posição de cada destino na roda.
   static const int _home = 0;
-  static const int _search = 1;
-  static const int _record = 2;
+  static const int _record = 1;
+  static const int _search = 2;
   static const int _settings = 3;
 
   /// Abas que ficam vivas ao mesmo tempo, na ordem do IndexedStack.
@@ -219,8 +219,8 @@ class _AppShellState extends State<AppShell> {
                 },
                 items: const [
                   ClippoRadialNavItem(label: 'Início', icon: 'home'),
-                  ClippoRadialNavItem(label: 'Pesquisar', icon: 'search'),
                   ClippoRadialNavItem(label: 'Gravar', icon: 'capture'),
+                  ClippoRadialNavItem(label: 'Pesquisar', icon: 'search'),
                   ClippoRadialNavItem(label: 'Ajustes', icon: 'settings'),
                 ],
               ),
