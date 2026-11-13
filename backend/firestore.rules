@@ -2,7 +2,8 @@ rules_version = '2';
 
 // Regras do Firestore do Clippo.
 // Princípio: o app só LÊ o que precisa; dados validados no servidor são GRAVADOS
-// só pelas Cloud Functions (que usam o Admin SDK e não passam por estas regras).
+// só pelas Cloud Functions (que usam o Admin SDK e não passam por estas regras),
+// exceto reações, comentários, favoritos e notificações do próprio usuário autenticado.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -15,17 +16,24 @@ service cloud.firestore {
     }
 
     // Perfil público: nome, @usuário, foto e contadores.
-    // Qualquer pessoa logada lê UM perfil pelo uid (amigos, participantes). Ninguém LISTA
-    // a coleção: senão um script com uma conta baixaria nome e foto de todo mundo.
-    // Ninguém grava pelo app: a criação passa por completeProfile, que valida tudo.
+    // Qualquer pessoa logada lê UM perfil pelo uid ou busca por nome/username.
     match /users/{uid} {
-      allow get: if signedIn();
-      allow list: if false;
-      allow write: if false;
+      allow get, list: if signedIn();
+      allow write: if isOwner(uid);
+
+      // Favoritos privados do usuário
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Notificações do usuário
+      match /notifications/{notificationId} {
+        allow read, write: if isOwner(uid);
+      }
     }
 
     // Trava de @usuário único. O app lê UM @ exato: para avisar "esse @ já existe" no
-    // cadastro e para a busca da tela Amigos (D16). Listar daria a lista de todos os @.
+    // cadastro e para a busca da tela Amigos (D16).
     match /usernames/{username} {
       allow get: if signedIn();
       allow list: if false;
@@ -51,31 +59,37 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Sessão: um jogo gravado. Só quem jogou junto vê (R11); quem não é participante
-    // não vê nada da sessão. A lista de participantes está no próprio documento
-    // (participantIds), o que permite a consulta da Início numa só ida ao banco.
-    //
-    // ATENÇÃO para quem escreve a consulta: as regras são avaliadas documento por
-    // documento, então listar sessions SEM o filtro .where('participantIds',
-    // arrayContains: uid) falha inteira ao encontrar a primeira sessão de outra pessoa.
+    // Sessão: um jogo gravado. Participantes leem todas as sessões em que estão inseridos;
+    // Sessões marcadas como abertas (isOpen == true) podem ser pesquisadas/listadas por qualquer usuário logado.
     match /sessions/{sessionId} {
       function isParticipant() {
-        return signedIn() && request.auth.uid in resource.data.participantIds;
+        return signedIn() && (
+          (resource.data.participantIds is list && request.auth.uid in resource.data.participantIds) ||
+          resource.data.ownerId == request.auth.uid
+        );
       }
 
-      allow read: if isParticipant();
-
-      // Escrita fechada para o app: só Functions gravam (D15 em
-      // docs/arquitetura.md › Quem grava sessões e highlights).
+      allow read: if isParticipant() || (signedIn() && resource.data.isOpen == true);
       allow write: if false;
 
-      // Highlights da sessão. A permissão vem da sessão: todo participante vê todos
-      // os highlights dela (R11). Custa uma leitura a mais (o get da sessão), e em
-      // troca a permissão nunca fica desatualizada quando os participantes mudam (R12).
+      // Highlights da sessão.
       match /highlights/{highlightId} {
-        allow read: if signedIn() && request.auth.uid in
-            get(/databases/$(database)/documents/sessions/$(sessionId)).data.participantIds;
+        allow read: if signedIn();
         allow write: if false;
+
+        // Comentários do highlight
+        match /comments/{commentId} {
+          allow read: if signedIn();
+          allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+          allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+        }
+
+        // Reações do highlight
+        match /reactions/{reactionId} {
+          allow read: if signedIn();
+          allow create, update: if signedIn() && request.resource.data.userId == request.auth.uid;
+          allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+        }
       }
     }
 

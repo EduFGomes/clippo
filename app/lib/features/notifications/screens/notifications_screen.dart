@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
@@ -14,7 +16,7 @@ class ClippoNotification {
     required this.message,
     required this.timestamp,
     this.avatarUrl,
-    this.initials,
+    this.userName,
     this.read = false,
   });
 
@@ -23,11 +25,28 @@ class ClippoNotification {
   final String message;
   final DateTime timestamp;
   final String? avatarUrl;
-  final String? initials;
+  final String? userName;
   final bool read;
+
+  factory ClippoNotification.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    final timestamp = (data['timestamp'] as Timestamp?)?.toDate() ??
+        (data['createdAt'] as Timestamp?)?.toDate() ??
+        DateTime.now();
+    return ClippoNotification(
+      id: doc.id,
+      title: data['title'] as String? ?? 'Notificação',
+      message: data['message'] as String? ?? '',
+      timestamp: timestamp,
+      avatarUrl: data['avatarUrl'] as String?,
+      userName: data['userName'] as String? ?? data['senderName'] as String?,
+      read: data['read'] as bool? ?? false,
+    );
+  }
 }
 
 /// Tela de notificações em ordem cronológica (mais recente pro mais antigo).
+/// Conectada em tempo real à subcoleção Firestore `users/{uid}/notifications`.
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({
     super.key,
@@ -36,52 +55,10 @@ class NotificationsScreen extends StatelessWidget {
 
   final List<ClippoNotification>? notifications;
 
-  static List<ClippoNotification> get defaultNotifications {
-    final now = DateTime.now();
-    return [
-      ClippoNotification(
-        id: '1',
-        title: 'Novo destaque salvo',
-        message: 'Seu lance de 3 pontos no Rachão de Quinta foi salvo com sucesso!',
-        timestamp: now.subtract(const Duration(minutes: 10)),
-        initials: 'CL',
-      ),
-      ClippoNotification(
-        id: '2',
-        title: 'Reação ao seu lance',
-        message: 'Edu reagiu com 🔥 ao seu highlight.',
-        timestamp: now.subtract(const Duration(hours: 1, minutes: 25)),
-        initials: 'ED',
-      ),
-      ClippoNotification(
-        id: '3',
-        title: 'Novo comentário',
-        message: 'Bia comentou: "Jogou muito hoje!! 👏"',
-        timestamp: now.subtract(const Duration(hours: 3)),
-        initials: 'BI',
-      ),
-      ClippoNotification(
-        id: '4',
-        title: 'Solicitação de amizade',
-        message: 'Lucas enviou uma solicitação para conectar com você.',
-        timestamp: now.subtract(const Duration(days: 1, hours: 2)),
-        initials: 'LU',
-      ),
-      ClippoNotification(
-        id: '5',
-        title: 'Sessão compartilhada',
-        message: 'Você foi adicionado aos participantes da sessão "Vôlei de Domingo".',
-        timestamp: now.subtract(const Duration(days: 3)),
-        initials: 'VD',
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    final items = List<ClippoNotification>.of(notifications ?? defaultNotifications)
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp)); // cronológica decrescente
+    final user = FirebaseAuth.instance.currentUser;
 
     return ClippoScreenGround(
       child: Column(
@@ -96,38 +73,94 @@ class NotificationsScreen extends StatelessWidget {
           const SizedBox(height: ClippoSpace.spaceM),
           const ClippoScreenTitle(line1: 'Suas', line2: 'notificações.'),
           const SizedBox(height: ClippoSpace.section),
-          if (items.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                child: Text(
-                  'Nenhuma notificação por enquanto.',
-                  style: ClippoText.body.copyWith(color: colors.textMuted),
-                ),
-              ),
-            )
-          else
-            for (final notif in items) ...[
-              _NotificationItem(item: notif),
-              const SizedBox(height: ClippoSpace.spaceM),
-            ],
+          Expanded(
+            child: user == null
+                ? _buildEmptyState(colors)
+                : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user.uid)
+                        .collection('notifications')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            'Erro ao carregar notificações.',
+                            style: ClippoText.body.copyWith(color: colors.textMuted),
+                          ),
+                        );
+                      }
+
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final docs = snapshot.data!.docs;
+                      if (docs.isEmpty) {
+                        return _buildEmptyState(colors);
+                      }
+
+                      final items = docs
+                          .map((doc) => ClippoNotification.fromFirestore(doc))
+                          .toList();
+
+                      return ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: ClippoSpace.spaceM),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return _NotificationCard(notification: item);
+                        },
+                      );
+                    },
+                  ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ClippoColors colors) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceL),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_none_rounded, size: 56, color: colors.textMuted),
+            const SizedBox(height: ClippoSpace.spaceM),
+            Text(
+              'Nenhuma notificação por enquanto.',
+              textAlign: TextAlign.center,
+              style: ClippoText.titleS.copyWith(color: colors.text),
+            ),
+            const SizedBox(height: ClippoSpace.spaceS),
+            Text(
+              'Novas reações, comentários e convites para sessões aparecerão aqui em ordem cronológica.',
+              textAlign: TextAlign.center,
+              style: ClippoText.body.copyWith(color: colors.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _NotificationItem extends StatelessWidget {
-  const _NotificationItem({required this.item});
+class _NotificationCard extends StatelessWidget {
+  const _NotificationCard({required this.notification});
 
-  final ClippoNotification item;
+  final ClippoNotification notification;
 
-  String _formatRelativeTime(DateTime time) {
-    final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'agora';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}min';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    return '${diff.inDays}d';
+  String _formatTimeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Agora mesmo';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m atrás';
+    if (diff.inHours < 24) return '${diff.inHours}h atrás';
+    if (diff.inDays < 7) return '${diff.inDays}d atrás';
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -137,16 +170,18 @@ class _NotificationItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(ClippoSpace.spaceM),
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: notification.read ? colors.surface : colors.controlSoft,
         borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
-        border: Border.all(color: colors.line),
+        border: Border.all(
+          color: notification.read ? colors.line : colors.primary.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClippoAvatar(
-            name: item.title,
-            photoUrl: item.avatarUrl,
+            name: notification.userName ?? notification.title,
+            photoUrl: notification.avatarUrl,
             size: 40,
           ),
           const SizedBox(width: ClippoSpace.spaceM),
@@ -155,24 +190,25 @@ class _NotificationItem extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Text(
-                        item.title,
-                        style: ClippoText.label.copyWith(color: colors.text),
+                        notification.title,
+                        style: ClippoText.titleS.copyWith(
+                          color: colors.text,
+                          fontWeight: notification.read ? FontWeight.w500 : FontWeight.bold,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: ClippoSpace.spaceS),
                     Text(
-                      _formatRelativeTime(item.timestamp),
-                      style: ClippoText.label.copyWith(color: colors.textMuted, fontSize: 12),
+                      _formatTimeAgo(notification.timestamp),
+                      style: ClippoText.label.copyWith(color: colors.textMuted),
                     ),
                   ],
                 ),
-                const SizedBox(height: ClippoSpace.labelToValue),
+                const SizedBox(height: ClippoSpace.spaceS),
                 Text(
-                  item.message,
+                  notification.message,
                   style: ClippoText.body.copyWith(color: colors.textMuted),
                 ),
               ],
