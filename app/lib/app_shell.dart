@@ -46,6 +46,9 @@ class _AppShellState extends State<AppShell> {
 
   int _current = _home;
 
+  /// A roda está aberta: o "Voltar" do Android é dela (fecha a roda), não do app.
+  bool _wheelOpen = false;
+
   late final List<Session> _localSessions = List<Session>.of(HomeScreen.defaultDemoSessions);
   final StreamController<SessionsSnapshot> _localSessionsController =
       StreamController<SessionsSnapshot>.broadcast();
@@ -129,8 +132,18 @@ class _AppShellState extends State<AppShell> {
     // Com o teclado aberto (buscar amigo, editar perfil) a roda subiria junto e cobriria o
     // campo: ela sai de cena e a folga dela também, até o teclado fechar.
     final typing = media.viewInsets.bottom > 0;
+    // Lido agora, na montagem: o "Voltar" que fecha a roda não pode também trocar de seção.
+    final wheelOpen = _wheelOpen;
 
-    return Scaffold(
+    // "Voltar" do Android fora da Início leva à Início; só nela o app fecha. Antes, voltar em
+    // Amigos ou Perfil fechava o app sem querer.
+    return PopScope(
+      canPop: _current == _home && !wheelOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || wheelOpen || _current == _home) return;
+        setState(() => _current = _home);
+      },
+      child: Scaffold(
       // Quem encolhe para o teclado é a tela (o Scaffold do ClippoScreenGround). Se este
       // encolhesse também, o teclado contava duas vezes e a tela subia o dobro.
       resizeToAvoidBottomInset: false,
@@ -163,6 +176,9 @@ class _AppShellState extends State<AppShell> {
               child: ClippoRadialNav(
               currentIndex: _current,
               onSelected: _select,
+              onOpenChanged: (open) {
+                if (mounted && open != _wheelOpen) setState(() => _wheelOpen = open);
+              },
               items: const [
                 ClippoRadialNavItem(label: 'Início', icon: 'home'),
                 ClippoRadialNavItem(label: 'Gravar', icon: 'capture'),
@@ -173,6 +189,7 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

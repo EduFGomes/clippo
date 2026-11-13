@@ -163,7 +163,9 @@ class SessionsRepository {
         .collection(collectionName)
         .where('participantIds', arrayContains: uid)
         .orderBy('startedAt', descending: true)
-        .snapshots()
+        // Com as mudanças de metadados: quando o servidor confirma o que já estava no cache, o
+        // `fromCache` vira false e o "Sem internet" some. Sem isso, o aviso ficava preso.
+        .snapshots(includeMetadataChanges: true)
         .map(
           (snapshot) => SessionsSnapshot(
             // Sessão juntada a outra (D18) não aparece: os lances dela estão na principal.
@@ -188,7 +190,8 @@ class SessionsRepository {
         .doc(sessionId)
         .collection(highlightsSubcollection)
         .orderBy('offsetSeconds')
-        .snapshots()
+        // Mesmo motivo do watchSessionsOf: o "Sem internet" some quando o servidor confirma.
+        .snapshots(includeMetadataChanges: true)
         .map(
           (snapshot) => HighlightsSnapshot(
             highlights: List<Highlight>.unmodifiable([

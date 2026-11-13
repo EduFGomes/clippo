@@ -534,10 +534,13 @@ class _SessionScreenState extends State<SessionScreen> {
     final requests = _requestsHere;
     final localOnly = _onlyOnThisPhone(queue);
 
-    return ClippoScreenGround(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    // Em slivers: com muitos lances, só os cards à vista são montados (item 30 da análise).
+    return ClippoScreenGround.slivers(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           Row(
             children: [
               const Expanded(child: ClippoBackButton(label: 'Sessões')),
@@ -563,6 +566,9 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ],
           const SizedBox(height: ClippoSpace.section),
+            ],
+          ),
+        ),
           StreamBuilder<HighlightsSnapshot>(
             stream: _highlights,
             builder: (context, snapshot) {
@@ -581,22 +587,26 @@ class _SessionScreenState extends State<SessionScreen> {
                 );
               }
               // Só neste celular e sem lance nenhum: não há o que buscar no servidor.
-              if (localOnly) return const _Empty(localOnly: true);
+              if (localOnly) return const SliverToBoxAdapter(child: _Empty(localOnly: true));
               if (snapshot.hasError) {
-                return _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry);
-              }
-              if (snapshot.connectionState == ConnectionState.waiting || data == null) {
-                return _Loading(expectedCount: session.highlightCount);
-              }
-              if (data.isEmpty && data.fromCache) {
-                return _Problem(
-                  failure: const SessionsFailure(
-                    'Sem internet. Os highlights aparecem assim que você conectar.',
-                  ),
-                  onRetry: _retry,
+                return SliverToBoxAdapter(
+                  child: _Problem(failure: SessionsFailure.from(snapshot.error!), onRetry: _retry),
                 );
               }
-              if (data.isEmpty) return const _Empty();
+              if (snapshot.connectionState == ConnectionState.waiting || data == null) {
+                return SliverToBoxAdapter(child: _Loading(expectedCount: session.highlightCount));
+              }
+              if (data.isEmpty && data.fromCache) {
+                return SliverToBoxAdapter(
+                  child: _Problem(
+                    failure: const SessionsFailure(
+                      'Sem internet. Os highlights aparecem assim que você conectar.',
+                    ),
+                    onRetry: _retry,
+                  ),
+                );
+              }
+              if (data.isEmpty) return const SliverToBoxAdapter(child: _Empty());
 
               final items = data.highlights;
               return _HighlightList(
@@ -609,6 +619,10 @@ class _SessionScreenState extends State<SessionScreen> {
               );
             },
           ),
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           const SizedBox(height: ClippoSpace.section),
           if (_isOwner) ...[
             // Juntar também depende do servidor; volta quando a sessão subir.
@@ -622,8 +636,10 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
           ] else if (participantsCanLeaveSession)
             ClippoTextButton(label: 'Sair da sessão', onPressed: _leaving ? null : _leave),
-        ],
-      ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -680,7 +696,8 @@ class _SessionHeader extends StatelessWidget {
     final withoutTrailingDot =
         trimmed.endsWith('.') ? trimmed.substring(0, trimmed.length - 1).trim() : trimmed;
     final words = withoutTrailingDot.split(RegExp(r'\s+'));
-    if (words.length == 1) return ('Sessão', '${words.first}.');
+    // Uma palavra só: o título é só ela, em accent ("PELADA."), sem um "SESSÃO" inventado em cima.
+    if (words.length == 1) return ('', '${words.first}.');
     return (words.sublist(0, words.length - 1).join(' '), '${words.last}.');
   }
 
@@ -812,36 +829,50 @@ class _HighlightList extends StatelessWidget {
     );
   }
 
+  /// Um sliver: o cabeçalho e as linhas de dois cards; só as linhas à vista são montadas.
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SectionHeading(count: highlights.length),
-        const SizedBox(height: ClippoSpace.spaceL),
-        if (offline) ...[
-          Text(
-            'Sem internet. Mostrando o que já estava no aparelho.',
-            style: ClippoText.label.copyWith(color: colors.textMuted),
-          ),
-          const SizedBox(height: ClippoSpace.spaceM),
-        ],
-        for (var i = 0; i < highlights.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: ClippoSpace.cardGap),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _buildCard(i)),
-                const SizedBox(width: ClippoSpace.cardGap),
-                Expanded(
-                  child: i + 1 < highlights.length ? _buildCard(i + 1) : const SizedBox.shrink(),
+    final rows = (highlights.length + 1) ~/ 2;
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SectionHeading(count: highlights.length),
+              const SizedBox(height: ClippoSpace.spaceL),
+              if (offline) ...[
+                Text(
+                  'Sem internet. Mostrando o que já estava no aparelho.',
+                  style: ClippoText.label.copyWith(color: colors.textMuted),
                 ),
+                const SizedBox(height: ClippoSpace.spaceM),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
+        SliverList.builder(
+          itemCount: rows,
+          itemBuilder: (context, row) {
+            final i = row * 2;
+            return Padding(
+              padding: EdgeInsets.only(top: row > 0 ? ClippoSpace.cardGap : 0),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _buildCard(i)),
+                    const SizedBox(width: ClippoSpace.cardGap),
+                    Expanded(
+                      child: i + 1 < highlights.length ? _buildCard(i + 1) : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ],
     );
   }

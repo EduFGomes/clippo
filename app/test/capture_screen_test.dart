@@ -399,6 +399,21 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  testWidgets('"Confirme a sessão" segue o tema do celular (aqui, claro), não fica sempre escura',
+      (tester) async {
+    await open(tester, camera: _FakeCamera());
+    await finish(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Salvar sessão'), findsOneWidget);
+    final background = tester
+        .widgetList<Scaffold>(find.byType(Scaffold))
+        .map((s) => s.backgroundColor)
+        .toList();
+    expect(background, contains(ClippoColors.light.background));
+    expect(background, isNot(contains(ClippoBrand.captureBackground)));
+  });
+
   testWidgets('tocar na tela preta mostra tempo de gravação, lances e bateria', (tester) async {
     final camera = _FakeCamera()..battery = 37;
     await open(tester, camera: camera);

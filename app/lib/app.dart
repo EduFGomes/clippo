@@ -4,6 +4,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/widgets/clippo_primary_button.dart';
+import 'package:clippo/core/widgets/clippo_screen_ground.dart';
+import 'package:clippo/core/widgets/clippo_screen_title.dart';
+import 'package:clippo/core/widgets/clippo_text_button.dart';
 import 'package:clippo/app_shell.dart';
 import 'package:clippo/features/onboarding/screens/complete_profile_screen.dart';
 import 'package:clippo/features/onboarding/screens/welcome_screen.dart';
@@ -45,31 +49,43 @@ class AuthGate extends StatelessWidget {
       stream: authRepository.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _Loading();
+          return const StartupLoading();
         }
         final user = snapshot.data;
         if (user == null) return const WelcomeScreen();
-        return _ProfileGate(key: ValueKey(user.uid), uid: user.uid);
+        return ProfileGate(key: ValueKey(user.uid), uid: user.uid);
       },
     );
   }
 }
 
-class _ProfileGate extends StatefulWidget {
-  const _ProfileGate({super.key, required this.uid});
+/// Logado: o perfil existe? Público para os testes (com [hasProfile] e [signOut] de mentira).
+class ProfileGate extends StatefulWidget {
+  const ProfileGate({super.key, required this.uid, this.hasProfile, this.signOut, this.app});
 
   final String uid;
 
+  /// Nulo = `authRepository.hasProfile`.
+  final Future<bool> Function(String uid)? hasProfile;
+
+  /// Nulo = `authRepository.signOut`.
+  final Future<void> Function()? signOut;
+
+  /// A tela do app depois do perfil. Nulo = `AppShell` (os testes trocam).
+  final Widget? app;
+
   @override
-  State<_ProfileGate> createState() => _ProfileGateState();
+  State<ProfileGate> createState() => _ProfileGateState();
 }
 
-class _ProfileGateState extends State<_ProfileGate> {
-  late Future<bool> _hasProfile = authRepository.hasProfile(widget.uid);
+class _ProfileGateState extends State<ProfileGate> {
+  late Future<bool> _hasProfile = _check();
+
+  Future<bool> _check() => (widget.hasProfile ?? authRepository.hasProfile)(widget.uid);
 
   // Corpo com chaves: com "=>" o callback devolveria a Future e o setState a recusa.
   void _recheck() => setState(() {
-        _hasProfile = authRepository.hasProfile(widget.uid);
+        _hasProfile = _check();
       });
 
   @override
@@ -77,29 +93,92 @@ class _ProfileGateState extends State<_ProfileGate> {
     return FutureBuilder<bool>(
       future: _hasProfile,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const _Loading();
+        if (snapshot.connectionState != ConnectionState.done) return const StartupLoading();
         if (snapshot.hasError) {
-          return Scaffold(
-            body: Center(
-              child: TextButton(
-                onPressed: _recheck,
-                child: const Text('Não foi possível carregar seu perfil. Tentar de novo'),
-              ),
-            ),
+          final offline = snapshot.error is ProfileOfflineException;
+          return StartupProblem(
+            line1: offline ? 'Sem' : 'Não deu',
+            line2: offline ? 'internet.' : 'para abrir.',
+            message: offline
+                ? 'Na primeira vez neste celular, o Clippo precisa de internet para carregar sua conta. '
+                    'Depois, dá para gravar mesmo sem sinal.'
+                : 'Não foi possível carregar seu perfil. Tente de novo em instantes.',
+            onRetry: _recheck,
+            onSignOut: () => (widget.signOut ?? authRepository.signOut)(),
           );
         }
-        if (snapshot.data == true) return const AppShell();
+        if (snapshot.data == true) return widget.app ?? const AppShell();
         return CompleteProfileScreen(onCompleted: _recheck);
       },
     );
   }
 }
 
-class _Loading extends StatelessWidget {
-  const _Loading();
+/// Enquanto o app descobre quem está logado: vinho com o CLIPPO no centro, continuando a
+/// abertura do Android (mesma cor) até a Boas-vindas ou a Início. Antes era um círculo girando
+/// sobre branco, fora do design.
+class StartupLoading extends StatelessWidget {
+  const StartupLoading({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      backgroundColor: ClippoBrand.wine,
+      body: Semantics(
+        label: 'Abrindo o Clippo',
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ExcludeSemantics(
+                child: Text('CLIPPO', style: ClippoText.wordmark.copyWith(color: ClippoBrand.onWine)),
+              ),
+              const SizedBox(height: ClippoSpace.spaceL),
+              const SizedBox.square(
+                dimension: ClippoSize.spinner,
+                child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.onWine),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A abertura não conseguiu seguir (sem internet na primeira vez, erro do servidor): explica,
+/// tenta de novo e deixa sair da conta, para ninguém ficar preso nesta tela.
+class StartupProblem extends StatelessWidget {
+  const StartupProblem({
+    super.key,
+    required this.line1,
+    required this.line2,
+    required this.message,
+    required this.onRetry,
+    required this.onSignOut,
+  });
+
+  final String line1;
+  final String line2;
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClippoScreenGround(
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClippoPrimaryButton(label: 'Tentar de novo', onPressed: onRetry),
+          const SizedBox(height: ClippoSpace.spaceS),
+          ClippoTextButton(label: 'Sair da conta', onPressed: onSignOut),
+        ],
+      ),
+      child: Semantics(
+        liveRegion: true,
+        child: ClippoScreenTitle(line1: line1, line2: line2, subtitle: message),
+      ),
+    );
   }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vinho do Clippo (ClippoBrand.wine): a abertura do Android já nasce na cor da Boas-vindas. -->
+    <color name="clippo_wine">#741A2F</color>
+</resources>

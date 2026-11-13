@@ -10,6 +10,7 @@ import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
+import 'package:clippo/core/widgets/clippo_session_card.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
 
 // A Início abre sem Firebase: os streams vêm pelo construtor, como o `home` de app.dart.
@@ -116,6 +117,25 @@ void main() {
 
     expect(find.byType(HomeScreen), findsNothing);
     expect(find.text('Highlights'), findsOneWidget);
+  });
+
+  testWidgets('com muitas sessões, só monta os cards à vista (lista em slivers)', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(_home(Stream.value(_fromServer([
+      for (var i = 0; i < 80; i++) _session('s$i', name: 'Sessão $i'),
+    ])))));
+    await tester.pumpAndSettle();
+
+    final built = find.byType(ClippoSessionCard, skipOffstage: false).evaluate().length;
+    expect(built, greaterThan(0));
+    expect(built, lessThan(80));
+
+    // Rolando até o fim, o último aparece.
+    await tester.scrollUntilVisible(find.text('Sessão 79'), 600);
+    expect(find.text('Sessão 79'), findsOneWidget);
   });
 
   testWidgets('sem sessões, convida a gravar a primeira', (tester) async {
