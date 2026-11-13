@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/favorites_repository.dart';
+import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
+import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
@@ -41,6 +44,7 @@ class ProfileScreen extends StatefulWidget {
     this.pickPhoto,
     this.savePhoto,
     this.removePhoto,
+    this.onOpenFriends,
   });
 
   /// Abre a galeria ou a câmera e devolve a foto já reduzida (testes trocam). Nulo = image_picker.
@@ -64,6 +68,9 @@ class ProfileScreen extends StatefulWidget {
   /// Substitui o excluir conta (testes). Null = tira a fila deste aparelho e chama
   /// [AuthRepository.deleteMyAccount]. Lança [AuthFailure] com a frase da tela.
   final Future<void> Function()? deleteAccount;
+
+  /// Ação ao tocar no contador de amigos.
+  final VoidCallback? onOpenFriends;
 
   /// O perfil mostrado sem login (catálogo de telas).
   static const UserProfile demoProfile = UserProfile(
@@ -166,10 +173,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) showClippoMessage(context, error);
       return;
     }
-    await _runPhoto(
-      () => (widget.savePhoto ?? (f) => authRepository.setProfilePhoto(f).then((_) {}))(picked),
-      'Foto atualizada.',
-    );
+    if (_useFirebase) {
+      await _runPhoto(
+        () => (widget.savePhoto ?? (f) => authRepository.setProfilePhoto(f).then((_) {}))(picked),
+        'Foto atualizada.',
+      );
+    } else {
+      // Modo local/offline/demo
+      setState(() {
+        _demoProfile = UserProfile(
+          uid: _demoProfile.uid,
+          name: _demoProfile.name,
+          username: _demoProfile.username,
+          photoUrl: picked.path,
+          sessionCount: _demoProfile.sessionCount,
+          highlightCount: _demoProfile.highlightCount,
+          friendCount: _demoProfile.friendCount,
+        );
+        _demo?.add(_demoProfile);
+      });
+      if (mounted) showClippoMessage(context, 'Foto atualizada.');
+    }
   }
 
   Future<void> _runPhoto(Future<void> Function() action, String done) async {
@@ -189,6 +213,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Só no modo de exemplo (sem login): o perfil vive aqui.
   StreamController<UserProfile?>? _demo;
   UserProfile _demoProfile = ProfileScreen.demoProfile;
+
+  bool _notificationsEnabled = true;
 
   late Stream<UserProfile?> _profile = _resolveProfile();
 
@@ -362,9 +388,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 me: me,
                 onEditName: () => _editName(me),
                 onEditUsername: () => _editUsername(me),
-                // Sem login (catálogo) e sem quem envie a foto, o botão não aparece.
-                onEditPhoto: _useFirebase || widget.savePhoto != null ? () => _editPhoto(me) : null,
+                onEditPhoto: () => _editPhoto(me),
                 photoBusy: _photoBusy,
+                onTapFriends: widget.onOpenFriends,
+                notificationsEnabled: _notificationsEnabled,
+                onNotificationsChanged: (enabled) {
+                  setState(() => _notificationsEnabled = enabled);
+                },
               );
             },
           ),
@@ -381,6 +411,9 @@ class _Content extends StatelessWidget {
     required this.onEditUsername,
     this.onEditPhoto,
     this.photoBusy = false,
+    this.onTapFriends,
+    this.notificationsEnabled = true,
+    this.onNotificationsChanged,
   });
 
   final UserProfile me;
@@ -388,6 +421,9 @@ class _Content extends StatelessWidget {
   final VoidCallback onEditUsername;
   final VoidCallback? onEditPhoto;
   final bool photoBusy;
+  final VoidCallback? onTapFriends;
+  final bool notificationsEnabled;
+  final ValueChanged<bool>? onNotificationsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -406,6 +442,7 @@ class _Content extends StatelessWidget {
           sessions: me.sessionCount,
           highlights: me.highlightCount,
           friends: me.friendCount,
+          onTapFriends: onTapFriends,
         ),
         const SizedBox(height: ClippoSpace.section),
         ProfileActionTile(
@@ -418,6 +455,62 @@ class _Content extends StatelessWidget {
           label: 'Usuário',
           value: '@${me.username}',
           onTap: onEditUsername,
+        ),
+        if (onNotificationsChanged != null) ...[
+          const SizedBox(height: ClippoSpace.spaceM),
+          ProfileToggleTile(
+            label: 'Notificações',
+            value: notificationsEnabled,
+            onChanged: onNotificationsChanged!,
+          ),
+        ],
+        const SizedBox(height: ClippoSpace.section),
+        StreamBuilder<List<Highlight>>(
+          stream: favoritesRepository.watchFavorites(),
+          builder: (context, snapshot) {
+            final favorites = snapshot.data ?? favoritesRepository.favorites;
+            final colors = ClippoColors.of(context);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Lances Favoritos (${favorites.length})',
+                  style: ClippoText.titleS.copyWith(color: colors.text),
+                ),
+                const SizedBox(height: ClippoSpace.spaceS),
+                Text(
+                  'Visível para você e seus amigos.',
+                  style: ClippoText.body.copyWith(color: colors.textMuted),
+                ),
+                const SizedBox(height: ClippoSpace.spaceM),
+                if (favorites.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(ClippoSpace.spaceL),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Nenhum lance favoritado ainda.',
+                        style: ClippoText.body.copyWith(color: colors.textMuted),
+                      ),
+                    ),
+                  )
+                else
+                  for (final highlight in favorites) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: ClippoSpace.spaceM),
+                      child: ClippoHighlightTile(
+                        title: highlight.title,
+                        timing: '${highlight.duration.inSeconds}s',
+                        onTap: () {},
+                      ),
+                    ),
+                  ],
+              ],
+            );
+          },
         ),
       ],
     );

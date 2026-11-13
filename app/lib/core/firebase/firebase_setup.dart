@@ -44,26 +44,35 @@ Future<void> _activateAppCheck() async {
 
 /// Inicia o Firebase e, no modo local, aponta Auth, Firestore, Functions e Storage para o Emulator.
 Future<void> setupFirebase() async {
-  if (!useEmulator) {
-    // Projeto real clippo-dev. As chaves vêm de lib/firebase_options.dart, gerado por
-    // `flutterfire configure --project=clippo-dev --platforms=android` (rode de novo se o app mudar).
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    await _activateAppCheck();
-    return;
-  }
+  try {
+    if (!useEmulator) {
+      // Projeto real clippo-dev. As chaves vêm de lib/firebase_options.dart, gerado por
+      // `flutterfire configure --project=clippo-dev --platforms=android` (rode de novo se o app mudar).
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      // App Check pode bloquear em modo debug se o debug token não estiver registrado no Console.
+      if (appCheckDebugToken.isNotEmpty || kReleaseMode) {
+        await _activateAppCheck();
+      }
+      return;
+    }
 
-  // Projetos "demo-*" só existem no Emulator, então as chaves abaixo são de mentira de propósito.
-  // A apiKey falsa precisa ter o formato de uma real ("AIza" + 35 caracteres): no Android o
-  // Firebase Installations (usado pelas Functions) recusa qualquer outra com "Please set a valid API key".
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: 'AIzaSyDemoClippoEmulatorKey000000000000',
-      appId: '1:000000000000:android:0000000000000000',
-      messagingSenderId: '000000000000',
-      projectId: 'demo-clippo',
-      storageBucket: 'demo-clippo.appspot.com',
-    ),
-  );
+    // Projetos "demo-*" só existem no Emulator, então as chaves abaixo são de mentira de propósito.
+    // A apiKey falsa precisa ter o formato de uma real ("AIza" + 35 caracteres): no Android o
+    // Firebase Installations (usado pelas Functions) recusa qualquer outra com "Please set a valid API key".
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: 'AIzaSyDemoClippoEmulatorKey000000000000',
+        appId: '1:000000000000:android:0000000000000000',
+        messagingSenderId: '000000000000',
+        projectId: 'demo-clippo',
+        storageBucket: 'demo-clippo.appspot.com',
+      ),
+    );
+  } catch (e) {
+    if (!e.toString().contains('duplicate-app')) {
+      rethrow;
+    }
+  }
 
   // A foto do perfil vem com o endereço do Storage do Emulator visto pela Function (127.0.0.1);
   // o celular alcança o computador por [emulatorHost].

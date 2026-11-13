@@ -28,6 +28,9 @@ class HomeScreen extends StatefulWidget {
     super.key,
     this.sessions,
     this.profile,
+    this.onNotifications,
+    this.onProfile,
+    this.onSettings,
     this.onRecord,
     this.mergeRequests,
     this.repository,
@@ -41,6 +44,15 @@ class HomeScreen extends StatefulWidget {
 
   /// Perfil de quem está logado, para a saudação e o avatar do topo.
   final Stream<UserProfile?>? profile;
+
+  /// Abre a tela de notificações.
+  final VoidCallback? onNotifications;
+
+  /// Abre o perfil.
+  final VoidCallback? onProfile;
+
+  /// Abre as configurações.
+  final VoidCallback? onSettings;
 
   /// Leva à Gravação, a partir do estado vazio. Vem de fora porque a Início não
   /// pode importar a feature de captura (regra 3 do AGENTS.md): quem liga as duas
@@ -258,7 +270,13 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Heading(profile: _profile, onRecord: widget.onRecord),
+              _Heading(
+                profile: _profile,
+                onRecord: widget.onRecord,
+                onNotifications: widget.onNotifications,
+                onProfile: widget.onProfile,
+                onSettings: widget.onSettings,
+              ),
               for (final request in _incomingRequests) ...[
                 const SizedBox(height: ClippoSpace.spaceL),
                 MergeRequestCard(
@@ -351,12 +369,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Saudação, título da tela e o avatar de quem está logado.
 class _Heading extends StatelessWidget {
-  const _Heading({required this.profile, this.onRecord});
+  const _Heading({
+    required this.profile,
+    this.onRecord,
+    this.onNotifications,
+    this.onProfile,
+    this.onSettings,
+  });
 
   final Stream<UserProfile?> profile;
 
   /// "Gravar" ao lado do título: a ação principal do app a um toque, sem abrir a roda.
   final VoidCallback? onRecord;
+
+  /// Botão de notificações ao lado do avatar.
+  final VoidCallback? onNotifications;
+
+  /// Ação ao tocar no avatar (abrir perfil).
+  final VoidCallback? onProfile;
+
+  /// Botão de configurações.
+  final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -378,16 +411,44 @@ class _Heading extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: ClippoSpace.spaceM),
-                ClippoAvatar(
-                  name: me?.name ?? '',
-                  photoUrl: me?.photoUrl,
-                  size: ClippoSize.avatarLarge,
+                Semantics(
+                  button: true,
+                  label: 'Notificações',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                    onTap: onNotifications ??
+                        () => showHomeMessage(context, 'Você não tem novas notificações.'),
+                    child: Container(
+                      width: ClippoSize.avatarLarge,
+                      height: ClippoSize.avatarLarge,
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: colors.line, width: ClippoSize.border),
+                      ),
+                      child: Icon(
+                        Icons.notifications_outlined,
+                        color: colors.text,
+                        size: ClippoSize.fieldIcon,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: ClippoSpace.spaceS),
+                InkWell(
+                  borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                  onTap: onProfile,
+                  child: ClippoAvatar(
+                    name: me?.name ?? '',
+                    photoUrl: me?.photoUrl,
+                    size: ClippoSize.avatarLarge,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: ClippoSpace.titleToSubtitle),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Expanded(child: ClippoScreenTitle(line1: 'Suas', line2: 'sessões.')),
                 if (onRecord != null) ...[

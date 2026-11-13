@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import 'package:clippo/core/data/favorites_repository.dart';
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
@@ -122,7 +123,232 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double? _downloadProgress;
   bool _sharing = false;
 
+  /// Controle de visibilidade das opções sobre o vídeo em tela cheia (opacidade transparente).
+  bool _overlayVisible = true;
+
+  /// Reações por highlight ID: mapa de emoji e contagem (em memória).
+  final Map<String, Map<String, int>> _reactions = <String, Map<String, int>>{};
+
+  /// Reação atual do usuário por highlight ID.
+  final Map<String, String> _userReactions = <String, String>{};
+
+  /// Comentários por highlight ID (em memória).
+  final Map<String, List<_Comment>> _comments = <String, List<_Comment>>{};
+
   Highlight get _current => _items[_currentIndex];
+
+  void _toggleFavorite(Highlight highlight) {
+    setState(() {
+      favoritesRepository.toggleFavorite(highlight);
+      if (favoritesRepository.isFavorite(highlight.id)) {
+        showHomeMessage(context, 'Lance favoritado e visível no seu perfil!');
+      } else {
+        showHomeMessage(context, 'Removido dos favoritos.');
+      }
+    });
+  }
+
+  void _addReaction(String id, String emoji) {
+    setState(() {
+      final counts = _reactions.putIfAbsent(id, () => <String, int>{});
+      counts[emoji] = (counts[emoji] ?? 0) + 1;
+      _userReactions[id] = emoji;
+    });
+  }
+
+  void _openReactionsSheet(String id) {
+    final emojis = [
+      '🔥', '👏', '⚽', '🎯', '❤️', '😱',
+      '🧤', '⚡', '💪', '🎩', '🤩', '🚀',
+      '👀', '🎉', '🏆', '💯', '🤯', '👟',
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: ClippoBrand.wine,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(ClippoRadius.radiusField)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(ClippoSpace.gutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Escolha um emoji para reagir',
+                style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+              ),
+              const SizedBox(height: ClippoSpace.spaceS),
+              Text(
+                'Qualquer pessoa pode reagir e repetir o emoji.',
+                style: ClippoText.body.copyWith(color: ClippoBrand.captureTextMuted),
+              ),
+              const SizedBox(height: ClippoSpace.spaceM),
+              Wrap(
+                spacing: ClippoSpace.spaceM,
+                runSpacing: ClippoSpace.spaceM,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final emoji in emojis)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _addReaction(id, emoji);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(ClippoSpace.spaceM),
+                        decoration: BoxDecoration(
+                          color: ClippoBrand.wineDeep,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: ClippoSpace.spaceM),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openCommentsSheet(String id) {
+    final list = _comments.putIfAbsent(id, () => [
+      _Comment(author: 'Rafa Costa', text: 'Golaço demais! 🔥', timeAgo: 'há 10 min'),
+      _Comment(author: 'Bruno Lima', text: 'Boa jogada!', timeAgo: 'há 25 min'),
+    ]);
+    final controller = TextEditingController();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: ClippoBrand.wine,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(ClippoRadius.radiusField)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                ClippoSpace.gutter,
+                ClippoSpace.gutter,
+                ClippoSpace.gutter,
+                MediaQuery.of(ctx).viewInsets.bottom + ClippoSpace.gutter,
+              ),
+              child: SizedBox(
+                height: 400,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Comentários (${list.length})',
+                      style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                    ),
+                    const SizedBox(height: ClippoSpace.spaceM),
+                    Expanded(
+                      child: list.isEmpty
+                          ? Center(
+                              child: Text(
+                                'Nenhum comentário ainda. Seja o primeiro!',
+                                style: ClippoText.body.copyWith(color: ClippoBrand.captureTextMuted),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: list.length,
+                              separatorBuilder: (_, _) => const SizedBox(height: ClippoSpace.spaceS),
+                              itemBuilder: (ctx, i) {
+                                final c = list[i];
+                                return Container(
+                                  padding: const EdgeInsets.all(ClippoSpace.spaceM),
+                                  decoration: BoxDecoration(
+                                    color: ClippoBrand.wineDeep,
+                                    borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            c.author,
+                                            style: ClippoText.label.copyWith(
+                                              color: ClippoBrand.onWine,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            c.timeAgo,
+                                            style: ClippoText.label.copyWith(
+                                              color: ClippoBrand.captureTextMuted,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: ClippoSpace.spaceXs),
+                                      Text(
+                                        c.text,
+                                        style: ClippoText.body.copyWith(color: ClippoBrand.onWine),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: ClippoSpace.spaceM),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            style: ClippoText.input.copyWith(color: ClippoBrand.onWine),
+                            decoration: InputDecoration(
+                              hintText: 'Adicionar um comentário...',
+                              hintStyle: ClippoText.body.copyWith(color: ClippoBrand.captureTextMuted),
+                              filled: true,
+                              fillColor: ClippoBrand.wineDeep,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: ClippoSpace.spaceM,
+                                vertical: ClippoSpace.spaceS,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: ClippoSpace.spaceS),
+                        IconButton(
+                          icon: const Icon(Icons.send, color: ClippoBrand.peach),
+                          onPressed: () {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) return;
+                            setSheetState(() {
+                              list.add(_Comment(author: 'Você', text: text, timeAgo: 'agora'));
+                            });
+                            controller.clear();
+                            setState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   HighlightMediaRepository get _media => widget.mediaRepository ?? highlightMediaRepository;
 
@@ -439,7 +665,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _topBar({String? counter}) {
+  Widget _topBar({String? counter, VoidCallback? onDownload, bool canDownload = false}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         ClippoSpace.gutter,
@@ -479,8 +705,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
           const SizedBox(width: ClippoSpace.spaceM),
-          // Mantém o título centralizado: o espaço do botão de fechar, do outro lado.
-          const SizedBox.square(dimension: ClippoSize.minTouchTarget),
+          // Botão de baixar no canto superior direito
+          if (onDownload != null)
+            Semantics(
+              button: true,
+              label: 'Baixar',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                onTap: onDownload,
+                child: Tooltip(
+                  message: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
+                  child: Container(
+                    width: ClippoSize.minTouchTarget,
+                    height: ClippoSize.minTouchTarget,
+                    decoration: const BoxDecoration(
+                      color: Colors.black45,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        _saving ? Icons.downloading : Icons.download,
+                        color: canDownload ? ClippoBrand.onWine : ClippoBrand.captureTextMuted,
+                        size: ClippoSize.fieldIcon,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox.square(dimension: ClippoSize.minTouchTarget),
         ],
       ),
     );
@@ -520,52 +774,60 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final canFetch = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
 
+    final isFav = favoritesRepository.isFavorite(highlight.id);
+    final userEmoji = _userReactions[highlight.id];
+    final counts = _reactions[highlight.id] ?? <String, int>{};
+    final commentsCount = (_comments[highlight.id]?.length) ?? 0;
     final counter = '${_currentIndex + 1} de ${_items.length}';
-    // A mesma chave nos dois desenhos: virar o celular não recria as páginas nem perde o lance.
-    final pages = PageView.builder(
-            key: _pagesKey,
-            controller: _pageController,
-            itemCount: _items.length,
-            onPageChanged: _onPageChanged,
-            itemBuilder: (context, index) {
-              final isCurrent = index == _currentIndex;
-              if (isCurrent && ready) {
-                return Center(
-                  child: Semantics(
-                    button: true,
-                    label: _playing ? 'Pausar vídeo' : 'Reproduzir vídeo',
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _togglePlay,
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            VideoPlayer(controller),
-                            if (_buffering)
-                              const _BufferingBadge()
-                            else if (!_playing)
-                              const _PlayBadge(),
-                          ],
-                        ),
-                      ),
+
+    final videoContent = PageView.builder(
+      key: _pagesKey,
+      controller: _pageController,
+      itemCount: _items.length,
+      onPageChanged: _onPageChanged,
+      itemBuilder: (context, index) {
+        final isCurrent = index == _currentIndex;
+        if (isCurrent && ready) {
+          return Center(
+            child: Semantics(
+              button: true,
+              label: _playing ? 'Pausar vídeo' : 'Reproduzir vídeo',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() => _overlayVisible = !_overlayVisible);
+                },
+                child: SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: controller.value.size.width,
+                      height: controller.value.size.height,
+                      child: VideoPlayer(controller),
                     ),
                   ),
-                );
-              }
-              return Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: _VideoPlaceholder(
-                    stage: isCurrent ? _stage : _Stage.loading,
-                    message: isCurrent ? _message : null,
-                    onRetry: isCurrent && _stage == _Stage.error ? _load : null,
-                  ),
                 ),
-              );
-            },
+              ),
+            ),
           );
+        }
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _overlayVisible = !_overlayVisible),
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _VideoPlaceholder(
+                stage: isCurrent ? _stage : _Stage.loading,
+                message: isCurrent ? _message : null,
+                onRetry: isCurrent && _stage == _Stage.error ? _load : null,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
     final bar = _ProgressBar(
       progress: progress,
       buffered: buffered,
@@ -574,118 +836,283 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSeek: ready ? _seekToFraction : null,
     );
 
-    // Celular deitado: o vídeo ocupa a tela toda (é o gesto natural para ver um lance gravado
-    // na horizontal). Ficam só fechar, o contador e a barra, por cima; tocar no vídeo pausa.
-    // Baixar, compartilhar e as setas voltam ao levantar o celular; deslizar troca de lance.
-    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          pages,
-          Align(alignment: Alignment.topCenter, child: _topBar(counter: counter)),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-              child: bar,
+    // Visualização em tela cheia com overlay com opacidade transparente ao tocar
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Vídeo ocupando toda a tela
+        videoContent,
+
+        // 2. Indicador de buffer / pausa central se visível
+        if (_buffering)
+          const Center(child: _BufferingBadge())
+        else if (!_playing && ready)
+          Center(
+            child: GestureDetector(
+              onTap: _togglePlay,
+              child: const _PlayBadge(),
             ),
           ),
-        ],
-      );
-    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _topBar(counter: counter),
-        Expanded(child: pages),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            ClippoSpace.gutter,
-            ClippoSpace.spaceL,
-            ClippoSpace.gutter,
-            ClippoSpace.screenBottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                highlight.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+        // 3. Controles superiores (Topo com contador, fechar, etc.)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: AnimatedOpacity(
+            opacity: _overlayVisible ? 1.0 : 0.0,
+            duration: ClippoMotion.focus,
+            child: IgnorePointer(
+              ignoring: !_overlayVisible,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: _topBar(
+                  counter: counter,
+                  canDownload: canFetch,
+                  onDownload: canFetch ? (_saving ? null : _download) : () => showHomeMessage(context, 'O vídeo ainda está sendo processado.'),
+                ),
               ),
-              const SizedBox(height: ClippoSpace.spaceS),
-              Row(
+            ),
+          ),
+        ),
+
+        // 4. Barra lateral de ações interativas (Favoritar, Reagir, Comentar)
+        Positioned(
+          right: ClippoSpace.gutter,
+          bottom: 230,
+          child: AnimatedOpacity(
+            opacity: _overlayVisible ? 1.0 : 0.0,
+            duration: ClippoMotion.focus,
+            child: IgnorePointer(
+              ignoring: !_overlayVisible,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
-                  const SizedBox(width: ClippoSpace.spaceS),
-                  Flexible(
-                    child: Text(
-                      clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
-                      style: ClippoText.label.copyWith(
-                        color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
-                        fontFeatures: ClippoText.tabular,
+                  // Favoritar
+                  Semantics(
+                    button: true,
+                    label: isFav ? 'Remover favorito' : 'Favoritar lance',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                      onTap: () => _toggleFavorite(highlight),
+                      child: Container(
+                        padding: const EdgeInsets.all(ClippoSpace.spaceM),
+                        decoration: BoxDecoration(
+                          color: isFav ? ClippoBrand.peach : Colors.black45,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isFav ? Icons.star : Icons.star_border,
+                          color: isFav ? ClippoBrand.wine : ClippoBrand.onWine,
+                          size: ClippoSize.fieldIcon,
+                        ),
                       ),
                     ),
                   ),
+                  const SizedBox(height: ClippoSpace.spaceS),
+                  Text(
+                    'Favoritar',
+                    style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontSize: 10),
+                  ),
+                  const SizedBox(height: ClippoSpace.spaceL),
+
+                  // Reagir
+                  Semantics(
+                    button: true,
+                    label: 'Reagir ao lance',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                      onTap: () => _openReactionsSheet(highlight.id),
+                      child: Container(
+                        padding: const EdgeInsets.all(ClippoSpace.spaceM),
+                        decoration: const BoxDecoration(
+                          color: Colors.black45,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          userEmoji ?? '🔥',
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: ClippoSpace.spaceS),
+                  Text(
+                    counts.values.fold<int>(0, (a, b) => a + b).toString(),
+                    style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontSize: 11),
+                  ),
+                  const SizedBox(height: ClippoSpace.spaceL),
+
+                  // Comentar
+                  Semantics(
+                    button: true,
+                    label: 'Comentários',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                      onTap: () => _openCommentsSheet(highlight.id),
+                      child: Container(
+                        padding: const EdgeInsets.all(ClippoSpace.spaceM),
+                        decoration: const BoxDecoration(
+                          color: Colors.black45,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.chat_bubble_outline,
+                          color: ClippoBrand.onWine,
+                          size: ClippoSize.fieldIcon,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: ClippoSpace.spaceS),
+                  Text(
+                    commentsCount.toString(),
+                    style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontSize: 11),
+                  ),
                 ],
               ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              Opacity(
-                opacity: canFetch ? 1 : ClippoOpacity.disabled,
-                child: Wrap(
-                  spacing: ClippoSpace.spaceM,
-                  runSpacing: ClippoSpace.spaceS,
+            ),
+          ),
+        ),
+
+        // 5. Controles inferiores (título do lance, barra do vídeo, botão de play e botões de baixar/compartilhar)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: AnimatedOpacity(
+            opacity: _overlayVisible ? 1.0 : 0.0,
+            duration: ClippoMotion.focus,
+            child: IgnorePointer(
+              ignoring: !_overlayVisible,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(
+                  ClippoSpace.gutter,
+                  ClippoSpace.spaceL,
+                  ClippoSpace.gutter,
+                  ClippoSpace.screenBottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    ClippoCaptureChip(
-                      label: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
-                      selected: false,
-                      onPressed: canFetch ? _download : null,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                highlight.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                              ),
+                              const SizedBox(height: ClippoSpace.spaceS),
+                              Row(
+                                children: [
+                                  const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
+                                  const SizedBox(width: ClippoSpace.spaceS),
+                                  Flexible(
+                                    child: Text(
+                                      clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                                      style: ClippoText.label.copyWith(
+                                        color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
+                                        fontFeatures: ClippoText.tabular,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: ClippoSpace.spaceM),
+                        // Botão padrão de compartilhar no canto inferior
+                        Semantics(
+                          button: true,
+                          label: 'Compartilhar',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+                            onTap: canFetch ? (_sharing ? null : _share) : () => showHomeMessage(context, 'O vídeo ainda está sendo processado.'),
+                            child: Container(
+                              width: ClippoSize.avatarLarge,
+                              height: ClippoSize.avatarLarge,
+                              decoration: const BoxDecoration(
+                                color: Colors.black45,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  Icons.share,
+                                  color: canFetch ? ClippoBrand.onWine : ClippoBrand.captureTextMuted,
+                                  size: ClippoSize.fieldIcon,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    ClippoCaptureChip(
-                      label: _sharing ? 'Preparando…' : 'Compartilhar',
-                      selected: false,
-                      onPressed: canFetch ? _share : null,
+                    const SizedBox(height: ClippoSpace.spaceM),
+                    bar,
+                    const SizedBox(height: ClippoSpace.spaceM),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _CircleAction(
+                          icon: 'chevron-left',
+                          semanticLabel: 'Lance anterior',
+                          enabled: hasPrev,
+                          onPressed: () => _goToIndex(_currentIndex - 1),
+                        ),
+                        const SizedBox(width: ClippoSpace.gutter),
+                        _PlayPauseButton(
+                          playing: _playing,
+                          loading: _stage == _Stage.loading || (ready && _buffering),
+                          enabled: ready,
+                          onPressed: _togglePlay,
+                        ),
+                        const SizedBox(width: ClippoSpace.gutter),
+                        _CircleAction(
+                          icon: 'chevron-right',
+                          semanticLabel: 'Próximo lance',
+                          enabled: hasNext,
+                          onPressed: () => _goToIndex(_currentIndex + 1),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              bar,
-              const SizedBox(height: ClippoSpace.spaceL),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _CircleAction(
-                    icon: 'chevron-left',
-                    semanticLabel: 'Lance anterior',
-                    enabled: hasPrev,
-                    onPressed: () => _goToIndex(_currentIndex - 1),
-                  ),
-                  const SizedBox(width: ClippoSpace.gutter),
-                  _PlayPauseButton(
-                    playing: _playing,
-                    loading: _stage == _Stage.loading || (ready && _buffering),
-                    enabled: ready,
-                    onPressed: _togglePlay,
-                  ),
-                  const SizedBox(width: ClippoSpace.gutter),
-                  _CircleAction(
-                    icon: 'chevron-right',
-                    semanticLabel: 'Próximo lance',
-                    enabled: hasNext,
-                    onPressed: () => _goToIndex(_currentIndex + 1),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ],
     );
   }
+}
+
+class _Comment {
+  _Comment({required this.author, required this.text, required this.timeAgo});
+  final String author;
+  final String text;
+  final String timeAgo;
 }
 
 class _CircleAction extends StatelessWidget {

@@ -9,11 +9,13 @@ class ProfileStatsBar extends StatelessWidget {
     required this.sessions,
     required this.highlights,
     required this.friends,
+    this.onTapFriends,
   });
 
   final int sessions;
   final int highlights;
   final int friends;
+  final VoidCallback? onTapFriends;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +41,11 @@ class ProfileStatsBar extends StatelessWidget {
             ),
             Container(width: ClippoSize.border, color: colors.line),
             Expanded(
-              child: _StatColumn(value: friends, label: 'amigos'),
+              child: InkWell(
+                onTap: onTapFriends,
+                borderRadius: BorderRadius.circular(ClippoRadius.radiusField),
+                child: _StatColumn(value: friends, label: 'amigos'),
+              ),
             ),
           ],
         ),

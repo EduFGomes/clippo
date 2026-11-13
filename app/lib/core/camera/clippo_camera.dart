@@ -31,7 +31,8 @@ abstract final class HighlightLength {
 /// Resoluções do vídeo no buffer circular (a análise do gesto segue sempre em 720p para velocidade).
 enum VideoResolution {
   hd720(label: '720p (HD)', shortLabel: '720p', fullHd: false),
-  fhd1080(label: '1080p (Full HD)', shortLabel: '1080p', fullHd: true);
+  fhd1080(label: '1080p (Full HD)', shortLabel: '1080p', fullHd: true),
+  uhd4k(label: '4K (Ultra HD)', shortLabel: '4K', fullHd: true);
 
   const VideoResolution({required this.label, required this.shortLabel, required this.fullHd});
 

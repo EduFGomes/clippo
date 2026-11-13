@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:clippo/app.dart';
+import 'package:clippo/app_shell.dart';
 import 'package:clippo/core/firebase/firebase_setup.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _registerFontLicenses();
   await setupFirebase();
-  runApp(const ClippoApp());
+  runApp(const ClippoApp(home: AppShell()));
 }
 
 /// A licença OFL pede que o texto dela acompanhe as fontes embutidas.

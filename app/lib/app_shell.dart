@@ -13,7 +13,10 @@ import 'package:clippo/features/capture/screens/capture_screen.dart';
 import 'package:clippo/features/friends/screens/friends_screen.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
+import 'package:clippo/features/notifications/screens/notifications_screen.dart';
 import 'package:clippo/features/profile/screens/profile_screen.dart';
+import 'package:clippo/features/search/screens/search_screen.dart';
+import 'package:clippo/features/settings/screens/settings_screen.dart';
 
 /// O app depois do login: as seções de nível superior e a roda de navegação
 /// por cima delas (docs/produto.md › Mapa de navegação).
@@ -37,12 +40,12 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   /// Posição de cada destino na roda.
   static const int _home = 0;
-  static const int _record = 1;
-  static const int _friends = 2;
-  static const int _profile = 3;
+  static const int _search = 1;
+  static const int _record = 2;
+  static const int _settings = 3;
 
   /// Abas que ficam vivas ao mesmo tempo, na ordem do IndexedStack.
-  static const List<int> _tabs = [_home, _friends, _profile];
+  static const List<int> _tabs = [_home, _search, _settings];
 
   int _current = _home;
 
@@ -97,6 +100,30 @@ class _AppShellState extends State<AppShell> {
     setState(() => _current = destination);
   }
 
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const NotificationsScreen(),
+      ),
+    );
+  }
+
+  void _openProfile() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileScreen(onOpenFriends: _openFriends),
+      ),
+    );
+  }
+
+  void _openFriends() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FriendsScreen(onOpenSession: _openSessionFromFriends),
+      ),
+    );
+  }
+
   void _openCapture() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -106,7 +133,7 @@ class _AppShellState extends State<AppShell> {
           uploads: isUserSignedIn ? uploadQueue : null,
           onOpenFriends: () {
             Navigator.of(captureContext).pop();
-            setState(() => _current = _friends);
+            _openFriends();
           },
           onSessionCreated: (created) {
             setState(() {
@@ -164,9 +191,20 @@ class _AppShellState extends State<AppShell> {
                 HomeScreen(
                   sessions: isUserSignedIn ? null : _homeSessionsStream,
                   onRecord: _openCapture,
+                  onNotifications: _openNotifications,
+                  onProfile: _openProfile,
                 ),
-                FriendsScreen(onOpenSession: _openSessionFromFriends),
-                const ProfileScreen(),
+                SearchScreen(
+                  onOpenSession: (s) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => SessionScreen(session: s)),
+                    );
+                  },
+                ),
+                SettingsScreen(
+                  onOpenProfile: _openProfile,
+                  onOpenNotifications: _openNotifications,
+                ),
               ],
             ),
           ),
@@ -174,17 +212,17 @@ class _AppShellState extends State<AppShell> {
             child: Offstage(
               offstage: typing,
               child: ClippoRadialNav(
-              currentIndex: _current,
-              onSelected: _select,
-              onOpenChanged: (open) {
-                if (mounted && open != _wheelOpen) setState(() => _wheelOpen = open);
-              },
-              items: const [
-                ClippoRadialNavItem(label: 'Início', icon: 'home'),
-                ClippoRadialNavItem(label: 'Gravar', icon: 'capture'),
-                ClippoRadialNavItem(label: 'Amigos', icon: 'friends'),
-                ClippoRadialNavItem(label: 'Perfil', icon: 'profile'),
-              ],
+                currentIndex: _current,
+                onSelected: _select,
+                onOpenChanged: (open) {
+                  if (mounted && open != _wheelOpen) setState(() => _wheelOpen = open);
+                },
+                items: const [
+                  ClippoRadialNavItem(label: 'Início', icon: 'home'),
+                  ClippoRadialNavItem(label: 'Pesquisar', icon: 'search'),
+                  ClippoRadialNavItem(label: 'Gravar', icon: 'capture'),
+                  ClippoRadialNavItem(label: 'Ajustes', icon: 'settings'),
+                ],
               ),
             ),
           ),
