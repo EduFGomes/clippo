@@ -92,6 +92,29 @@ class _BufferingController extends VideoPlayerController {
   Future<void> seekTo(Duration position) async {}
 }
 
+/// Player aberto e tocando (sem o plugin de vídeo): play e pause só trocam o estado.
+class _PlayingController extends VideoPlayerController {
+  _PlayingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  @override
+  Future<void> initialize() async {
+    value = const VideoPlayerValue(
+      duration: Duration(seconds: 30),
+      size: Size(720, 1280),
+      isInitialized: true,
+    );
+  }
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> seekTo(Duration position) async {}
+}
+
 /// Player que nunca termina de abrir (sem o plugin de vídeo, nos testes).
 class _HangingController extends VideoPlayerController {
   _HangingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
@@ -111,7 +134,7 @@ void main() {
     )));
     await tester.pump();
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
 
     tester.view.physicalSize = const Size(915, 412);
     await tester.pump();
@@ -119,14 +142,76 @@ void main() {
     expect(find.text('2 de 2'), findsOneWidget);
     expect(find.bySemanticsLabel('Fechar'), findsOneWidget);
     expect(find.text('Carregando o lance…'), findsOneWidget);
-    // Só o essencial por cima do vídeo.
-    expect(find.text('Baixar'), findsNothing);
+    // Deitado, os mesmos controles por cima do vídeo.
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
 
     tester.view.physicalSize = const Size(412, 915);
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
+  });
+
+  group('controles por cima do vídeo', () {
+    double controlsOpacity(WidgetTester tester) => tester
+        .widget<AnimatedOpacity>(
+          find.ancestor(of: find.bySemanticsLabel('Fechar'), matching: find.byType(AnimatedOpacity)).first,
+        )
+        .opacity;
+
+    Future<void> openPlaying(WidgetTester tester) async {
+      _phone(tester);
+      await tester.pumpWidget(_app(PlayerScreen(
+        sessionName: 'Pelada de quinta',
+        highlights: _highlights(),
+        streamVideo: (path) async => HighlightVideoStream(url: Uri.parse('https://exemplo.invalid/v.mp4'), headers: const {}),
+        streamControllerFactory: (s) => _PlayingController(),
+      )));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('somem sozinhos com o vídeo tocando e voltam ao tocar no vídeo', (tester) async {
+      await openPlaying(tester);
+      expect(controlsOpacity(tester), 1);
+      expect(find.bySemanticsLabel('Pausar'), findsOneWidget);
+
+      await tester.pump(ClippoMotion.playerControls);
+      await tester.pump(ClippoMotion.enable);
+      expect(controlsOpacity(tester), 0);
+
+      await tester.tapAt(const Offset(206, 457));
+      await tester.pump();
+      expect(controlsOpacity(tester), 1);
+
+      // Tocar de novo esconde, como nos players de vídeo conhecidos.
+      await tester.tapAt(const Offset(206, 300));
+      await tester.pump();
+      expect(controlsOpacity(tester), 0);
+    });
+
+    testWidgets('pausado, os controles ficam à vista', (tester) async {
+      await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Pausar'));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Reproduzir'), findsOneWidget);
+
+      await tester.pump(ClippoMotion.playerControls * 2);
+      expect(controlsOpacity(tester), 1);
+    });
+
+    testWidgets('baixar e compartilhar são só ícones, sem texto', (tester) async {
+      await openPlaying(tester);
+      expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
+      expect(find.bySemanticsLabel('Compartilhar'), findsOneWidget);
+      expect(find.text('Baixar'), findsNothing);
+      expect(find.text('Compartilhar'), findsNothing);
+    });
+
+    testWidgets('o vídeo ocupa a largura toda da tela', (tester) async {
+      await openPlaying(tester);
+      expect(tester.getSize(find.byType(VideoPlayer)).width, 412);
+    });
   });
 
   testWidgets('mostra a sessão, o lance e carrega o vídeo pelo repositório', (tester) async {
@@ -178,8 +263,8 @@ void main() {
     expect(find.text('Enviando o lance…'), findsOneWidget);
     expect(find.text('00:04:15 · enviando…'), findsOneWidget);
 
-    await tester.tap(find.text('Baixar'));
-    await tester.tap(find.text('Compartilhar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Compartilhar'));
     await tester.pump();
 
     expect(baixou, 0);
@@ -306,7 +391,7 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Baixar'));
+      await tester.tap(find.bySemanticsLabel('Baixar'));
       await tester.pump();
       await tester.pump();
 
@@ -343,7 +428,7 @@ void main() {
       await tester.pump();
       expect(pedidos, [_videoH1]);
 
-      await tester.tap(find.text('Baixar'));
+      await tester.tap(find.bySemanticsLabel('Baixar'));
       await tester.pump();
       await tester.pump();
       expect(salvos, [_videoH1]);
@@ -386,7 +471,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
     await tester.pump();
     await tester.pump();
 
@@ -411,22 +496,22 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
     await tester.pump();
-    expect(find.text('Baixando…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixando…'), findsOneWidget);
 
     report(0.42);
     await tester.pump();
-    expect(find.text('Baixando 42 %'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixando 42 %'), findsOneWidget);
 
     report(1);
     await tester.pump();
-    expect(find.text('Salvando na galeria…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Salvando na galeria…'), findsOneWidget);
 
     done.complete();
     await tester.pump();
     await tester.pump();
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
     expect(find.text('Lance salvo na galeria.'), findsOneWidget);
   });
 
@@ -452,7 +537,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Compartilhar'));
+    await tester.tap(find.bySemanticsLabel('Compartilhar'));
     await tester.pump();
     await tester.pump();
 

@@ -30,7 +30,9 @@ typedef HighlightStreamControllerFactory = VideoPlayerController Function(Highli
 /// Compartilha o arquivo do lance com outro app.
 typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highlight, String sessionName);
 
-/// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4).
+/// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4), com os
+/// controles por cima, como nos players de vídeo conhecidos: somem com o vídeo tocando e
+/// voltam ao tocar nele.
 ///
 /// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
 /// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
@@ -122,6 +124,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double? _downloadProgress;
   bool _sharing = false;
 
+  /// Os controles por cima do vídeo (fechar, baixar, play, barra…) estão à vista.
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
+
+  /// Com leitor de tela os controles nunca somem: não haveria como trazê-los de volta.
+  bool get _controlsCanHide => !MediaQuery.accessibleNavigationOf(context);
+
+  /// Com o vídeo tocando, os controles somem depois de [ClippoMotion.playerControls].
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    if (!mounted || !_playing) return;
+    _hideTimer = Timer(ClippoMotion.playerControls, () {
+      if (!mounted || !_playing || !_controlsCanHide || _seekingTo != null || _saving || _sharing) return;
+      setState(() => _controlsVisible = false);
+    });
+  }
+
+  void _revealControls() {
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _scheduleHide();
+  }
+
+  /// Tocar no vídeo: esconde os controles se estão à vista (e o vídeo toca); se não, mostra.
+  void _onVideoTap() {
+    if (_controlsVisible && _playing && _controlsCanHide) {
+      _hideTimer?.cancel();
+      setState(() => _controlsVisible = false);
+    } else {
+      _revealControls();
+    }
+  }
+
   Highlight get _current => _items[_currentIndex];
 
   HighlightMediaRepository get _media => widget.mediaRepository ?? highlightMediaRepository;
@@ -162,6 +196,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _hideTimer?.cancel();
     _loadToken++;
     _releaseController();
     _pageController.dispose();
@@ -298,6 +333,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _message = null;
     });
     if (_wantsPlay) await controller.play();
+    _scheduleHide();
   }
 
   void _onTick() {
@@ -308,7 +344,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (target != null && value != null && !value.isBuffering && (value.position - target).abs() < _seekTolerance) {
       _seekingTo = null;
     }
-    setState(() {});
+    setState(() {
+      // O vídeo parou (chegou ao fim, por exemplo): os controles voltam.
+      if (!(value?.isPlaying ?? false)) {
+        _hideTimer?.cancel();
+        _controlsVisible = true;
+      }
+    });
   }
 
   /// Para onde a pessoa pulou na barra, até o vídeo chegar lá (nulo: sem pulo em andamento).
@@ -325,7 +367,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (controller == null || _stage != _Stage.ready) return;
     if (controller.value.isPlaying) {
       _wantsPlay = false;
+      _hideTimer?.cancel();
       await controller.pause();
+      if (mounted) setState(() => _controlsVisible = true);
     } else {
       _wantsPlay = true;
       final value = controller.value;
@@ -333,6 +377,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await controller.seekTo(Duration.zero);
       }
       await controller.play();
+      _scheduleHide();
     }
   }
 
@@ -346,7 +391,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onPageChanged(int index) {
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      _controlsVisible = true;
+    });
+    _hideTimer?.cancel();
     _load();
   }
 
@@ -357,6 +406,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final target = total * fraction.clamp(0.0, 1.0);
     // A barra vai na hora para onde a pessoa tocou, mesmo antes de o vídeo chegar lá.
     setState(() => _seekingTo = target);
+    _scheduleHide();
     controller.seekTo(target).whenComplete(() {
       // Rede de segurança: o pulo acabou e nada está carregando, mesmo que a posição não bata.
       if (!mounted || _seekingTo != target || !identical(controller, _controller)) return;
@@ -398,6 +448,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _saving = false;
           _downloadProgress = null;
         });
+        _scheduleHide();
       }
     }
   }
@@ -412,7 +463,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
     } finally {
-      if (mounted) setState(() => _sharing = false);
+      if (mounted) {
+        setState(() => _sharing = false);
+        _scheduleHide();
+      }
     }
   }
 
@@ -434,12 +488,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       child: Scaffold(
         backgroundColor: ClippoBrand.captureBackground,
-        body: SafeArea(child: _items.isEmpty ? _buildEmpty() : _buildPlayer()),
+        body: _items.isEmpty ? SafeArea(child: _buildEmpty()) : _buildPlayer(),
       ),
     );
   }
 
-  Widget _topBar({String? counter}) {
+  /// Fechar, a sessão e o contador à esquerda; baixar e compartilhar à direita, só com ícone.
+  Widget _topBar({String? counter, List<Widget> actions = const []}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         ClippoSpace.gutter,
@@ -458,29 +513,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (widget.sessionName.isNotEmpty)
                   Text(
                     widget.sessionName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
                     style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
                   ),
                 if (counter != null) ...[
                   const SizedBox(height: ClippoSpace.labelToValue),
                   Text(
                     counter,
-                    textAlign: TextAlign.center,
                     style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: ClippoSpace.spaceM),
-          // Mantém o título centralizado: o espaço do botão de fechar, do outro lado.
-          const SizedBox.square(dimension: ClippoSize.minTouchTarget),
+          for (final action in actions) ...[
+            const SizedBox(width: ClippoSpace.spaceS),
+            action,
+          ],
         ],
       ),
     );
@@ -507,6 +562,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Como os players de vídeo conhecidos: o vídeo ocupa a tela toda, deitado ou em pé, e os
+  /// controles ficam por cima dele. Com o vídeo tocando eles somem sozinhos; tocar no vídeo
+  /// traz de volta (ou esconde). Pausado, carregando ou com erro, ficam à vista.
   Widget _buildPlayer() {
     final highlight = _current;
     final hasPrev = _currentIndex > 0;
@@ -517,146 +575,71 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final position = _seekingTo ?? value?.position ?? Duration.zero;
     final buffered = _bufferedFraction(value, total);
     final progress = total.inMilliseconds <= 0 ? 0.0 : position.inMilliseconds / total.inMilliseconds;
-    final canFetch = _canAct(highlight);
+    final canAct = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
+    final visible = _controlsVisible || !_controlsCanHide;
 
-    final counter = '${_currentIndex + 1} de ${_items.length}';
-    // A mesma chave nos dois desenhos: virar o celular não recria as páginas nem perde o lance.
+    // A mesma chave sempre: virar o celular não recria as páginas nem perde o lance.
     final pages = PageView.builder(
-            key: _pagesKey,
-            controller: _pageController,
-            itemCount: _items.length,
-            onPageChanged: _onPageChanged,
-            itemBuilder: (context, index) {
-              final isCurrent = index == _currentIndex;
-              if (isCurrent && ready) {
-                return Center(
-                  child: Semantics(
-                    button: true,
-                    label: _playing ? 'Pausar vídeo' : 'Reproduzir vídeo',
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _togglePlay,
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            VideoPlayer(controller),
-                            if (_buffering)
-                              const _BufferingBadge()
-                            else if (!_playing)
-                              const _PlayBadge(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }
-              return Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: _VideoPlaceholder(
-                    stage: isCurrent ? _stage : _Stage.loading,
-                    message: isCurrent ? _message : null,
-                    onRetry: isCurrent && _stage == _Stage.error ? _load : null,
-                  ),
-                ),
-              );
-            },
+      key: _pagesKey,
+      controller: _pageController,
+      itemCount: _items.length,
+      onPageChanged: _onPageChanged,
+      itemBuilder: (context, index) {
+        final isCurrent = index == _currentIndex;
+        final Widget content;
+        if (isCurrent && ready) {
+          content = AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: VideoPlayer(controller),
           );
-    final bar = _ProgressBar(
-      progress: progress,
-      buffered: buffered,
-      elapsedLabel: clippoPlayerProgress(position),
-      totalLabel: clippoPlayerProgress(total),
-      onSeek: ready ? _seekToFraction : null,
+        } else {
+          content = AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _VideoPlaceholder(
+              stage: isCurrent ? _stage : _Stage.loading,
+              message: isCurrent ? _message : null,
+              onRetry: isCurrent && _stage == _Stage.error ? _load : null,
+            ),
+          );
+        }
+        // Toque em qualquer ponto (inclusive nas faixas pretas) mostra ou esconde os controles.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _onVideoTap,
+          child: Center(child: content),
+        );
+      },
     );
 
-    // Celular deitado: o vídeo ocupa a tela toda (é o gesto natural para ver um lance gravado
-    // na horizontal). Ficam só fechar, o contador e a barra, por cima; tocar no vídeo pausa.
-    // Baixar, compartilhar e as setas voltam ao levantar o celular; deslizar troca de lance.
-    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
-      return Stack(
-        fit: StackFit.expand,
+    final controls = SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          pages,
-          Align(alignment: Alignment.topCenter, child: _topBar(counter: counter)),
-          Align(
-            alignment: Alignment.bottomCenter,
+          _topBar(
+            counter: '${_currentIndex + 1} de ${_items.length}',
+            actions: [
+              _CircleAction(
+                icon: 'download',
+                semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
+                enabled: canAct,
+                busy: _saving,
+                progress: _downloadProgress,
+                onPressed: _download,
+              ),
+              _CircleAction(
+                icon: 'share',
+                semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
+                enabled: canAct,
+                busy: _sharing,
+                onPressed: _share,
+              ),
+            ],
+          ),
+          Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-              child: bar,
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _topBar(counter: counter),
-        Expanded(child: pages),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            ClippoSpace.gutter,
-            ClippoSpace.spaceL,
-            ClippoSpace.gutter,
-            ClippoSpace.screenBottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                highlight.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
-              ),
-              const SizedBox(height: ClippoSpace.spaceS),
-              Row(
-                children: [
-                  const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
-                  const SizedBox(width: ClippoSpace.spaceS),
-                  Flexible(
-                    child: Text(
-                      clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
-                      style: ClippoText.label.copyWith(
-                        color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
-                        fontFeatures: ClippoText.tabular,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              Opacity(
-                opacity: canFetch ? 1 : ClippoOpacity.disabled,
-                child: Wrap(
-                  spacing: ClippoSpace.spaceM,
-                  runSpacing: ClippoSpace.spaceS,
-                  children: [
-                    ClippoCaptureChip(
-                      label: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
-                      selected: false,
-                      onPressed: canFetch ? _download : null,
-                    ),
-                    ClippoCaptureChip(
-                      label: _sharing ? 'Preparando…' : 'Compartilhar',
-                      selected: false,
-                      onPressed: canFetch ? _share : null,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              bar,
-              const SizedBox(height: ClippoSpace.spaceL),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
                 children: [
                   _CircleAction(
                     icon: 'chevron-left',
@@ -664,14 +647,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     enabled: hasPrev,
                     onPressed: () => _goToIndex(_currentIndex - 1),
                   ),
-                  const SizedBox(width: ClippoSpace.gutter),
-                  _PlayPauseButton(
-                    playing: _playing,
-                    loading: _stage == _Stage.loading || (ready && _buffering),
-                    enabled: ready,
-                    onPressed: _togglePlay,
+                  Expanded(
+                    child: Center(
+                      child: ready
+                          ? _PlayPauseButton(
+                              playing: _playing,
+                              loading: _buffering,
+                              enabled: true,
+                              onPressed: _togglePlay,
+                            )
+                          : null,
+                    ),
                   ),
-                  const SizedBox(width: ClippoSpace.gutter),
                   _CircleAction(
                     icon: 'chevron-right',
                     semanticLabel: 'Próximo lance',
@@ -680,7 +667,94 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ],
               ),
-            ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              ClippoSpace.gutter,
+              ClippoSpace.spaceM,
+              ClippoSpace.gutter,
+              ClippoSpace.spaceM,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  highlight.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                ),
+                const SizedBox(height: ClippoSpace.spaceS),
+                Row(
+                  children: [
+                    const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
+                    const SizedBox(width: ClippoSpace.spaceS),
+                    Flexible(
+                      child: Text(
+                        clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                        style: ClippoText.label.copyWith(
+                          color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
+                          fontFeatures: ClippoText.tabular,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                _ProgressBar(
+                  progress: progress,
+                  buffered: buffered,
+                  elapsedLabel: clippoPlayerProgress(position),
+                  totalLabel: clippoPlayerProgress(total),
+                  onSeek: ready ? _seekToFraction : null,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        pages,
+        // Com os controles escondidos, o "carregando" continua à vista no meio do vídeo.
+        if (ready && _buffering && !visible) const IgnorePointer(child: Center(child: _BufferingBadge())),
+        IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+            curve: ClippoMotion.standard,
+            child: ExcludeSemantics(
+              excluding: !visible,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Sombra em cima e embaixo para os controles aparecerem sobre qualquer vídeo.
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            ClippoBrand.captureOverlay,
+                            Colors.transparent,
+                            Colors.transparent,
+                            ClippoBrand.captureScrim,
+                          ],
+                          stops: [0, 0.22, 0.6, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                  controls,
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -694,12 +768,20 @@ class _CircleAction extends StatelessWidget {
     required this.semanticLabel,
     required this.onPressed,
     this.enabled = true,
+    this.busy = false,
+    this.progress,
   });
 
   final String icon;
   final String semanticLabel;
   final VoidCallback onPressed;
   final bool enabled;
+
+  /// Trabalhando (baixando, preparando): um anel gira em volta do ícone e o toque não repete.
+  final bool busy;
+
+  /// Quanto já foi (0 a 1) enquanto [busy]; nulo, o anel gira sem parar.
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -711,20 +793,34 @@ class _CircleAction extends StatelessWidget {
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
           child: ClippoPressable(
-            onTap: enabled ? onPressed : null,
+            onTap: enabled && !busy ? onPressed : null,
             child: SizedBox.square(
               dimension: ClippoSize.minTouchTarget,
               child: Center(
-                child: Container(
-                  width: ClippoSize.control,
-                  height: ClippoSize.control,
-                  decoration: BoxDecoration(
-                    color: ClippoBrand.captureChip,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: ClippoBrand.captureChipBorder, width: ClippoSize.border),
-                  ),
+                child: Stack(
                   alignment: Alignment.center,
-                  child: ClippoSvgIcon(icon, size: ClippoSize.fieldIcon, color: ClippoBrand.onWine),
+                  children: [
+                    Container(
+                      width: ClippoSize.control,
+                      height: ClippoSize.control,
+                      decoration: BoxDecoration(
+                        color: ClippoBrand.captureChip,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: ClippoBrand.captureChipBorder, width: ClippoSize.border),
+                      ),
+                      alignment: Alignment.center,
+                      child: ClippoSvgIcon(icon, size: ClippoSize.fieldIcon, color: ClippoBrand.onWine),
+                    ),
+                    if (busy)
+                      SizedBox.square(
+                        dimension: ClippoSize.control,
+                        child: CircularProgressIndicator(
+                          value: progress?.clamp(0.0, 1.0),
+                          strokeWidth: ClippoSize.border,
+                          color: ClippoBrand.peach,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -893,21 +989,6 @@ class _BufferingBadge extends StatelessWidget {
   }
 }
 
-class _PlayBadge extends StatelessWidget {
-  const _PlayBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: ClippoSize.navButton,
-      height: ClippoSize.navButton,
-      decoration: const BoxDecoration(color: ClippoBrand.captureOverlay, shape: BoxShape.circle),
-      alignment: Alignment.center,
-      child: const ClippoSvgIcon('play', size: ClippoSize.icon, color: ClippoBrand.onWine),
-    );
-  }
-}
-
 /// O quadro enquanto o vídeo não está pronto: carregando, enviando, sem vídeo ou erro.
 class _VideoPlaceholder extends StatelessWidget {
   const _VideoPlaceholder({required this.stage, required this.message, required this.onRetry});
@@ -926,7 +1007,11 @@ class _VideoPlaceholder extends StatelessWidget {
         children: [
           const Positioned.fill(child: CustomPaint(painter: _StageCourtPainter())),
           Padding(
-            padding: const EdgeInsets.all(ClippoSpace.cardPadding),
+            // Nas laterais, folga para as setas de lance anterior/próximo, que ficam por cima.
+            padding: const EdgeInsets.symmetric(
+              horizontal: ClippoSpace.gutter + ClippoSize.minTouchTarget,
+              vertical: ClippoSpace.cardPadding,
+            ),
             child: Semantics(
               liveRegion: true,
               child: Column(

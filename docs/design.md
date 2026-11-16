@@ -345,6 +345,7 @@ Sem sombras, vidro ou desfoque. Profundidade vem de `surface` sobre `background`
 | `press` | 80 ms | Apagar ao tocar (`ClippoPressable`) |
 | `searchDebounce` | 400 ms | Busca de Amigos: parou de digitar → procura o @ exato no Clippo |
 | `standbyPulse` · `savedBanner` · `stopControls` | 2,6 s · 2,6 s · 3,2 s | Gravação: ciclo do ponto pulsante · aviso "Highlight salvo" · controles após um toque |
+| `playerControls` | 3,2 s | Player: tempo até os controles sumirem com o vídeo tocando (16/11/2026) |
 
 A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho conta"); voltar entre as outras telas usa a transição normal. Com "reduzir movimento" (`MediaQuery.disableAnimations`), sem a camada vinho e sem transições.
 
@@ -353,7 +354,7 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 - **Outline**, traço de 1,6–1,8 na grade de 24, pontas e junções arredondadas, **sem preenchimento** em nenhum estado.
 - Cor: `text` por padrão, `textLabel` dentro de campos, `onPrimary` sobre `primary`.
 - Desenhados em código, no `ClippoIcon`: voltar (chevron para a esquerda, traço 1,8, 22 dp), **chevron para baixo** (sanfona do card de sessão, 22 dp), olho / olho cortado (20 dp), ✓ (traço 3, dentro do círculo `check`).
-- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `pause`, `share`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
+- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `pause`, `share`, `download`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
 - Precisa de outro ícone? **Lucide** ou **Phosphor (Light)** combinam; ajuste o traço e adicione o SVG à pasta.
 
 ### 3.7 Marca
