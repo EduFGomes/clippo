@@ -783,46 +783,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  highlight.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
-                ),
-                const SizedBox(height: ClippoSpace.spaceS),
+                // Título e tempo à esquerda; a tela cheia à direita, logo acima do fim da barra.
                 Row(
-                  children: [
-                    const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
-                    const SizedBox(width: ClippoSpace.spaceS),
-                    Flexible(
-                      child: Text(
-                        clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
-                        style: ClippoText.label.copyWith(
-                          color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
-                          fontFeatures: ClippoText.tabular,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: _ProgressBar(
-                        progress: progress,
-                        buffered: buffered,
-                        elapsedLabel: clippoPlayerProgress(position),
-                        totalLabel: clippoPlayerProgress(total),
-                        onSeek: ready ? _seekToFraction : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            highlight.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                          ),
+                          const SizedBox(height: ClippoSpace.spaceS),
+                          Row(
+                            children: [
+                              const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
+                              const SizedBox(width: ClippoSpace.spaceS),
+                              Flexible(
+                                child: Text(
+                                  clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                                  style: ClippoText.label.copyWith(
+                                    color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
+                                    fontFeatures: ClippoText.tabular,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: ClippoSpace.spaceS),
+                    const SizedBox(width: ClippoSpace.spaceM),
                     _CircleAction(
                       icon: _fullscreen ? 'fullscreen-exit' : 'fullscreen',
                       semanticLabel: _fullscreen ? 'Sair da tela cheia' : 'Tela cheia',
                       onPressed: () => _setFullscreen(!_fullscreen),
                     ),
                   ],
+                ),
+                _ProgressBar(
+                  progress: progress,
+                  buffered: buffered,
+                  elapsedLabel: clippoPlayerProgress(position),
+                  totalLabel: clippoPlayerProgress(total),
+                  onSeek: ready ? _seekToFraction : null,
                 ),
               ],
             ),

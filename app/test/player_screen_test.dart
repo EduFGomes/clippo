@@ -228,6 +228,14 @@ void main() {
       expect(find.bySemanticsLabel('Tela cheia'), findsOneWidget);
     });
 
+    testWidgets('o botão de tela cheia fica logo acima do fim da barra', (tester) async {
+      await openPlaying(tester);
+      final button = tester.getRect(find.bySemanticsLabel('Tela cheia'));
+      final total = tester.getRect(find.text('0:30'));
+      expect(button.bottom, lessThanOrEqualTo(total.top));
+      expect(button.right, closeTo(total.right, 4));
+    });
+
     testWidgets('vídeo em pé: tela cheia só esconde as barras, sem deitar o celular', (tester) async {
       final calls = _recordSystemChrome(tester);
       await openPlaying(tester);

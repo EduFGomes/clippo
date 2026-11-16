@@ -284,7 +284,7 @@ Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado
 **Controles por cima do vídeo**, com uma sombra em cima e embaixo para ficarem legíveis:
 - **Topo:** ✕ fechar · nome da sessão e "1 de 6" · **baixar** e **compartilhar**, só com ícone, no mesmo estilo do ✕. Enquanto baixa, um anel em volta do ícone mostra o progresso.
 - **Meio:** **voltar 5 s** · play/pause · **avançar 5 s**. Os botões de 5 s não passam do começo nem do fim e só aparecem com o vídeo carregado.
-- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás) e o botão **tela cheia**.
+- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás). O botão **tela cheia** fica à direita do título, logo acima do fim da barra.
 - Com o vídeo tocando, os controles **somem sozinhos** depois de 3,2 s (`playerControls`). Tocar em qualquer ponto do vídeo mostra ou esconde. Pausado, carregando, com erro ou com leitor de tela ligado, ficam à vista.
 
 **Gestos:**
