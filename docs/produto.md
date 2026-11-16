@@ -131,6 +131,7 @@ Usuário ──< Participante >── Sessão ──< Highlight
 - Editar nome e nome de usuário. **Foto do perfil**: adicionar, trocar (galeria ou câmera) e remover, desde 12/11/2026. Notificações ficam para o futuro e não aparecem na tela.
 - Sair da conta (com confirmação).
 - Excluir a conta (LGPD): some o perfil, as amizades e as sessões que a pessoa gravou; das sessões dos outros, ela sai.
+- **Favoritos** (R18–R22): os lances que a pessoa favoritou, em lista de cards. O perfil de um amigo (aberto em Amigos ou na Sessão) mostra os favoritos dele.
 
 ---
 
@@ -156,10 +157,19 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 |---|---|
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
-| R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
+| R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. A única exceção é o lance que um participante **favoritou** (R18): os amigos dele veem só esse lance, no perfil dele, sem a sessão. |
 | R12 | Só o dono edita nome/local/data e horário da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
 | R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) e **"Descartar"** (na confirmação). As duas **perguntam antes** e, confirmadas, jogam fora todos os highlights da sessão. **Não existe sessão padrão** (grupo, 12/11/2026). Sessão sem nenhum highlight pode ser salva. |
+
+### Favoritos (aprovado em 16/11/2026)
+| # | Regra |
+|---|---|
+| R18 | **Qualquer participante favorita** um lance que já subiu, pelo Player. O lance favoritado aparece no **perfil** de quem favoritou, como uma publicação. |
+| R19 | Só os **amigos** de quem favoritou (e a própria pessoa) veem o favorito. Eles **assistem, curtem e comentam**, mesmo sem ter participado da sessão. |
+| R20 | O favorito mostra **o vídeo, o título do lance, a data e quem favoritou**. O nome da sessão, o local e os participantes **não** aparecem. |
+| R21 | O favorito **some**, com as curtidas e os comentários, quando: quem favoritou desfavorita (o app pergunta antes se houver comentários); o dono apaga o lance ou a sessão; ou quem favoritou sai ou é tirado da sessão. Excluir a conta apaga os favoritos, as curtidas e os comentários da pessoa. |
+| R22 | O comentário tem de 1 a 300 caracteres e até 6 linhas. O autor apaga o próprio comentário; quem favoritou apaga qualquer comentário do seu favorito. |
 
 ### Amigos
 | # | Regra |
@@ -350,6 +360,7 @@ A gravação ignora o tema claro/escuro.
 - **Avatar grande**, nome e @usuário (trocar a foto entra em breve).
 - **Três estatísticas**: sessões · highlights · amigos.
 - Linhas: **Nome ›**, **Usuário ›** (notificações ficam para o futuro).
+- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito, com curtir e comentar. Vazio: "Favorite um lance no Player para ele aparecer aqui".
 - **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 
@@ -371,7 +382,7 @@ Início → Sessão → Gravação (A–D) são o núcleo da proposta e precisam
 | Recuperação de senha | "Esqueci a senha" manda o e-mail padrão do Firebase (10/11/2026). Falta decidir o texto do e-mail e se a nova senha é criada dentro do app. |
 | Tela de permissões | ~~Quando pedir?~~ Câmera e microfone ao entrar na Gravação; localização só no "Usar localização atual" (12/11/2026). |
 | Privacidade | Escrever a política de privacidade completa (o cadastro mostra um resumo provisório). |
-| Favoritos e retenção | Vídeos apagados depois de 60 dias, menos os favoritos (12/11/2026). Favoritar ainda não existe: precisa vir antes da limpeza. |
+| Favoritos e retenção | Vídeos apagados depois de 60 dias, menos os favoritos (12/11/2026). Favoritar existe desde 16/11/2026 (R18–R22); falta a limpeza, que deve pular os lances com `favoriteCount > 0`. |
 | Telas internas | Início, Sessão, Player, Gravação, Amigos e Perfil ainda vão ser redesenhadas na direção C. |
 | Entrega final | ~~04/12/2026?~~ Nova data: 25/11/2026 (12/11/2026). |
 

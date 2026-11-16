@@ -79,6 +79,35 @@ service cloud.firestore {
       }
     }
 
+    // Favorito (R18–R22, D19): um lance que alguém favoritou, no perfil dessa pessoa. Quem
+    // favoritou e os AMIGOS dela leem (R19), mesmo sem ser participantes da sessão: o favorito
+    // copia só o que pode aparecer (R20). Ninguém grava pelo app: só Functions.
+    //
+    // A lista do perfil precisa do filtro .where('ownerId', isEqualTo: uid): sem ele, a consulta
+    // falha ao encontrar o favorito de quem não é amigo.
+    function friendsWith(other) {
+      return exists(/databases/$(database)/documents/friendships/$(request.auth.uid + '_' + other))
+          && get(/databases/$(database)/documents/friendships/$(request.auth.uid + '_' + other)).data.status == 'accepted'
+        || exists(/databases/$(database)/documents/friendships/$(other + '_' + request.auth.uid))
+          && get(/databases/$(database)/documents/friendships/$(other + '_' + request.auth.uid)).data.status == 'accepted';
+    }
+
+    function canSeePost(ownerId) {
+      return signedIn() && (request.auth.uid == ownerId || friendsWith(ownerId));
+    }
+
+    match /posts/{postId} {
+      allow read: if canSeePost(resource.data.ownerId);
+      allow write: if false;
+
+      // Curtidas e comentários: quem vê o favorito vê também quem curtiu e o que escreveram.
+      match /{sub}/{itemId} {
+        allow read: if (sub == 'likes' || sub == 'comments')
+          && canSeePost(get(/databases/$(database)/documents/posts/$(postId)).data.ownerId);
+        allow write: if false;
+      }
+    }
+
     // Todo o resto continua bloqueado até ganhar regras próprias.
     match /{document=**} {
       allow read, write: if false;

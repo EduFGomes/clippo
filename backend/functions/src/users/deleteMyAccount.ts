@@ -5,6 +5,7 @@
  *   1. confere antes de apagar qualquer coisa: sessão juntada (D18) em que ela é dona trava a
  *      exclusão (🟡 a mesma decisão em aberto do deleteSession);
  *   2. as sessões que ela gravou somem para todos, com lances e vídeos (deleteSessionAs);
+ *      antes, os favoritos dela e as curtidas e comentários que ela deixou (R21);
  *   3. das sessões de outras pessoas, ela sai (leaveSessionAs): os outros continuam com os lances;
  *   4. amizades e pedidos (de amizade e de juntar sessões) dela são apagados, e quem era amigo
  *      perde 1 em `stats.friends`;
@@ -16,6 +17,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { CALLABLE_OPTIONS } from "../config";
+import { deleteFavoritesActivityOf } from "../favorites/posts";
 import { deleteSessionAs } from "../sessions/deleteSession";
 import { leaveSessionAs } from "../sessions/leaveSession";
 import { mergedFromOf, mergedIntoOf } from "../sessions/sessionDocs";
@@ -37,6 +39,10 @@ export const deleteMyAccount = onCall<unknown, Promise<{ deleted: true }>>(CALLA
       "Você tem sessões juntadas com as de outra pessoa. Por enquanto, a conta não pode ser excluída pelo app.",
     );
   }
+
+  // Favoritos, curtidas e comentários dela (R21). Antes das sessões: os gatilhos dos lances
+  // apagados só achariam os favoritos depois, e a conta já não existiria.
+  await deleteFavoritesActivityOf(uid);
 
   // 2 e 3. Sessões: as minhas somem; das outras eu saio. Juntada a outra (dos outros) sai pela principal.
   for (const s of owned) await deleteSessionAs(uid, s.id);

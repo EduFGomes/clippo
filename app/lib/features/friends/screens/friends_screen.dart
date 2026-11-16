@@ -11,7 +11,9 @@ import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
+import 'package:clippo/core/data/favorite.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
+import 'package:clippo/core/widgets/clippo_favorites_section.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_pill_button.dart';
@@ -40,7 +42,11 @@ class FriendsScreen extends StatefulWidget {
     this.sessions,
     this.myUid,
     this.onOpenSession,
+    this.onOpenFavorite,
   });
+
+  /// Abre um favorito do amigo no Player (pelo `AppShell`, regra 3).
+  final ValueChanged<FavoritePost>? onOpenFavorite;
 
   /// Quem lê e grava as amizades. Padrão: o [friendsRepository] do app.
   final FriendsRepository? repository;
@@ -338,6 +344,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           data: _data,
           myUid: _myUid,
           onOpenSession: widget.onOpenSession,
+          onOpenFavorite: widget.onOpenFavorite,
           onRemove: () => _confirmAndRemove(routeContext, friend),
         ),
       ),
@@ -1340,6 +1347,7 @@ class _FriendProfileScreen extends StatefulWidget {
     required this.myUid,
     required this.onRemove,
     this.onOpenSession,
+    this.onOpenFavorite,
   });
 
   final Friend friend;
@@ -1349,6 +1357,7 @@ class _FriendProfileScreen extends StatefulWidget {
   /// Pergunta e remove; true quando removeu.
   final Future<bool> Function() onRemove;
   final ValueChanged<Session>? onOpenSession;
+  final ValueChanged<FavoritePost>? onOpenFavorite;
 
   @override
   State<_FriendProfileScreen> createState() => _FriendProfileScreenState();
@@ -1501,6 +1510,15 @@ class _FriendProfileScreenState extends State<_FriendProfileScreen> {
           _SectionHeader(title: 'Sessões juntos', count: shared.length),
           const SizedBox(height: ClippoSpace.spaceM),
           sessionsBody,
+          // Só amigos veem os favoritos (R19): desfeita a amizade, a seção sai.
+          if (isFriend) ...[
+            const SizedBox(height: ClippoSpace.section),
+            ClippoFavoritesSection(
+              ownerId: friend.uid,
+              emptyText: '${friend.firstName} ainda não favoritou nenhum lance.',
+              onOpen: widget.onOpenFavorite ?? (_) {},
+            ),
+          ],
         ],
       ),
     );

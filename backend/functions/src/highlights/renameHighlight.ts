@@ -13,6 +13,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { CALLABLE_OPTIONS } from "../config";
 import { db } from "../shared/admin";
+import { logger } from "firebase-functions/v2";
 import {
   HighlightValidationError,
   normalizeHighlightRef,
@@ -69,6 +70,19 @@ export const renameHighlight = onCall<RenameHighlightRequest, Promise<RenameHigh
       if (highlight.get("title") === title) return;
       tx.update(highlightRef, { title, updatedAt: FieldValue.serverTimestamp() });
     });
+
+    // Os favoritos desse lance (R18) mostram o nome copiado: acompanham a troca. Fora da
+    // transação; se falhar, o lance já tem o nome novo e renomear de novo acerta as cópias.
+    try {
+      const posts = await db()
+        .collection("posts")
+        .where("sessionId", "==", sessionId)
+        .where("highlightId", "==", highlightId)
+        .get();
+      await Promise.all(posts.docs.filter((p) => p.get("title") !== title).map((p) => p.ref.update({ title })));
+    } catch (e) {
+      logger.error("renameHighlight: o nome não chegou aos favoritos", { sessionId, highlightId, error: String(e) });
+    }
 
     return { title };
   },

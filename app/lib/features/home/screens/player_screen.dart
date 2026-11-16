@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/favorite.dart';
+import 'package:clippo/core/data/favorites_repository.dart';
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
 import 'package:clippo/core/device/screen_orientation.dart';
@@ -14,6 +17,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
+import 'package:clippo/features/home/widgets/favorite_comments_sheet.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 
 /// Baixa o vídeo do lance para um arquivo local (D17: nunca por `getDownloadURL()`).
@@ -59,7 +63,30 @@ class PlayerScreen extends StatefulWidget {
     this.localFileExists,
     this.streamVideo,
     this.streamControllerFactory,
+    this.sessionId,
+    this.favorite,
+    this.favorites,
+    this.currentUserId,
   });
+
+  /// O Player de um lance favoritado (R18–R20), aberto do perfil de quem favoritou: toca a cópia
+  /// do favorito, mostra a data em vez do momento na sessão e tem curtir e comentar.
+  factory PlayerScreen.favorite(
+    FavoritePost post, {
+    Key? key,
+    FavoritesRepository? favorites,
+    HighlightMediaRepository? mediaRepository,
+    String? currentUserId,
+  }) =>
+      PlayerScreen(
+        key: key,
+        sessionName: 'Favorito de ${post.ownerFirstName}',
+        highlights: [post.toHighlight()],
+        favorite: post,
+        favorites: favorites,
+        mediaRepository: mediaRepository,
+        currentUserId: currentUserId,
+      );
 
   /// Nome da sessão, discreto no topo.
   final String sessionName;
@@ -101,6 +128,18 @@ class PlayerScreen extends StatefulWidget {
   /// Substitui `VideoPlayerController.networkUrl` (testes).
   final HighlightStreamControllerFactory? streamControllerFactory;
 
+  /// A sessão dos lances. Com ela, o participante favorita o lance pelo coração no topo (R18).
+  final String? sessionId;
+
+  /// O favorito que este Player mostra ([PlayerScreen.favorite]). Nulo: lances de uma sessão.
+  final FavoritePost? favorite;
+
+  /// Favoritos, curtidas e comentários. No app, `favoritesRepository` (com alguém logado).
+  final FavoritesRepository? favorites;
+
+  /// Quem está vendo. Nulo = o do Firebase Auth.
+  final String? currentUserId;
+
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
@@ -125,6 +164,147 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Quanto do vídeo já chegou no "Baixar" (0 a 1); nulo enquanto não se sabe.
   double? _downloadProgress;
   bool _sharing = false;
+
+  FavoritesRepository? get _favoritesRepo => widget.favorites ?? (isUserSignedIn ? favoritesRepository : null);
+
+  String? get _viewerId {
+    if (widget.currentUserId != null) return widget.currentUserId;
+    return isUserSignedIn ? authRepository.currentUser?.uid : null;
+  }
+
+  // Lances de uma sessão: o MEU favorito do lance na tela (coração cheio) ou nulo.
+  StreamSubscription<FavoritePost?>? _mineSubscription;
+  FavoritePost? _mine;
+  bool _favoriteBusy = false;
+
+  bool get _canUseFavorites => widget.favorite == null && widget.sessionId != null && _favoritesRepo != null;
+
+  /// Só dá para favoritar o que já subiu: o favorito copia o vídeo da nuvem (D19).
+  bool _canFavorite(Highlight h) =>
+      h.status == HighlightStatus.uploaded && !h.isUploading && (h.videoPath ?? '').isNotEmpty;
+
+  void _watchMine() {
+    _mineSubscription?.cancel();
+    _mineSubscription = null;
+    _mine = null;
+    final repo = _favoritesRepo;
+    final sessionId = widget.sessionId;
+    if (!_canUseFavorites || repo == null || sessionId == null || _items.isEmpty) return;
+    try {
+      _mineSubscription = repo.watchMyFavorite(sessionId: sessionId, highlightId: _current.id).listen(
+        (post) {
+          if (mounted) setState(() => _mine = post);
+        },
+        onError: (Object _) {}, // sem internet: o coração fica vazio até conectar
+      );
+    } on FavoritesFailure {
+      // Sem login: o coração não aparece marcado.
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final repo = _favoritesRepo;
+    final sessionId = widget.sessionId;
+    if (repo == null || sessionId == null || _favoriteBusy || _items.isEmpty) return;
+    final highlight = _current;
+    final mine = _mine;
+    if (mine != null && mine.commentCount > 0) {
+      final ok = await confirmHomeAction(
+        context,
+        title: 'Desfavoritar o lance?',
+        message: 'Ele sai do seu perfil com ${clippoCommentCount(mine.commentCount)} e as curtidas. '
+            'Não dá para desfazer.',
+        confirmLabel: 'Desfavoritar',
+        cancelLabel: 'Manter',
+        destructive: true,
+      );
+      if (!ok || !mounted) return;
+    }
+    setState(() => _favoriteBusy = true);
+    try {
+      if (mine != null) {
+        await repo.unfavorite(sessionId: sessionId, highlightId: highlight.id);
+        if (mounted) {
+          setState(() => _mine = null);
+          showHomeMessage(context, 'Lance tirado dos seus favoritos.');
+        }
+      } else {
+        await repo.favorite(sessionId: sessionId, highlightId: highlight.id);
+        if (mounted) showHomeMessage(context, 'Lance favoritado. Seus amigos veem no seu perfil.');
+      }
+    } catch (e) {
+      if (mounted) showHomeMessage(context, FavoritesFailure.from(e).message);
+    } finally {
+      if (mounted) {
+        setState(() => _favoriteBusy = false);
+        _scheduleHide();
+      }
+    }
+  }
+
+  // Favorito aberto do perfil: as contagens ao vivo e se eu curti.
+  late FavoritePost? _post = widget.favorite;
+  StreamSubscription<FavoritePost?>? _postSubscription;
+  StreamSubscription<bool>? _likedSubscription;
+  bool _liked = false;
+  bool _likeBusy = false;
+
+  void _watchPost() {
+    final post = widget.favorite;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null) return;
+    try {
+      _postSubscription = repo.watchPost(post.id).listen((p) {
+        if (mounted && p != null) setState(() => _post = p);
+      }, onError: (Object _) {});
+      _likedSubscription = repo.watchLiked(post.id).listen((liked) {
+        if (mounted && !_likeBusy) setState(() => _liked = liked);
+      }, onError: (Object _) {});
+    } on FavoritesFailure {
+      // Sem login: mostra o favorito como veio, sem contagens ao vivo.
+    }
+  }
+
+  /// Curtir na hora (o coração enche já) e confirmar no servidor; se falhar, volta como estava.
+  Future<void> _toggleLike() async {
+    final post = _post;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null || _likeBusy) return;
+    final liked = !_liked;
+    final before = post;
+    setState(() {
+      _likeBusy = true;
+      _liked = liked;
+      _post = post.copyWith(likeCount: (post.likeCount + (liked ? 1 : -1)).clamp(0, 1 << 30));
+    });
+    try {
+      final count = await repo.setLiked(post.id, liked: liked);
+      if (mounted) setState(() => _post = _post?.copyWith(likeCount: count));
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _liked = !liked;
+          _post = before;
+        });
+        showHomeMessage(context, FavoritesFailure.from(e).message);
+      }
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
+    }
+  }
+
+  Future<void> _openComments() async {
+    final post = _post;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null) return;
+    _hideTimer?.cancel();
+    await showFavoriteComments(context, post: post, repository: repo, viewerId: _viewerId);
+    if (mounted) _scheduleHide();
+  }
+
+  /// Baixar e compartilhar: nos lances da sessão, todo participante (R11). No favorito de outra
+  /// pessoa, não: os amigos assistem, curtem e comentam (R19), mas o vídeo fica no perfil dela.
+  bool get _canDownload => widget.favorite == null || widget.favorite!.ownerId == _viewerId;
 
   /// Tela cheia: sem as barras do Android e, com vídeo deitado, o celular deitado também.
   /// Fora dela o Player fica em pé, como o resto do app.
@@ -244,6 +424,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _zoom.addListener(_onZoomChanged);
     if (_items.isNotEmpty) _load();
+    _watchMine();
+    _watchPost();
   }
 
   @override
@@ -253,6 +435,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       unawaited(ClippoOrientation.portrait());
     }
     _hideTimer?.cancel();
+    unawaited(_mineSubscription?.cancel());
+    unawaited(_postSubscription?.cancel());
+    unawaited(_likedSubscription?.cancel());
     _loadToken++;
     _releaseController();
     _pageController.dispose();
@@ -443,10 +628,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _zoom.value = Matrix4.identity();
     setState(() {
       _currentIndex = index;
+      _favoriteBusy = false;
       _controlsVisible = true;
     });
     _hideTimer?.cancel();
     _load();
+    _watchMine();
   }
 
   void _seekToFraction(double fraction) {
@@ -721,23 +908,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _topBar(
-            counter: '${_currentIndex + 1} de ${_items.length}',
+            counter: widget.favorite == null ? '${_currentIndex + 1} de ${_items.length}' : null,
             actions: [
-              _CircleAction(
-                icon: 'download',
-                semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
-                enabled: canAct,
-                busy: _saving,
-                progress: _downloadProgress,
-                onPressed: _download,
-              ),
-              _CircleAction(
-                icon: 'share',
-                semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
-                enabled: canAct,
-                busy: _sharing,
-                onPressed: _share,
-              ),
+              if (_canUseFavorites)
+                _CircleAction(
+                  icon: _mine != null ? 'heart-filled' : 'heart',
+                  semanticLabel: _mine != null ? 'Desfavoritar' : 'Favoritar',
+                  enabled: _canFavorite(highlight),
+                  busy: _favoriteBusy,
+                  onPressed: _toggleFavorite,
+                ),
+              if (widget.favorite != null && _favoritesRepo != null) ...[
+                _CircleAction(
+                  icon: _liked ? 'heart-filled' : 'heart',
+                  semanticLabel: _liked ? 'Descurtir' : 'Curtir',
+                  onPressed: _toggleLike,
+                ),
+                _CircleAction(
+                  icon: 'comment',
+                  semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
+                  onPressed: _openComments,
+                ),
+              ],
+              if (_canDownload) ...[
+                _CircleAction(
+                  icon: 'download',
+                  semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
+                  enabled: canAct,
+                  busy: _saving,
+                  progress: _downloadProgress,
+                  onPressed: _download,
+                ),
+                _CircleAction(
+                  icon: 'share',
+                  semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
+                  enabled: canAct,
+                  busy: _sharing,
+                  onPressed: _share,
+                ),
+              ],
             ],
           ),
           // Trocar de lance é deslizando. No meio: voltar 5 s, play/pause e avançar 5 s.
@@ -805,7 +1014,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               const SizedBox(width: ClippoSpace.spaceS),
                               Flexible(
                                 child: Text(
-                                  clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                                  _post != null
+                                      ? clippoFavoriteLine(_post!.playedAt, likes: _post!.likeCount, comments: _post!.commentCount)
+                                      : clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
                                   style: ClippoText.label.copyWith(
                                     color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
                                     fontFeatures: ClippoText.tabular,

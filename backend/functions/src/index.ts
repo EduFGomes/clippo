@@ -14,4 +14,5 @@ export * from "./users";
 export * from "./friends";
 export * from "./sessions";
 export * from "./highlights";
+export * from "./favorites";
 export * from "./maintenance";
