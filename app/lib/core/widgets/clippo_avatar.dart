@@ -23,6 +23,12 @@ class ClippoAvatar extends StatelessWidget {
   /// quando eles se sobrepõem na fileira.
   final Color? ring;
 
+  /// Ajusta o endereço de uma foto antes de abrir. No app de verdade não muda nada; com o
+  /// Firebase Emulator, `firebase_setup.dart` troca o `127.0.0.1` que a Function grava pelo
+  /// endereço que o celular alcança (10.0.2.2 ou o IP do computador).
+  static String Function(String url) resolveUrl = _sameUrl;
+  static String _sameUrl(String url) => url;
+
   @override
   Widget build(BuildContext context) {
     final colors = ClippoColors.of(context);
@@ -46,7 +52,12 @@ class ClippoAvatar extends StatelessWidget {
               color: colors.controlSoft,
               image: photo == null || photo.isEmpty
                   ? null
-                  : DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover),
+                  : DecorationImage(
+                      image: NetworkImage(resolveUrl(photo)),
+                      fit: BoxFit.cover,
+                      // Sem internet ou foto apagada: ficam as iniciais, sem erro no log.
+                      onError: (_, _) {},
+                    ),
             ),
             // A inicial fica embaixo da foto: se a imagem não carregar, ela aparece.
             child: Center(

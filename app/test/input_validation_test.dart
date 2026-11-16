@@ -93,6 +93,26 @@ void main() {
     }
   });
 
+  // Os mesmos casos de checkProfilePhoto em backend/functions/test/validation.test.ts.
+  group('foto do perfil', () {
+    test('aceita JPEG ou PNG de até 2 MB', () {
+      expect(validateProfilePhoto(1, 'image/jpeg'), isNull);
+      expect(validateProfilePhoto(2 * 1024 * 1024, 'image/png'), isNull);
+    });
+    test('recusa outro tipo, vazia ou acima de 2 MB', () {
+      expect(validateProfilePhoto(100, 'image/gif'), 'Use uma foto em JPEG ou PNG.');
+      expect(validateProfilePhoto(100, null), 'Use uma foto em JPEG ou PNG.');
+      expect(validateProfilePhoto(0, 'image/jpeg'), 'A foto pode ter até 2 MB.');
+      expect(validateProfilePhoto(2 * 1024 * 1024 + 1, 'image/jpeg'), 'A foto pode ter até 2 MB.');
+    });
+    test('o tipo sai do nome do arquivo', () {
+      expect(profilePhotoContentType('/tmp/IMG_01.JPG'), 'image/jpeg');
+      expect(profilePhotoContentType('/tmp/a.jpeg'), 'image/jpeg');
+      expect(profilePhotoContentType('/tmp/a.png'), 'image/png');
+      expect(profilePhotoContentType('/tmp/a.heic'), isNull);
+    });
+  });
+
   group('data de nascimento', () {
     final today = DateTime(2026, 10, 13);
     test('aceita uma data válida no passado', () {

@@ -17,6 +17,7 @@ import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_capture_toast.dart';
 import 'package:clippo/core/widgets/clippo_ghost_button.dart';
 import 'package:clippo/core/widgets/clippo_icon.dart';
+import 'package:clippo/core/widgets/clippo_location_button.dart';
 import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_pulse_dot.dart';
@@ -101,6 +102,7 @@ class CaptureScreen extends StatefulWidget {
     this.uploads,
     this.onOpenFriends,
     this.onSaved,
+    this.findPlace,
     this.onSessionCreated,
   });
 
@@ -127,6 +129,9 @@ class CaptureScreen extends StatefulWidget {
 
   /// Chamado quando a sessão é confirmada e salva no Estado D.
   final VoidCallback? onSaved;
+
+  /// Substitui o GPS do "Usar localização atual" (testes). Nulo = o do celular.
+  final Future<String> Function()? findPlace;
 
   /// Recebe a [Session] criada no Estado D (com os participantes).
   final ValueChanged<Session>? onSessionCreated;
@@ -229,8 +234,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _nameController = TextEditingController(text: _defaultSessionName(now));
     _dateController = TextEditingController(text: clippoDate(now));
     _timeController = TextEditingController(text: clippoTimeRange(now, now));
-    // 🟡 Sem GPS ainda: o campo começa vazio (antes vinha "Quadra local (GPS)" fixo, salvo em
-    // quase toda sessão). Sugerir pelo GPS segue em aberto (docs/produto.md › 4.5).
+    // O campo começa vazio; "Usar localização atual" preenche com o bairro, só quando tocado.
+    // (Antes vinha "Quadra local (GPS)" fixo; as sessões antigas com ele aparecem sem local.)
     _locationController = TextEditingController();
     _loadSavedSettings();
     _checkPermission();
@@ -1595,6 +1600,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
             onChanged: (_) {
               if (_locationError != null) setState(() => _locationError = null);
             },
+          ),
+          // GPS só quando tocado (grupo, 12/11/2026); o nome vem editável.
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ClippoLocationButton(
+              findPlace: widget.findPlace,
+              onPlace: (place) => setState(() {
+                _locationController.text = place;
+                _locationError = null;
+              }),
+              onError: (message) => setState(() => _locationError = message),
+            ),
           ),
           const SizedBox(height: ClippoSpace.section),
           Padding(

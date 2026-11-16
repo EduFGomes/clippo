@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/theme/clippo_tokens.dart';
+import 'package:clippo/core/widgets/clippo_avatar.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 
 /// Cabeçalho do perfil: avatar grande (foto ou iniciais), opção de editar foto, nome e @usuário.
 class ProfileHeader extends StatelessWidget {
@@ -10,6 +12,7 @@ class ProfileHeader extends StatelessWidget {
     required this.username,
     this.photoUrl,
     this.onEditPhoto,
+    this.photoBusy = false,
   });
 
   final String name;
@@ -18,6 +21,9 @@ class ProfileHeader extends StatelessWidget {
   /// Foto da pessoa (ex.: a da conta Google). Sem foto, ficam as iniciais.
   final String? photoUrl;
   final VoidCallback? onEditPhoto;
+
+  /// A foto está subindo: o botão mostra "Enviando foto…" e não aceita outro toque.
+  final bool photoBusy;
 
   String get _initials {
     final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
@@ -52,7 +58,11 @@ class ProfileHeader extends StatelessWidget {
                     color: colors.controlSoft,
                     border: Border.all(color: colors.accent, width: ClippoSize.border),
                     image: photo != null
-                        ? DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover)
+                        ? DecorationImage(
+                            image: NetworkImage(ClippoAvatar.resolveUrl(photo)),
+                            fit: BoxFit.cover,
+                            onError: (_, _) {},
+                          )
                         : null,
                   ),
                   child: photo != null
@@ -79,16 +89,16 @@ class ProfileHeader extends StatelessWidget {
               ),
             ],
           ),
-          // Trocar a foto ainda não existe: sem [onEditPhoto], o botão não aparece.
+          // Sem [onEditPhoto] (catálogo, sem login), o botão não aparece.
           if (onEditPhoto != null) ...[
             const SizedBox(height: ClippoSpace.spaceM),
             Semantics(
               button: true,
-              label: 'Editar foto',
+              enabled: !photoBusy,
+              label: photoBusy ? 'Enviando foto' : (photo == null ? 'Adicionar foto' : 'Trocar foto'),
               excludeSemantics: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onEditPhoto,
+              child: ClippoPressable(
+                onTap: photoBusy ? null : onEditPhoto,
                 child: Container(
                   constraints: const BoxConstraints(minHeight: ClippoSize.minTouchTarget),
                   padding: const EdgeInsets.symmetric(
@@ -101,7 +111,7 @@ class ProfileHeader extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    'Editar foto',
+                    photoBusy ? 'Enviando foto…' : (photo == null ? 'Adicionar foto' : 'Trocar foto'),
                     textAlign: TextAlign.center,
                     style: ClippoText.label.copyWith(color: colors.accent),
                   ),

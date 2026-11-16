@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 
+import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/firebase_options.dart';
 
 /// Região das Cloud Functions chamáveis. Precisa ser a mesma de REGION em backend/functions/src/config.ts
@@ -63,6 +64,11 @@ Future<void> setupFirebase() async {
       storageBucket: 'demo-clippo.appspot.com',
     ),
   );
+
+  // A foto do perfil vem com o endereço do Storage do Emulator visto pela Function (127.0.0.1);
+  // o celular alcança o computador por [emulatorHost].
+  ClippoAvatar.resolveUrl =
+      (url) => url.replaceFirst(RegExp(r'^http://(127\.0\.0\.1|localhost):'), 'http://$emulatorHost:');
 
   await FirebaseAuth.instance.useAuthEmulator(emulatorHost, 9099);
   FirebaseFirestore.instance.useFirestoreEmulator(emulatorHost, 8180);

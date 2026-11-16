@@ -142,6 +142,38 @@ describe("baixar o vídeo (R11)", () => {
   });
 });
 
+describe("foto do perfil", () => {
+  const AVATAR = "users/alice/avatar";
+  const png = { contentType: "image/png" };
+
+  it("a pessoa envia e troca a própria foto (JPEG ou PNG)", async () => {
+    const storage = env.authenticatedContext("alice").storage();
+    await assertSucceeds(uploadBytes(ref(storage, AVATAR), bytes(2048), jpeg));
+    await assertSucceeds(uploadBytes(ref(storage, AVATAR), bytes(2048), png));
+  });
+
+  it("ninguém envia a foto de outra pessoa", async () => {
+    const storage = env.authenticatedContext("bob").storage();
+    await assertFails(uploadBytes(ref(storage, AVATAR), bytes(2048), jpeg));
+  });
+
+  it("foto acima de 2 MB, vazia ou que não é imagem é recusada", async () => {
+    const storage = env.authenticatedContext("alice").storage();
+    await assertFails(uploadBytes(ref(storage, AVATAR), bytes(2 * 1024 * 1024 + 1), jpeg));
+    await assertFails(uploadBytes(ref(storage, AVATAR), bytes(0), jpeg));
+    await assertFails(uploadBytes(ref(storage, AVATAR), bytes(2048), mp4));
+  });
+
+  it("qualquer pessoa logada vê a foto; sem login, não; ninguém apaga pelo app", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), AVATAR), bytes(10), jpeg);
+    });
+    await assertSucceeds(getBytes(ref(env.authenticatedContext("carol").storage(), AVATAR)));
+    await assertFails(getBytes(ref(env.unauthenticatedContext().storage(), AVATAR)));
+    await assertFails(deleteObject(ref(env.authenticatedContext("alice").storage(), AVATAR)));
+  });
+});
+
 describe("sobrescrever, apagar e outros caminhos", () => {
   it("nem quem gravou apaga o vídeo pelo app", async () => {
     const storage = env.authenticatedContext("alice").storage();

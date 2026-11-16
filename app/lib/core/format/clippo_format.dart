@@ -34,8 +34,10 @@ String clippoTime(DateTime time) =>
 String clippoTimeRange(DateTime start, DateTime? end) =>
     end == null ? clippoTime(start) : '${clippoTime(start)} – ${clippoTime(end)}';
 
-/// "1h 42min", "58min", "2h". Zero vira "0min", nunca vazio.
+/// "1h 42min", "58min", "2h". Menos de um minuto vira segundos ("45s"), e não "0min",
+/// que parecia sessão vazia. Nunca vazio.
 String clippoDuration(Duration duration) {
+  if (duration.inMinutes == 0) return '${duration.isNegative ? 0 : duration.inSeconds}s';
   final hours = duration.inHours;
   final minutes = duration.inMinutes.remainder(60);
   if (hours == 0) return '${minutes}min';

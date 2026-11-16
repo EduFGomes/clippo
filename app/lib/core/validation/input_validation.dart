@@ -82,6 +82,24 @@ String? validateName(String raw) {
 /// Sem "@", minúsculo, sem espaços nas pontas.
 String normalizeUsername(String raw) => raw.trim().replaceFirst(RegExp(r'^@'), '').toLowerCase();
 
+/// Foto do perfil (12/11/2026): JPEG ou PNG de até 2 MB. Mesmas regras e frases do
+/// `checkProfilePhoto` do servidor (backend/functions/src/users/validation.ts) e do storage.rules.
+const int profilePhotoMaxBytes = 2 * 1024 * 1024;
+
+/// O tipo da foto pelo nome do arquivo que a galeria ou a câmera devolveu (nulo: nem JPEG nem PNG).
+String? profilePhotoContentType(String path) {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  return null;
+}
+
+String? validateProfilePhoto(int bytes, String? contentType) {
+  if (contentType != 'image/jpeg' && contentType != 'image/png') return 'Use uma foto em JPEG ou PNG.';
+  if (bytes <= 0 || bytes > profilePhotoMaxBytes) return 'A foto pode ter até 2 MB.';
+  return null;
+}
+
 /// A mesma frase do servidor (completeProfile / updateProfile) quando o @ já tem dono.
 const String usernameTakenMessage = 'Esse nome de usuário já está em uso.';
 

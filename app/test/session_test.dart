@@ -33,6 +33,14 @@ Map<String, dynamic> _doc({
 
 void main() {
   group('Session.fromMap', () {
+    test('local antigo "Quadra local (GPS)" e local vazio aparecem como sem local', () {
+      Session ler(Object? location) => Session.fromMap('s', {'location': location});
+      expect(ler({'label': 'Quadra local (GPS)'}).location, isNull);
+      expect(ler({'label': '   '}).location, isNull);
+      expect(ler(null).location, isNull);
+      expect(ler({'label': 'Vila Mariana'}).location?.label, 'Vila Mariana');
+    });
+
     test('lê o documento inteiro', () {
       final session = Session.fromMap('quinta', _doc(
         endedAt: Timestamp.fromDate(DateTime.utc(2026, 9, 11, 21, 12)),

@@ -46,6 +46,7 @@ import {
   normalizeParticipantIds,
   normalizePeriod,
   normalizeSessionName,
+  renumberDefaultTitles,
 } from "./validation";
 
 export { highlightThumbnailPath, highlightVideoPath } from "./sessionDocs";
@@ -187,9 +188,8 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
         const rootId = mergedIntoOf(snap);
         const rootRef = rootId ? db().doc(`sessions/${rootId}`) : null;
         const rootSnap = rootRef ? await tx.get(rootRef) : null;
-        const rootHighlightSnaps = rootRef
-          ? await tx.getAll(...missing.map((h) => rootRef.collection("highlights").doc(h.highlightId)))
-          : [];
+        const rootHighlights = rootRef ? await tx.get(rootRef.collection("highlights")) : null;
+        const rootHighlightIds = new Set(rootHighlights?.docs.map((h) => h.id) ?? []);
         const savedParticipants = participantIdsOf(rootSnap?.exists ? rootSnap : snap);
         const userSnaps = await tx.getAll(...savedParticipants.map((id) => db().doc(`users/${id}`)));
 
@@ -206,19 +206,40 @@ export const saveSession = onCall<SaveSessionRequest, Promise<SaveSessionRespons
           updatedAt: now,
         });
 
-        if (rootRef && rootSnap?.exists) {
+        if (rootRef && rootSnap?.exists && rootHighlights) {
           const rootStart = toDate(rootSnap.get("startedAt"));
+          const toCopy = missing.filter((h) => !rootHighlightIds.has(h.highlightId));
+          const savedAtOf = (h: HighlightInput) => new Date(sessionStart.getTime() + h.offsetSeconds * 1000);
+          // O lance que chegou atrasado entra na ordem do tempo dos nomes automáticos do hub.
+          const titles = renumberDefaultTitles([
+            ...rootHighlights.docs.map((h) => ({
+              id: h.id,
+              title: (h.get("title") as string | undefined) ?? "",
+              savedAt: toDate(h.get("savedAt")),
+            })),
+            ...toCopy.map((h) => ({ id: h.highlightId, title: h.title, savedAt: savedAtOf(h) })),
+          ]);
+          for (const h of rootHighlights.docs) {
+            const title = titles.get(h.id);
+            if (title !== undefined) tx.update(h.ref, { title, updatedAt: now });
+          }
           let copied = 0;
-          missing.forEach((highlight, index) => {
-            if (rootHighlightSnaps[index]?.exists) return;
-            const savedAt = new Date(sessionStart.getTime() + highlight.offsetSeconds * 1000);
+          for (const highlight of toCopy) {
+            const savedAt = savedAtOf(highlight);
             const offset = Math.max(0, Math.round((savedAt.getTime() - rootStart.getTime()) / 1000));
             tx.set(
               rootRef.collection("highlights").doc(highlight.highlightId),
-              highlightDoc(rootRef.id, highlight, savedAt, offset, uid, sessionId),
+              highlightDoc(
+                rootRef.id,
+                { ...highlight, title: titles.get(highlight.highlightId) ?? highlight.title },
+                savedAt,
+                offset,
+                uid,
+                sessionId,
+              ),
             );
             copied++;
-          });
+          }
           if (copied > 0) {
             tx.update(rootRef, { highlightCount: FieldValue.increment(copied), updatedAt: now });
           }

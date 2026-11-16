@@ -18,6 +18,7 @@ import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
+import 'package:clippo/core/widgets/clippo_location_button.dart';
 import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
@@ -58,6 +59,7 @@ class SessionScreen extends StatefulWidget {
     this.uploads,
     this.discardUploads,
     this.discardHighlightUpload,
+    this.findPlace,
   });
 
   /// Sessão aberta. Quando nula (catálogo), usa uma sessão de exemplo.
@@ -97,6 +99,9 @@ class SessionScreen extends StatefulWidget {
 
   /// Tira um lance da fila de envio antes de apagar no servidor (repassado à tela do lance).
   final Future<void> Function(String sessionId, String highlightId)? discardHighlightUpload;
+
+  /// Substitui o GPS do "Usar localização atual" no Editar sessão (testes).
+  final Future<String> Function()? findPlace;
 
   static final Session _demoSession = Session(
     id: 'pelada-quinta-11set',
@@ -359,6 +364,7 @@ class _SessionScreenState extends State<SessionScreen> {
           friends: _friends,
           repository: _repository,
           highlightOffsets: [for (final h in _knownHighlights) h.offset],
+          findPlace: widget.findPlace,
         ),
       ),
     );
@@ -1058,6 +1064,7 @@ class _EditSessionScreen extends StatefulWidget {
     required this.friends,
     required this.repository,
     this.highlightOffsets = const [],
+    this.findPlace,
   });
 
   final Session session;
@@ -1066,6 +1073,9 @@ class _EditSessionScreen extends StatefulWidget {
   /// O momento de cada lance que a Sessão já mostrou: a nova data e horário precisam ir até o
   /// último (o servidor confere de novo com os do banco).
   final List<Duration> highlightOffsets;
+
+  /// Substitui o GPS do "Usar localização atual" (testes). Nulo = o do celular.
+  final Future<String> Function()? findPlace;
 
   /// Amigos aceitos do dono: só eles podem entrar (R10, conferido de novo no servidor).
   final List<Friend> friends;
@@ -1355,6 +1365,17 @@ class _EditSessionScreenState extends State<_EditSessionScreen> {
             onChanged: (_) {
               if (_locationError != null) setState(() => _locationError = null);
             },
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ClippoLocationButton(
+              findPlace: widget.findPlace,
+              onPlace: (place) => setState(() {
+                _locationController.text = place;
+                _locationError = null;
+              }),
+              onError: (message) => setState(() => _locationError = message),
+            ),
           ),
           const SizedBox(height: ClippoSpace.spaceM),
           Row(

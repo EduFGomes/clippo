@@ -305,6 +305,34 @@ export function mergedPeriod(
   };
 }
 
+/** O nome que o lance ganha quando ninguém digita: "Lance 3". */
+const DEFAULT_TITLE = /^Lance \d+$/;
+
+export interface TitledHighlight {
+  id: string;
+  title: string;
+  savedAt: Date;
+}
+
+/**
+ * Depois de juntar sessões, os nomes automáticos ("Lance 1", "Lance 2"…) seguem a ordem do
+ * tempo na sessão inteira; sem isso, as duas sessões traziam cada uma o seu "Lance 1". Só os
+ * lances com nome automático mudam: nome dado pela pessoa fica. Devolve id → nome novo, só
+ * dos que mudam. Empate no tempo: pelo id, para dar sempre o mesmo resultado.
+ */
+export function renumberDefaultTitles(highlights: TitledHighlight[]): Map<string, string> {
+  const ordered = [...highlights].sort(
+    (a, b) => a.savedAt.getTime() - b.savedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  const renamed = new Map<string, string>();
+  ordered.forEach((h, index) => {
+    if (!DEFAULT_TITLE.test(h.title)) return;
+    const title = `Lance ${index + 1}`;
+    if (title !== h.title) renamed.set(h.id, title);
+  });
+  return renamed;
+}
+
 /** A lista de participantes das duas, sem repetir, na ordem da principal. */
 export function mergedParticipants(into: string[], from: string[]): string[] {
   return Array.from(new Set([...into, ...from]));

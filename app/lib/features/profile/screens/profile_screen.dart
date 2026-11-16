@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
 import 'package:clippo/core/data/user_profile.dart';
@@ -24,7 +26,7 @@ typedef ProfileSaver = Future<void> Function({String? name, String? username});
 
 /// Perfil (docs/produto.md › 4.7): avatar grande, nome e @usuário, três estatísticas
 /// (sessões · highlights · amigos), linhas de ajuste (Nome, Usuário), sair da conta e excluir a
-/// conta. 🟡 Notificações e trocar a foto ainda não existem: não aparecem até existirem.
+/// conta, e trocar ou tirar a foto (12/11/2026). Notificações ficam para o futuro e não aparecem.
 ///
 /// Os dados vêm de `users/{uid}` em tempo real ([AuthRepository.watchMyProfile]); editar chama
 /// a Function updateProfile ([AuthRepository.updateProfile]) e a tela se atualiza sozinha.
@@ -36,7 +38,19 @@ class ProfileScreen extends StatefulWidget {
     this.saveProfile,
     this.onSignOut,
     this.deleteAccount,
+    this.pickPhoto,
+    this.savePhoto,
+    this.removePhoto,
   });
+
+  /// Abre a galeria ou a câmera e devolve a foto já reduzida (testes trocam). Nulo = image_picker.
+  final Future<File?> Function(ImageSource source)? pickPhoto;
+
+  /// Envia a foto (testes trocam). Nulo = [AuthRepository.setProfilePhoto].
+  final Future<void> Function(File file)? savePhoto;
+
+  /// Tira a foto (testes trocam). Nulo = [AuthRepository.removeProfilePhoto].
+  final Future<void> Function()? removePhoto;
 
   /// Substitui o perfil em tempo real (testes). Null = Firebase, ou o exemplo sem login.
   final Stream<UserProfile?>? profile;
@@ -67,6 +81,110 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _deleting = false;
+  bool _photoBusy = false;
+
+  /// Foto quadrada pequena: o avatar aparece no máximo a 88 dp, e 512 px dão nitidez sobrando
+  /// num celular de tela densa, com poucos KB para subir.
+  static Future<File?> _pickWithSystem(ImageSource source) async {
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+      preferredCameraDevice: CameraDevice.front,
+    );
+    return picked == null ? null : File(picked.path);
+  }
+
+  /// "Adicionar foto" / "Trocar foto": galeria, câmera e, com foto, tirar a foto.
+  Future<void> _editPhoto(UserProfile me) async {
+    final hasPhoto = (me.photoUrl ?? '').isNotEmpty;
+    final colors = ClippoColors.of(context);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: colors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(ClippoRadius.radiusField)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(ClippoSpace.cardPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Foto do perfil', style: ClippoText.titleS.copyWith(color: colors.text)),
+              const SizedBox(height: ClippoSpace.spaceL),
+              ClippoPrimaryButton(
+                label: 'Escolher da galeria',
+                onPressed: () => Navigator.of(sheet).pop('gallery'),
+              ),
+              const SizedBox(height: ClippoSpace.spaceS),
+              ClippoTextButton(label: 'Tirar foto', onPressed: () => Navigator.of(sheet).pop('camera')),
+              if (hasPhoto)
+                ClippoTextButton(label: 'Remover foto', onPressed: () => Navigator.of(sheet).pop('remove')),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'remove') {
+      final confirmed = await showClippoConfirm(
+        context,
+        title: 'Remover a foto?',
+        message: 'No lugar dela aparecem as suas iniciais, para você e para os seus amigos.',
+        confirmLabel: 'Remover foto',
+        cancelLabel: 'Manter foto',
+        destructive: true,
+      );
+      if (!confirmed || !mounted) return;
+      await _runPhoto(() => (widget.removePhoto ?? authRepository.removeProfilePhoto)(), 'Foto removida.');
+      return;
+    }
+    final File? file;
+    try {
+      file = await (widget.pickPhoto ?? _pickWithSystem)(
+        choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      );
+    } catch (_) {
+      if (mounted) {
+        showClippoMessage(
+          context,
+          choice == 'camera'
+              ? 'Não deu para abrir a câmera. Confira a permissão nas configurações do celular.'
+              : 'Não deu para abrir a galeria.',
+        );
+      }
+      return;
+    }
+    if (file == null || !mounted) return; // desistiu de escolher
+    final picked = file;
+    // Regra 0: a mesma conferência do servidor, antes de enviar.
+    final error = validateProfilePhoto(await picked.length(), profilePhotoContentType(picked.path));
+    if (error != null) {
+      if (mounted) showClippoMessage(context, error);
+      return;
+    }
+    await _runPhoto(
+      () => (widget.savePhoto ?? (f) => authRepository.setProfilePhoto(f).then((_) {}))(picked),
+      'Foto atualizada.',
+    );
+  }
+
+  Future<void> _runPhoto(Future<void> Function() action, String done) async {
+    setState(() => _photoBusy = true);
+    try {
+      await action();
+      if (mounted) showClippoMessage(context, done);
+    } on AuthFailure catch (e) {
+      if (mounted) showClippoMessage(context, e.message);
+    } catch (_) {
+      if (mounted) showClippoMessage(context, 'Não foi possível trocar a foto. Tente de novo.');
+    } finally {
+      if (mounted) setState(() => _photoBusy = false);
+    }
+  }
 
   /// Só no modo de exemplo (sem login): o perfil vive aqui.
   StreamController<UserProfile?>? _demo;
@@ -244,6 +362,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 me: me,
                 onEditName: () => _editName(me),
                 onEditUsername: () => _editUsername(me),
+                // Sem login (catálogo) e sem quem envie a foto, o botão não aparece.
+                onEditPhoto: _useFirebase || widget.savePhoto != null ? () => _editPhoto(me) : null,
+                photoBusy: _photoBusy,
               );
             },
           ),
@@ -258,19 +379,28 @@ class _Content extends StatelessWidget {
     required this.me,
     required this.onEditName,
     required this.onEditUsername,
+    this.onEditPhoto,
+    this.photoBusy = false,
   });
 
   final UserProfile me;
   final VoidCallback onEditName;
   final VoidCallback onEditUsername;
+  final VoidCallback? onEditPhoto;
+  final bool photoBusy;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Sem onEditPhoto: trocar a foto ainda não existe (precisa de upload no Storage).
-        ProfileHeader(name: me.name, username: me.username, photoUrl: me.photoUrl),
+        ProfileHeader(
+          name: me.name,
+          username: me.username,
+          photoUrl: me.photoUrl,
+          onEditPhoto: onEditPhoto,
+          photoBusy: photoBusy,
+        ),
         const SizedBox(height: ClippoSpace.spaceM),
         ProfileStatsBar(
           sessions: me.sessionCount,

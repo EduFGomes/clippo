@@ -23,7 +23,14 @@ void main() {
     expect(clippoDuration(const Duration(hours: 1, minutes: 42)), '1h 42min');
     expect(clippoDuration(const Duration(minutes: 58)), '58min');
     expect(clippoDuration(const Duration(hours: 2)), '2h');
-    expect(clippoDuration(Duration.zero), '0min');
+    expect(clippoDuration(const Duration(minutes: 1)), '1min');
+  });
+
+  test('sessão de menos de um minuto mostra os segundos, não "0min"', () {
+    expect(clippoDuration(const Duration(seconds: 45)), '45s');
+    expect(clippoDuration(const Duration(seconds: 59, milliseconds: 900)), '59s');
+    expect(clippoDuration(Duration.zero), '0s');
+    expect(clippoDuration(const Duration(seconds: -3)), '0s');
   });
 
   test('contagens no singular e no plural', () {

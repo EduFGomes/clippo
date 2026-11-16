@@ -70,6 +70,20 @@ service firebase.storage {
       }
     }
 
+    // Foto do perfil (12/11/2026). Todo mundo logado vê (aparece nos avatares de amigos e
+    // sessões); só a própria pessoa envia ou troca, em JPEG ou PNG de até 2 MB (o app reduz para
+    // 512 px antes). Quem grava a foto no perfil é a Function setProfilePhoto, que confere de
+    // novo o tipo e o tamanho; apagar também é só por ela.
+    match /users/{uid}/avatar {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.contentType in ['image/jpeg', 'image/png']
+        && request.resource.size > 0
+        && request.resource.size <= 2 * 1024 * 1024;
+      allow delete: if false;
+    }
+
     // Qualquer outro caminho continua bloqueado.
     match /{allPaths=**} {
       allow read, write: if false;

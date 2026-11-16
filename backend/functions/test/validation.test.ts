@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   PASSWORD_POLICY,
   ValidationError,
+  checkProfilePhoto,
   normalizeBirthDate,
+  normalizeProfilePhotoRequest,
   normalizeEmail,
   normalizeName,
   normalizeProfileUpdate,
@@ -59,6 +61,27 @@ describe("normalizeBirthDate", () => {
         "Você precisa ter pelo menos 13 anos para usar o Clippo.",
       );
     }
+  });
+});
+
+// Os mesmos casos de validateProfilePhoto em app/test/input_validation_test.dart.
+describe("foto do perfil", () => {
+  it("aceita JPEG ou PNG de até 2 MB", () => {
+    expect(() => checkProfilePhoto(1, "image/jpeg")).not.toThrow();
+    expect(() => checkProfilePhoto(2 * 1024 * 1024, "image/png")).not.toThrow();
+  });
+
+  it("recusa outro tipo, vazia ou acima de 2 MB", () => {
+    expect(() => checkProfilePhoto(100, "image/gif")).toThrow("Use uma foto em JPEG ou PNG.");
+    expect(() => checkProfilePhoto(100, undefined)).toThrow("Use uma foto em JPEG ou PNG.");
+    expect(() => checkProfilePhoto(0, "image/jpeg")).toThrow("A foto pode ter até 2 MB.");
+    expect(() => checkProfilePhoto(2 * 1024 * 1024 + 1, "image/jpeg")).toThrow("A foto pode ter até 2 MB.");
+  });
+
+  it("o pedido só aceita remove booleano", () => {
+    expect(normalizeProfilePhotoRequest(undefined)).toEqual({ remove: false });
+    expect(normalizeProfilePhotoRequest({ remove: true })).toEqual({ remove: true });
+    expect(() => normalizeProfilePhotoRequest({ remove: "sim" })).toThrow(ValidationError);
   });
 });
 

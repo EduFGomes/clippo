@@ -18,6 +18,33 @@ export const SESSION_LOCATION_MAX = 80;
 /** Idade mínima para usar o Clippo (grupo, 12/11/2026). Mesma `minimumAge` do app. */
 export const MIN_AGE = 13;
 
+/** Foto do perfil (12/11/2026): o mesmo limite do app (`profilePhotoMaxBytes`) e do storage.rules. */
+export const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+export const PROFILE_PHOTO_TYPES = ["image/jpeg", "image/png"] as const;
+
+/** Pedido do setProfilePhoto: `{}` usa a foto enviada; `{ remove: true }` tira a foto. */
+export function normalizeProfilePhotoRequest(raw: unknown): { remove: boolean } {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  if (data.remove === undefined || data.remove === null) return { remove: false };
+  if (typeof data.remove !== "boolean") {
+    throw new ValidationError("photo", "Não foi possível trocar a foto.");
+  }
+  return { remove: data.remove };
+}
+
+/**
+ * A foto que chegou ao Storage: JPEG ou PNG, de 1 byte a 2 MB. Mesmas regras e frases do
+ * `validateProfilePhoto` do app (o storage.rules também confere).
+ */
+export function checkProfilePhoto(size: number, contentType: string | undefined): void {
+  if (!(PROFILE_PHOTO_TYPES as readonly string[]).includes(contentType ?? "")) {
+    throw new ValidationError("photo", "Use uma foto em JPEG ou PNG.");
+  }
+  if (!Number.isFinite(size) || size <= 0 || size > PROFILE_PHOTO_MAX_BYTES) {
+    throw new ValidationError("photo", "A foto pode ter até 2 MB.");
+  }
+}
+
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 128;
 
@@ -46,7 +73,7 @@ export const PASSWORD_POLICY = {
 /** Erro de validação com uma mensagem pronta para mostrar ao usuário. */
 export class ValidationError extends Error {
   constructor(
-    readonly field: "email" | "name" | "username" | "birthDate" | "sessionName" | "sessionLocation",
+    readonly field: "email" | "name" | "username" | "birthDate" | "sessionName" | "sessionLocation" | "photo",
     message: string,
   ) {
     super(message);
