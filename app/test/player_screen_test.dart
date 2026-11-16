@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
 
@@ -95,13 +96,17 @@ class _BufferingController extends VideoPlayerController {
 
 /// Player aberto e tocando (sem o plugin de vídeo): play e pause só trocam o estado.
 class _PlayingController extends VideoPlayerController {
-  _PlayingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+  _PlayingController({this.size = const Size(720, 1280)})
+      : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  /// Em pé por padrão; `Size(1280, 720)` para um vídeo deitado.
+  final Size size;
 
   @override
   Future<void> initialize() async {
-    value = const VideoPlayerValue(
-      duration: Duration(seconds: 30),
-      size: Size(720, 1280),
+    value = VideoPlayerValue(
+      duration: const Duration(seconds: 30),
+      size: size,
       isInitialized: true,
     );
   }
@@ -130,6 +135,21 @@ class _HangingController extends VideoPlayerController {
 
   @override
   Future<void> initialize() => Completer<void>().future;
+}
+
+/// O que a tela pediu ao Android sobre posição e barras (SystemChrome), na ordem.
+List<String> _recordSystemChrome(WidgetTester tester) {
+  final calls = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+    if (call.method == 'SystemChrome.setPreferredOrientations') {
+      calls.add('orientations ${(call.arguments as List).join(',')}');
+    } else if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+      calls.add('ui ${call.arguments}');
+    }
+    return null;
+  });
+  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+  return calls;
 }
 
 void main() {
@@ -181,6 +201,51 @@ void main() {
       await tester.pump();
       return controller;
     }
+
+    testWidgets('tela cheia deita o celular e esconde as barras; o Voltar sai dela', (tester) async {
+      final calls = _recordSystemChrome(tester);
+      // Vídeo deitado.
+      _phone(tester);
+      final controller = _PlayingController(size: const Size(1280, 720));
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: _highlights(),
+        streamVideo: (path) async => HighlightVideoStream(url: Uri.parse('https://exemplo.invalid/v.mp4'), headers: const {}),
+        streamControllerFactory: (s) => controller,
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.bySemanticsLabel('Tela cheia'));
+      await tester.pump();
+      expect(calls, ['ui SystemUiMode.immersiveSticky', 'orientations DeviceOrientation.landscapeLeft,DeviceOrientation.landscapeRight']);
+      expect(find.bySemanticsLabel('Sair da tela cheia'), findsOneWidget);
+
+      calls.clear();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(calls, ['ui SystemUiMode.edgeToEdge', 'orientations DeviceOrientation.portraitUp']);
+      // Saiu da tela cheia, mas continua no Player.
+      expect(find.bySemanticsLabel('Tela cheia'), findsOneWidget);
+    });
+
+    testWidgets('vídeo em pé: tela cheia só esconde as barras, sem deitar o celular', (tester) async {
+      final calls = _recordSystemChrome(tester);
+      await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Tela cheia'));
+      await tester.pump();
+      expect(calls, ['ui SystemUiMode.immersiveSticky']);
+    });
+
+    testWidgets('fechar o Player em tela cheia devolve o app para em pé', (tester) async {
+      final calls = _recordSystemChrome(tester);
+      await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Tela cheia'));
+      await tester.pump();
+      calls.clear();
+      await tester.pumpWidget(const SizedBox());
+      expect(calls, contains('orientations DeviceOrientation.portraitUp'));
+      expect(calls, contains('ui SystemUiMode.edgeToEdge'));
+    });
 
     testWidgets('voltar 5 segundos, sem passar do começo', (tester) async {
       final controller = await openPlaying(tester);

@@ -354,7 +354,7 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 - **Outline**, traço de 1,6–1,8 na grade de 24, pontas e junções arredondadas, **sem preenchimento** em nenhum estado.
 - Cor: `text` por padrão, `textLabel` dentro de campos, `onPrimary` sobre `primary`.
 - Desenhados em código, no `ClippoIcon`: voltar (chevron para a esquerda, traço 1,8, 22 dp), **chevron para baixo** (sanfona do card de sessão, 22 dp), olho / olho cortado (20 dp), ✓ (traço 3, dentro do círculo `check`).
-- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `pause`, `share`, `download`, `back-5`, `forward-5`, `fast-forward`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
+- SVGs da marca em [`app/assets/icons/`](../app/assets/icons/) (grade 24, `stroke="currentColor"`, traço 1,6): `home`, `capture`, `friends`, `profile`, `play`, `pause`, `share`, `download`, `back-5`, `forward-5`, `fast-forward`, `fullscreen`, `fullscreen-exit`, `clock`, `map-pin`, `search`, `plus`, `check`, `chevron-left`, `chevron-right`, `chevron-down`, `more-vertical`, `edit`, `logout`, `tripod`, `close`, `highlights`. Registrados no `pubspec.yaml` e desenhados pelo **`ClippoSvgIcon`** (pacote `flutter_svg`, adicionado em 20/10/2026 para a roda de navegação).
 - Precisa de outro ícone? **Lucide** ou **Phosphor (Light)** combinam; ajuste o traço e adicione o SVG à pasta.
 
 ### 3.7 Marca

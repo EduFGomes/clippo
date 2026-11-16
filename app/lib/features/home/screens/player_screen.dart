@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
+import 'package:clippo/core/device/screen_orientation.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
@@ -32,7 +33,8 @@ typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highli
 
 /// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4), com os
 /// controles por cima, como nos players de vídeo conhecidos: somem com o vídeo tocando e
-/// voltam ao tocar nele. Botões de voltar e avançar 5 s ao lado do play. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
+/// voltam ao tocar nele. Fica em pé; o botão de tela cheia deita o celular (vídeo deitado) e
+/// esconde as barras do Android. Botões de voltar e avançar 5 s ao lado do play. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
 ///
 /// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
 /// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
@@ -123,6 +125,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Quanto do vídeo já chegou no "Baixar" (0 a 1); nulo enquanto não se sabe.
   double? _downloadProgress;
   bool _sharing = false;
+
+  /// Tela cheia: sem as barras do Android e, com vídeo deitado, o celular deitado também.
+  /// Fora dela o Player fica em pé, como o resto do app.
+  bool _fullscreen = false;
+
+  Future<void> _setFullscreen(bool on) async {
+    if (on == _fullscreen) return;
+    setState(() => _fullscreen = on);
+    if (on) {
+      final wide = (_controller?.value.aspectRatio ?? 1) > 1;
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      if (wide) await ClippoOrientation.landscape();
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await ClippoOrientation.portrait();
+    }
+  }
 
   /// Segurando o lado direito da tela: o vídeo toca em [_fastSpeed] enquanto o dedo estiver lá.
   bool _fast = false;
@@ -229,6 +248,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    if (_fullscreen) {
+      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+      unawaited(ClippoOrientation.portrait());
+    }
     _hideTimer?.cancel();
     _loadToken++;
     _releaseController();
@@ -548,9 +571,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: ClippoBrand.captureBackground,
       ),
-      child: Scaffold(
-        backgroundColor: ClippoBrand.captureBackground,
-        body: _items.isEmpty ? SafeArea(child: _buildEmpty()) : _buildPlayer(),
+      // Na tela cheia, o "Voltar" do Android sai dela antes de fechar o Player.
+      child: PopScope(
+        canPop: !_fullscreen,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _setFullscreen(false);
+        },
+        child: Scaffold(
+          backgroundColor: ClippoBrand.captureBackground,
+          body: _items.isEmpty ? SafeArea(child: _buildEmpty()) : _buildPlayer(),
+        ),
       ),
     );
   }
@@ -775,12 +805,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ],
                 ),
-                _ProgressBar(
-                  progress: progress,
-                  buffered: buffered,
-                  elapsedLabel: clippoPlayerProgress(position),
-                  totalLabel: clippoPlayerProgress(total),
-                  onSeek: ready ? _seekToFraction : null,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ProgressBar(
+                        progress: progress,
+                        buffered: buffered,
+                        elapsedLabel: clippoPlayerProgress(position),
+                        totalLabel: clippoPlayerProgress(total),
+                        onSeek: ready ? _seekToFraction : null,
+                      ),
+                    ),
+                    const SizedBox(width: ClippoSpace.spaceS),
+                    _CircleAction(
+                      icon: _fullscreen ? 'fullscreen-exit' : 'fullscreen',
+                      semanticLabel: _fullscreen ? 'Sair da tela cheia' : 'Tela cheia',
+                      onPressed: () => _setFullscreen(!_fullscreen),
+                    ),
+                  ],
                 ),
               ],
             ),

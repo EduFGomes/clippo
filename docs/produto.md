@@ -277,11 +277,26 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 
 ### 4.4 Player
 
-🟡 *Ainda não desenhado.* Diretrizes:
-- Vídeo em tela cheia sobre fundo preto.
-- Controles mínimos: play/pause, fechar, compartilhar.
-- Título do lance e nome da sessão em texto pequeno, sem cobrir o vídeo.
-- Deslizar para o próximo/anterior highlight da mesma sessão. O Player **não** passa sozinho para o próximo lance (grupo, 12/11/2026).
+Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado com o Gabriel. Como a Gravação, ignora o tema claro/escuro (fundo preto, cores `capture*`).
+
+**Vídeo:** ocupa a tela inteira sobre o preto, sem cortar (faixas pretas quando a proporção não bate). O Player fica **em pé**, como o resto do app; ele só deita na tela cheia.
+
+**Controles por cima do vídeo**, com uma sombra em cima e embaixo para ficarem legíveis:
+- **Topo:** ✕ fechar · nome da sessão e "1 de 6" · **baixar** e **compartilhar**, só com ícone, no mesmo estilo do ✕. Enquanto baixa, um anel em volta do ícone mostra o progresso.
+- **Meio:** **voltar 5 s** · play/pause · **avançar 5 s**. Os botões de 5 s não passam do começo nem do fim e só aparecem com o vídeo carregado.
+- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás) e o botão **tela cheia**.
+- Com o vídeo tocando, os controles **somem sozinhos** depois de 3,2 s (`playerControls`). Tocar em qualquer ponto do vídeo mostra ou esconde. Pausado, carregando, com erro ou com leitor de tela ligado, ficam à vista.
+
+**Gestos:**
+- **Deslizar** para o lance anterior/próximo da mesma sessão (não há setas). O Player **não** passa sozinho para o próximo lance (grupo, 12/11/2026).
+- **Segurar o terço direito** da tela toca em **2x** enquanto o dedo estiver lá, com o aviso "2x" no topo (como no Instagram). Soltou, volta a 1x.
+- **Pinça** dá zoom de até 4x. Com zoom, arrastar move o vídeo em vez de trocar de lance. Trocar de lance volta ao normal.
+
+**Tela cheia:** esconde as barras do Android. Com vídeo deitado, deita o celular também. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
+
+**Rotação no app:** só a Gravação gira com o celular; o resto do app fica sempre em pé (`ClippoOrientation`, 16/11/2026).
+
+Os controles e o título cobrem o vídeo enquanto estão à vista. Isso substitui a diretriz antiga de "título sem cobrir o vídeo", porque eles somem sozinhos.
 
 ### 4.5 Gravação — 4 estados
 
