@@ -59,6 +59,21 @@ void main() {
     expect(find.text('Gustavo Rocha'), findsWidgets);
   });
 
+  testWidgets('tocar na foto do topo da Início abre o Perfil', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(const AppShell()));
+    await tester.pumpAndSettle();
+    expect(find.text('Gustavo Rocha'), findsNothing);
+
+    await tester.tap(find.bySemanticsLabel('Abrir seu perfil'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gustavo Rocha'), findsWidgets);
+    expect(find.text('SUAS\nSESSÕES.'), findsNothing);
+  });
+
   testWidgets('Voltar do Android em Amigos leva à Início; com a roda aberta, só fecha a roda', (tester) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1;

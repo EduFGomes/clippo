@@ -12,6 +12,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
 import 'package:clippo/core/widgets/clippo_pill_button.dart';
+import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
 import 'package:clippo/core/widgets/clippo_screen_ground.dart';
 import 'package:clippo/core/widgets/clippo_screen_title.dart';
@@ -29,6 +30,7 @@ class HomeScreen extends StatefulWidget {
     this.sessions,
     this.profile,
     this.onRecord,
+    this.onOpenProfile,
     this.mergeRequests,
     this.repository,
     this.currentUserId,
@@ -46,6 +48,10 @@ class HomeScreen extends StatefulWidget {
   /// pode importar a feature de captura (regra 3 do AGENTS.md): quem liga as duas
   /// é o `AppShell`. Sem ela, o botão aparece desabilitado.
   final VoidCallback? onRecord;
+
+  /// Leva ao Perfil quando a pessoa toca na própria foto no topo. Vem de fora pelo mesmo
+  /// motivo do [onRecord]: quem conhece a aba Perfil é o `AppShell`. Sem ela, a foto não reage.
+  final VoidCallback? onOpenProfile;
 
   /// Pedidos para juntar sessões (D18). Os que esperam a minha resposta aparecem
   /// no topo, com Aceitar / Recusar. No app, `sessionsRepository.watchMergeRequests()`.
@@ -258,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Heading(profile: _profile, onRecord: widget.onRecord),
+              _Heading(profile: _profile, onRecord: widget.onRecord, onOpenProfile: widget.onOpenProfile),
               for (final request in _incomingRequests) ...[
                 const SizedBox(height: ClippoSpace.spaceL),
                 MergeRequestCard(
@@ -351,12 +357,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Saudação, título da tela e o avatar de quem está logado.
 class _Heading extends StatelessWidget {
-  const _Heading({required this.profile, this.onRecord});
+  const _Heading({required this.profile, this.onRecord, this.onOpenProfile});
 
   final Stream<UserProfile?> profile;
 
   /// "Gravar" ao lado do título: a ação principal do app a um toque, sem abrir a roda.
   final VoidCallback? onRecord;
+
+  /// Toque na foto: abre o Perfil.
+  final VoidCallback? onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -378,10 +387,30 @@ class _Heading extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: ClippoSpace.spaceM),
-                ClippoAvatar(
-                  name: me?.name ?? '',
-                  photoUrl: me?.photoUrl,
-                  size: ClippoSize.avatarLarge,
+                Semantics(
+                  button: onOpenProfile != null,
+                  label: onOpenProfile != null ? 'Abrir seu perfil' : null,
+                  child: ExcludeSemantics(
+                    excluding: onOpenProfile != null,
+                    child: ClippoPressable(
+                      onTap: onOpenProfile,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: ClippoSize.minTouchTarget,
+                          minHeight: ClippoSize.minTouchTarget,
+                        ),
+                        child: Center(
+                          widthFactor: 1,
+                          heightFactor: 1,
+                          child: ClippoAvatar(
+                            name: me?.name ?? '',
+                            photoUrl: me?.photoUrl,
+                            size: ClippoSize.avatarLarge,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

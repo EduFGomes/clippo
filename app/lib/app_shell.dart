@@ -164,6 +164,7 @@ class _AppShellState extends State<AppShell> {
                 HomeScreen(
                   sessions: isUserSignedIn ? null : _homeSessionsStream,
                   onRecord: _openCapture,
+                  onOpenProfile: () => setState(() => _current = _profile),
                 ),
                 FriendsScreen(onOpenSession: _openSessionFromFriends),
                 const ProfileScreen(),
