@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
@@ -105,6 +106,8 @@ class _PlayingController extends VideoPlayerController {
     );
   }
 
+  final List<Duration> seeks = [];
+
   @override
   Future<void> play() async => value = value.copyWith(isPlaying: true);
 
@@ -112,7 +115,13 @@ class _PlayingController extends VideoPlayerController {
   Future<void> pause() async => value = value.copyWith(isPlaying: false);
 
   @override
-  Future<void> seekTo(Duration position) async {}
+  Future<void> seekTo(Duration position) async {
+    seeks.add(position);
+    value = value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async => value = value.copyWith(playbackSpeed: speed);
 }
 
 /// Player que nunca termina de abrir (sem o plugin de vídeo, nos testes).
@@ -159,17 +168,66 @@ void main() {
         )
         .opacity;
 
-    Future<void> openPlaying(WidgetTester tester) async {
+    Future<_PlayingController> openPlaying(WidgetTester tester) async {
       _phone(tester);
+      final controller = _PlayingController();
       await tester.pumpWidget(_app(PlayerScreen(
         sessionName: 'Pelada de quinta',
         highlights: _highlights(),
         streamVideo: (path) async => HighlightVideoStream(url: Uri.parse('https://exemplo.invalid/v.mp4'), headers: const {}),
-        streamControllerFactory: (s) => _PlayingController(),
+        streamControllerFactory: (s) => controller,
       )));
       await tester.pump();
       await tester.pump();
+      return controller;
     }
+
+    testWidgets('o botão ao lado da barra avança 5 segundos, sem passar do fim', (tester) async {
+      final controller = await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Avançar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 5));
+
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 28));
+      await tester.tap(find.bySemanticsLabel('Avançar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 30));
+    });
+
+    testWidgets('segurar o lado direito toca em 2x até soltar', (tester) async {
+      final controller = await openPlaying(tester);
+      final gesture = await tester.startGesture(const Offset(380, 457));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      expect(controller.value.playbackSpeed, 2);
+      expect(find.bySemanticsLabel('Velocidade 2x'), findsOneWidget);
+
+      await gesture.up();
+      await tester.pump();
+      expect(controller.value.playbackSpeed, 1);
+      expect(find.bySemanticsLabel('Velocidade 2x'), findsNothing);
+    });
+
+    testWidgets('segurar fora do lado direito não muda a velocidade', (tester) async {
+      final controller = await openPlaying(tester);
+      final gesture = await tester.startGesture(const Offset(60, 457));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.up();
+      await tester.pump();
+      expect(controller.value.playbackSpeed, 1);
+    });
+
+    testWidgets('pinça no vídeo dá zoom e, com zoom, arrastar não troca de lance', (tester) async {
+      await openPlaying(tester);
+      final viewer = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+      expect(viewer.maxScale, greaterThan(1));
+      viewer.transformationController!.value = Matrix4.diagonal3Values(2, 2, 1);
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+
+      viewer.transformationController!.value = Matrix4.identity();
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isNull);
+    });
 
     testWidgets('somem sozinhos com o vídeo tocando e voltam ao tocar no vídeo', (tester) async {
       await openPlaying(tester);
@@ -545,7 +603,7 @@ void main() {
     expect(lance?.id, 'h1');
   });
 
-  testWidgets('navega para o próximo e o anterior lance da sessão', (tester) async {
+  testWidgets('deslizar leva ao próximo e ao anterior lance da sessão (sem setas)', (tester) async {
     _phone(tester);
     final pedidos = <String>[];
 
@@ -560,14 +618,15 @@ void main() {
     await tester.pump();
 
     // O indicador de carregando gira para sempre: avança o tempo em vez de esperar parar.
-    await tester.tap(find.bySemanticsLabel('Próximo lance'));
+    expect(find.bySemanticsLabel('Próximo lance'), findsNothing);
+    await tester.drag(find.byType(PageView), const Offset(-300, 0));
     await _settlePage(tester);
 
     expect(find.text('2 de 2'), findsOneWidget);
     expect(find.text('Ponto antológico'), findsOneWidget);
     expect(find.text('00:12:40 · 30s'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('Lance anterior'));
+    await tester.drag(find.byType(PageView), const Offset(300, 0));
     await _settlePage(tester);
 
     expect(find.text('1 de 2'), findsOneWidget);

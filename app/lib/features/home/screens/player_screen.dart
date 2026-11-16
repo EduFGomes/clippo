@@ -32,7 +32,7 @@ typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highli
 
 /// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4), com os
 /// controles por cima, como nos players de vídeo conhecidos: somem com o vídeo tocando e
-/// voltam ao tocar nele.
+/// voltam ao tocar nele. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
 ///
 /// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
 /// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
@@ -124,6 +124,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double? _downloadProgress;
   bool _sharing = false;
 
+  /// Segurando o lado direito da tela: o vídeo toca em [_fastSpeed] enquanto o dedo estiver lá.
+  bool _fast = false;
+  static const double _fastSpeed = 2;
+
+  /// Quanto o "Avançar" pula.
+  static const Duration _skip = Duration(seconds: 5);
+
+  /// Zoom com pinça no vídeo. Com zoom, arrastar move o vídeo em vez de trocar de lance.
+  final TransformationController _zoom = TransformationController();
+  bool _zoomed = false;
+  static const double _maxZoom = 4;
+
+  void _onZoomChanged() {
+    final zoomed = _zoom.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+  }
+
   /// Os controles por cima do vídeo (fechar, baixar, play, barra…) estão à vista.
   bool _controlsVisible = true;
   Timer? _hideTimer;
@@ -191,6 +208,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _zoom.addListener(_onZoomChanged);
     if (_items.isNotEmpty) _load();
   }
 
@@ -200,6 +218,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _loadToken++;
     _releaseController();
     _pageController.dispose();
+    _zoom.dispose();
     super.dispose();
   }
 
@@ -208,6 +227,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controller = null;
     _file = null;
     _seekingTo = null;
+    _fast = false;
     if (old != null) {
       old.removeListener(_onTick);
       unawaited(old.dispose());
@@ -381,16 +401,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _goToIndex(int index) {
-    if (index < 0 || index >= _items.length || index == _currentIndex) return;
-    if (ClippoMotion.reduced(context)) {
-      _pageController.jumpToPage(index);
-    } else {
-      _pageController.animateToPage(index, duration: ClippoMotion.enable, curve: ClippoMotion.standard);
-    }
-  }
-
   void _onPageChanged(int index) {
+    _zoom.value = Matrix4.identity();
     setState(() {
       _currentIndex = index;
       _controlsVisible = true;
@@ -402,8 +414,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _seekToFraction(double fraction) {
     final controller = _controller;
     if (controller == null) return;
+    _seekTo(controller.value.duration * fraction.clamp(0.0, 1.0));
+  }
+
+  /// Avança [_skip], sem passar do fim.
+  void _skipForward() {
+    final controller = _controller;
+    if (controller == null || _stage != _Stage.ready) return;
     final total = controller.value.duration;
-    final target = total * fraction.clamp(0.0, 1.0);
+    final target = (_seekingTo ?? controller.value.position) + _skip;
+    _seekTo(target > total ? total : target);
+  }
+
+  void _seekTo(Duration target) {
+    final controller = _controller;
+    if (controller == null) return;
     // A barra vai na hora para onde a pessoa tocou, mesmo antes de o vídeo chegar lá.
     setState(() => _seekingTo = target);
     _scheduleHide();
@@ -412,6 +437,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted || _seekingTo != target || !identical(controller, _controller)) return;
       if (!controller.value.isBuffering) setState(() => _seekingTo = null);
     });
+  }
+
+  /// Segurou o lado direito da tela (como no Instagram): toca em 2x até soltar.
+  void _startFast(LongPressStartDetails details) {
+    final controller = _controller;
+    if (controller == null || _stage != _Stage.ready || !_playing) return;
+    if (details.globalPosition.dx < MediaQuery.sizeOf(context).width * 2 / 3) return;
+    HapticFeedback.selectionClick();
+    _hideTimer?.cancel();
+    setState(() {
+      _fast = true;
+      _controlsVisible = false;
+    });
+    unawaited(controller.setPlaybackSpeed(_fastSpeed));
+  }
+
+  void _stopFast() {
+    if (!_fast) return;
+    setState(() => _fast = false);
+    final controller = _controller;
+    if (controller != null) unawaited(controller.setPlaybackSpeed(1));
   }
 
   Future<void> _download() async {
@@ -567,8 +613,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// traz de volta (ou esconde). Pausado, carregando ou com erro, ficam à vista.
   Widget _buildPlayer() {
     final highlight = _current;
-    final hasPrev = _currentIndex > 0;
-    final hasNext = _currentIndex < _items.length - 1;
     final controller = _controller;
     final value = controller?.value;
     final total = (value != null && value.duration > Duration.zero) ? value.duration : highlight.duration;
@@ -583,15 +627,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final pages = PageView.builder(
       key: _pagesKey,
       controller: _pageController,
+      // Com zoom, arrastar move o vídeo; sem zoom, troca de lance.
+      physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
       itemCount: _items.length,
       onPageChanged: _onPageChanged,
       itemBuilder: (context, index) {
         final isCurrent = index == _currentIndex;
         final Widget content;
         if (isCurrent && ready) {
-          content = AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: VideoPlayer(controller),
+          content = InteractiveViewer(
+            transformationController: _zoom,
+            minScale: 1,
+            maxScale: _maxZoom,
+            panEnabled: _zoomed,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
+              ),
+            ),
           );
         } else {
           content = AspectRatio(
@@ -604,9 +658,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           );
         }
         // Toque em qualquer ponto (inclusive nas faixas pretas) mostra ou esconde os controles.
+        // Segurar no terço direito toca em 2x enquanto o dedo estiver lá.
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onVideoTap,
+          onLongPressStart: isCurrent && ready ? _startFast : null,
+          onLongPressEnd: isCurrent && ready ? (_) => _stopFast() : null,
+          onLongPressCancel: isCurrent && ready ? _stopFast : null,
           child: Center(child: content),
         );
       },
@@ -636,37 +694,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ],
           ),
+          // Trocar de lance é deslizando, como nos stories: o meio fica só com o play/pause.
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-              child: Row(
-                children: [
-                  _CircleAction(
-                    icon: 'chevron-left',
-                    semanticLabel: 'Lance anterior',
-                    enabled: hasPrev,
-                    onPressed: () => _goToIndex(_currentIndex - 1),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: ready
-                          ? _PlayPauseButton(
-                              playing: _playing,
-                              loading: _buffering,
-                              enabled: true,
-                              onPressed: _togglePlay,
-                            )
-                          : null,
-                    ),
-                  ),
-                  _CircleAction(
-                    icon: 'chevron-right',
-                    semanticLabel: 'Próximo lance',
-                    enabled: hasNext,
-                    onPressed: () => _goToIndex(_currentIndex + 1),
-                  ),
-                ],
-              ),
+            child: Center(
+              child: ready
+                  ? _PlayPauseButton(
+                      playing: _playing,
+                      loading: _buffering,
+                      enabled: true,
+                      onPressed: _togglePlay,
+                    )
+                  : null,
             ),
           ),
           Padding(
@@ -702,12 +740,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ],
                 ),
-                _ProgressBar(
-                  progress: progress,
-                  buffered: buffered,
-                  elapsedLabel: clippoPlayerProgress(position),
-                  totalLabel: clippoPlayerProgress(total),
-                  onSeek: ready ? _seekToFraction : null,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ProgressBar(
+                        progress: progress,
+                        buffered: buffered,
+                        elapsedLabel: clippoPlayerProgress(position),
+                        totalLabel: clippoPlayerProgress(total),
+                        onSeek: ready ? _seekToFraction : null,
+                      ),
+                    ),
+                    const SizedBox(width: ClippoSpace.spaceS),
+                    _CircleAction(
+                      icon: 'forward-5',
+                      semanticLabel: 'Avançar 5 segundos',
+                      enabled: ready,
+                      onPressed: _skipForward,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -722,6 +773,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
         pages,
         // Com os controles escondidos, o "carregando" continua à vista no meio do vídeo.
         if (ready && _buffering && !visible) const IgnorePointer(child: Center(child: _BufferingBadge())),
+        if (_fast)
+          const IgnorePointer(
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(top: ClippoSpace.spaceL),
+                  child: _FastBadge(),
+                ),
+              ),
+            ),
+          ),
         IgnorePointer(
           ignoring: !visible,
           child: AnimatedOpacity(
@@ -966,6 +1029,36 @@ double _bufferedFraction(VideoPlayerValue? value, Duration total) {
   return end.inMilliseconds / total.inMilliseconds;
 }
 
+/// "2x" no topo enquanto a pessoa segura o lado direito da tela.
+class _FastBadge extends StatelessWidget {
+  const _FastBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Velocidade 2x',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceM, vertical: ClippoSpace.spaceS),
+          decoration: BoxDecoration(
+            color: ClippoBrand.captureOverlay,
+            borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('2x', style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular)),
+              const SizedBox(width: ClippoSpace.spaceS),
+              const ClippoSvgIcon('fast-forward', size: ClippoSize.checkIcon, color: ClippoBrand.onWine),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Sobre o vídeo enquanto ele espera chegar mais um pedaço ou pula para outro ponto.
 class _BufferingBadge extends StatelessWidget {
   const _BufferingBadge();
@@ -1007,11 +1100,7 @@ class _VideoPlaceholder extends StatelessWidget {
         children: [
           const Positioned.fill(child: CustomPaint(painter: _StageCourtPainter())),
           Padding(
-            // Nas laterais, folga para as setas de lance anterior/próximo, que ficam por cima.
-            padding: const EdgeInsets.symmetric(
-              horizontal: ClippoSpace.gutter + ClippoSize.minTouchTarget,
-              vertical: ClippoSpace.cardPadding,
-            ),
+            padding: const EdgeInsets.all(ClippoSpace.cardPadding),
             child: Semantics(
               liveRegion: true,
               child: Column(
