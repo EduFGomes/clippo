@@ -182,7 +182,51 @@ void main() {
       return controller;
     }
 
-    testWidgets('o botão ao lado da barra avança 5 segundos, sem passar do fim', (tester) async {
+    testWidgets('voltar 5 segundos, sem passar do começo', (tester) async {
+      final controller = await openPlaying(tester);
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 12));
+      await tester.tap(find.bySemanticsLabel('Voltar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 7));
+
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 3));
+      await tester.tap(find.bySemanticsLabel('Voltar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, Duration.zero);
+    });
+
+    testWidgets('os botões de 5 s ficam dos dois lados do play', (tester) async {
+      await openPlaying(tester);
+      final play = tester.getCenter(find.bySemanticsLabel('Pausar'));
+      final back = tester.getCenter(find.bySemanticsLabel('Voltar 5 segundos'));
+      final forward = tester.getCenter(find.bySemanticsLabel('Avançar 5 segundos'));
+      expect(back.dx, lessThan(play.dx));
+      expect(forward.dx, greaterThan(play.dx));
+      expect(back.dy, closeTo(play.dy, 1));
+      expect(forward.dy, closeTo(play.dy, 1));
+    });
+
+    testWidgets('dois dedos na tela (pinça) não trocam de lance', (tester) async {
+      await openPlaying(tester);
+      final first = await tester.startGesture(const Offset(150, 457), pointer: 1);
+      final second = await tester.startGesture(const Offset(260, 457), pointer: 2);
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+
+      await first.moveBy(const Offset(-80, 0));
+      await second.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await first.up();
+      await second.up();
+      await tester.pump(const Duration(milliseconds: 500));
+      // Abrir os dedos deu zoom: continua no mesmo lance e, com zoom, deslizar não troca.
+      expect(find.text('1 de 2'), findsOneWidget);
+      final zoom = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer)).transformationController!;
+      expect(zoom.value.getMaxScaleOnAxis(), greaterThan(1));
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+    });
+
+    testWidgets('avançar 5 segundos, sem passar do fim', (tester) async {
       final controller = await openPlaying(tester);
       await tester.tap(find.bySemanticsLabel('Avançar 5 segundos'));
       await tester.pump();

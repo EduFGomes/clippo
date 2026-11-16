@@ -32,7 +32,7 @@ typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highli
 
 /// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4), com os
 /// controles por cima, como nos players de vídeo conhecidos: somem com o vídeo tocando e
-/// voltam ao tocar nele. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
+/// voltam ao tocar nele. Botões de voltar e avançar 5 s ao lado do play. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
 ///
 /// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
 /// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
@@ -135,6 +135,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final TransformationController _zoom = TransformationController();
   bool _zoomed = false;
   static const double _maxZoom = 4;
+
+  /// Dedos na tela agora. Com dois ou mais (pinça), deslizar não troca de lance: sem isso o
+  /// PageView pegava o gesto antes do zoom.
+  int _fingers = 0;
+  bool get _pinching => _fingers >= 2;
+
+  void _fingerDown(PointerDownEvent _) {
+    _fingers++;
+    if (_fingers == 2) setState(() {});
+  }
+
+  void _fingerUp(PointerEvent _) {
+    if (_fingers > 0) _fingers--;
+    if (_fingers == 1) setState(() {});
+  }
 
   void _onZoomChanged() {
     final zoomed = _zoom.value.getMaxScaleOnAxis() > 1.01;
@@ -417,13 +432,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _seekTo(controller.value.duration * fraction.clamp(0.0, 1.0));
   }
 
-  /// Avança [_skip], sem passar do fim.
-  void _skipForward() {
+  /// Avança (ou volta, com [forward] falso) [_skip], sem passar do fim nem do começo.
+  void _skipBy({required bool forward}) {
     final controller = _controller;
     if (controller == null || _stage != _Stage.ready) return;
     final total = controller.value.duration;
-    final target = (_seekingTo ?? controller.value.position) + _skip;
-    _seekTo(target > total ? total : target);
+    final from = _seekingTo ?? controller.value.position;
+    final target = forward ? from + _skip : from - _skip;
+    _seekTo(target > total ? total : (target < Duration.zero ? Duration.zero : target));
   }
 
   void _seekTo(Duration target) {
@@ -628,7 +644,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       key: _pagesKey,
       controller: _pageController,
       // Com zoom, arrastar move o vídeo; sem zoom, troca de lance.
-      physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
+      physics: _zoomed || _pinching ? const NeverScrollableScrollPhysics() : null,
       itemCount: _items.length,
       onPageChanged: _onPageChanged,
       itemBuilder: (context, index) {
@@ -694,18 +710,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ],
           ),
-          // Trocar de lance é deslizando, como nos stories: o meio fica só com o play/pause.
+          // Trocar de lance é deslizando. No meio: voltar 5 s, play/pause e avançar 5 s.
           Expanded(
-            child: Center(
-              child: ready
-                  ? _PlayPauseButton(
-                      playing: _playing,
-                      loading: _buffering,
-                      enabled: true,
-                      onPressed: _togglePlay,
-                    )
-                  : null,
-            ),
+            child: ready
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+                    child: Row(
+                      children: [
+                        _CircleAction(
+                          icon: 'back-5',
+                          semanticLabel: 'Voltar 5 segundos',
+                          onPressed: () => _skipBy(forward: false),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: _PlayPauseButton(
+                              playing: _playing,
+                              loading: _buffering,
+                              enabled: true,
+                              onPressed: _togglePlay,
+                            ),
+                          ),
+                        ),
+                        _CircleAction(
+                          icon: 'forward-5',
+                          semanticLabel: 'Avançar 5 segundos',
+                          onPressed: () => _skipBy(forward: true),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -740,25 +775,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ProgressBar(
-                        progress: progress,
-                        buffered: buffered,
-                        elapsedLabel: clippoPlayerProgress(position),
-                        totalLabel: clippoPlayerProgress(total),
-                        onSeek: ready ? _seekToFraction : null,
-                      ),
-                    ),
-                    const SizedBox(width: ClippoSpace.spaceS),
-                    _CircleAction(
-                      icon: 'forward-5',
-                      semanticLabel: 'Avançar 5 segundos',
-                      enabled: ready,
-                      onPressed: _skipForward,
-                    ),
-                  ],
+                _ProgressBar(
+                  progress: progress,
+                  buffered: buffered,
+                  elapsedLabel: clippoPlayerProgress(position),
+                  totalLabel: clippoPlayerProgress(total),
+                  onSeek: ready ? _seekToFraction : null,
                 ),
               ],
             ),
@@ -770,7 +792,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        pages,
+        Listener(
+          onPointerDown: _fingerDown,
+          onPointerUp: _fingerUp,
+          onPointerCancel: _fingerUp,
+          child: pages,
+        ),
         // Com os controles escondidos, o "carregando" continua à vista no meio do vídeo.
         if (ready && _buffering && !visible) const IgnorePointer(child: Center(child: _BufferingBadge())),
         if (_fast)
