@@ -234,8 +234,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _nameController = TextEditingController(text: _defaultSessionName(now));
     _dateController = TextEditingController(text: clippoDate(now));
     _timeController = TextEditingController(text: clippoTimeRange(now, now));
-    // 🟡 Sem GPS ainda: o campo começa vazio (antes vinha "Quadra local (GPS)" fixo, salvo em
-    // quase toda sessão). Sugerir pelo GPS segue em aberto (docs/produto.md › 4.5).
+    // O campo começa vazio; "Usar localização atual" preenche com o bairro, só quando tocado.
+    // (Antes vinha "Quadra local (GPS)" fixo; as sessões antigas com ele aparecem sem local.)
     _locationController = TextEditingController();
     _loadSavedSettings();
     _checkPermission();

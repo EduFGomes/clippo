@@ -45,7 +45,7 @@ O Clippo fala como **um amigo do time que entende de tecnologia**: direto, anima
 - **Sem ponto final** em botões, chips e avisos curtos. Com ponto final em frases completas e nos títulos de tela.
 - **Erros dizem o que fazer**: "E-mail ou senha incorretos.", "Não bate".
 - O gesto se escreve **\ o /** no texto corrido e **\O/** quando é marca gigante em Anton.
-- **Números em algarismos**: "3 sessões juntos", "7 highlights". Durações: "1h 42min", "58min".
+- **Números em algarismos**: "3 sessões juntos", "7 highlights". Durações: "1h 42min", "58min"; menos de um minuto, "45s".
 - **Datas**: "11 set 2026"; horários "19:30 – 21:12". Em listas e cabeçalhos, sessões de hoje e de ontem aparecem como **"Hoje"** e **"Ontem"** (`clippoRelativeDate`; grupo, 12/11/2026). Campos de formulário mostram a data exata (`clippoDate`).
 - **Momento dentro da sessão**: "00:12:40" (horas:minutos:segundos desde o início da gravação), seguido da duração do trecho: "00:12:40 · 30s".
 - Evite exclamação; no máximo uma, e só em comemoração. Sem emojis na interface.

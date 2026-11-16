@@ -2,6 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Onde a sessão foi jogada. O rótulo é o que aparece na tela; as coordenadas
 /// vêm do GPS quando o aparelho sugeriu o local (produto.md › 4.5, estado D).
+/// Texto fixo que a tela de gravação punha no Local antes de existir o GPS. Ficou salvo em
+/// sessões antigas e não diz nada: a tela mostra essas sessões sem local.
+const legacyPlaceholderLocation = 'Quadra local (GPS)';
+
+SessionLocation? _locationFrom(Object? data) {
+  if (data is! Map<String, dynamic>) return null;
+  final location = SessionLocation.fromMap(data);
+  final label = location.label.trim();
+  if (label.isEmpty || label == legacyPlaceholderLocation) return null;
+  return location;
+}
+
 class SessionLocation {
   const SessionLocation({required this.label, this.latitude, this.longitude});
 
@@ -100,7 +112,7 @@ class Session {
       startedAt: _dateFrom(data['startedAt']) ?? _unknownDate,
       endedAt: _dateFrom(data['endedAt']),
       duration: Duration(seconds: (data['durationSeconds'] as num?)?.toInt() ?? 0),
-      location: location is Map<String, dynamic> ? SessionLocation.fromMap(location) : null,
+      location: _locationFrom(location),
       highlightCount: (data['highlightCount'] as num?)?.toInt() ?? 0,
       isClosed: data['isClosed'] as bool? ?? false,
       mergedInto: data['mergedInto'] as String?,

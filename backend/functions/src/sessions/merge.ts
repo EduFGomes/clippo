@@ -32,6 +32,7 @@ import {
   normalizeId,
   parseMergeRequestId,
   periodsTouch,
+  renumberDefaultTitles,
 } from "./validation";
 
 function periodOf(snap: DocumentSnapshot) {
@@ -211,20 +212,34 @@ export const acceptSessionMerge = onCall<{ requestId: string }, Promise<{ sessio
       const period = mergedPeriod(intoPeriod, periodOf(from));
       const shift = Math.round((intoPeriod.startedAt.getTime() - period.startedAt.getTime()) / 1000);
 
+      const intoIds = new Set(intoHighlights.docs.map((h) => h.id));
+      const toCopy = fromHighlights.docs.filter((h) => !intoIds.has(h.id));
+      // Cada sessão tinha o seu "Lance 1": os nomes automáticos seguem a ordem do tempo.
+      const titles = renumberDefaultTitles(
+        [...intoHighlights.docs, ...toCopy].map((h) => ({
+          id: h.id,
+          title: (h.get("title") as string | undefined) ?? "",
+          savedAt: toDate(h.get("savedAt")),
+        })),
+      );
+
       // O início pode ter ficado mais cedo: os lances de A mudam de posição no tempo.
-      if (shift > 0) {
-        for (const h of intoHighlights.docs) {
-          tx.update(h.ref, { offsetSeconds: FieldValue.increment(shift), updatedAt: now });
-        }
+      for (const h of intoHighlights.docs) {
+        const title = titles.get(h.id);
+        if (shift <= 0 && title === undefined) continue;
+        tx.update(h.ref, {
+          ...(shift > 0 ? { offsetSeconds: FieldValue.increment(shift) } : {}),
+          ...(title !== undefined ? { title } : {}),
+          updatedAt: now,
+        });
       }
 
-      const intoIds = new Set(intoHighlights.docs.map((h) => h.id));
       let copied = 0;
-      for (const h of fromHighlights.docs) {
-        if (intoIds.has(h.id)) continue;
+      for (const h of toCopy) {
         const savedAt = toDate(h.get("savedAt"));
         tx.set(intoRef.collection("highlights").doc(h.id), {
           ...h.data(),
+          ...(titles.has(h.id) ? { title: titles.get(h.id) } : {}),
           offsetSeconds: Math.max(0, Math.round((savedAt.getTime() - period.startedAt.getTime()) / 1000)),
           // Se B já tinha lances de outra sessão juntada, eles continuam apontando para a de origem.
           sourceSessionId: (h.get("sourceSessionId") as string | null | undefined) ?? fromId,

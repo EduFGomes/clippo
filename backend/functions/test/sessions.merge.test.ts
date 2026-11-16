@@ -9,6 +9,7 @@ import {
   parseMergeRequestId,
   participantChanges,
   periodsTouch,
+  renumberDefaultTitles,
 } from "../src/sessions/validation";
 
 const at = (hhmm: string) => new Date(`2026-11-09T${hhmm}:00.000Z`);
@@ -86,5 +87,43 @@ describe("quem entrou e quem saiu (R12)", () => {
       added: ["duda"],
       removed: ["beto"],
     });
+  });
+});
+
+describe("nomes dos lances depois de juntar", () => {
+  const lance = (id: string, title: string, hhmm: string) => ({ id, title, savedAt: at(hhmm) });
+
+  it("cada sessão trazia o seu \"Lance 1\": viram uma sequência só, na ordem do tempo", () => {
+    const novos = renumberDefaultTitles([
+      lance("a1", "Lance 1", "10:10"),
+      lance("a2", "Lance 2", "10:30"),
+      lance("b1", "Lance 1", "10:20"),
+    ]);
+    expect(Object.fromEntries(novos)).toEqual({ b1: "Lance 2", a2: "Lance 3" });
+  });
+
+  it("nome dado pela pessoa fica, mas conta na posição", () => {
+    const novos = renumberDefaultTitles([
+      lance("a1", "Golaço do Beto", "10:10"),
+      lance("b1", "Lance 1", "10:20"),
+    ]);
+    expect(Object.fromEntries(novos)).toEqual({ b1: "Lance 2" });
+  });
+
+  it("mesmo horário: desempata pelo id; nada muda quando já está certo", () => {
+    expect(Object.fromEntries(renumberDefaultTitles([
+      lance("b1", "Lance 1", "10:10"),
+      lance("a1", "Lance 1", "10:10"),
+    ]))).toEqual({ b1: "Lance 2" });
+    expect(renumberDefaultTitles([lance("a1", "Lance 1", "10:10"), lance("a2", "Lance 2", "10:20")]).size)
+      .toBe(0);
+  });
+
+  it("parecido com o automático não conta como automático", () => {
+    expect(renumberDefaultTitles([
+      lance("a1", "Lance 1", "10:10"),
+      lance("b1", "Lance 1 do Beto", "10:05"),
+      lance("b2", "lance 7", "10:20"),
+    ]).get("a1")).toBe("Lance 2");
   });
 });

@@ -233,6 +233,12 @@ describe("juntar sessões: tênis com um celular de cada lado (D18)", () => {
 
     // O lance da Ana andou 5 min (300 s) para frente na linha do tempo nova.
     expect(numero((await ler(`sessions/${A}/highlights/e2e-ta-1`, ana))?.offsetSeconds)).toBe("900");
+
+    // Cada sessão tinha o seu "Lance 1": os nomes seguem a ordem do tempo no hub.
+    const titulo = async (id: string) => texto((await ler(`sessions/${A}/highlights/${id}`, ana))?.title);
+    expect(await titulo("e2e-ta-1")).toBe("Lance 1");
+    expect(await titulo("e2e-tb-1")).toBe("Lance 2");
+    expect(await titulo("e2e-ta-2")).toBe("Lance 3");
   });
 
   it("a sessão B fica marcada como juntada e o pedido some", async () => {
@@ -270,6 +276,8 @@ describe("juntar sessões: tênis com um celular de cada lado (D18)", () => {
     expect(r.status).toBe(200);
     expect(numero((await ler(`sessions/${A}`, ana))?.highlightCount)).toBe("4");
     expect(texto((await ler(`sessions/${A}/highlights/e2e-tb-2`, ana))?.sourceSessionId)).toBe(B);
+    // Era o "Lance 2" do Beto; no hub é o último no tempo.
+    expect(texto((await ler(`sessions/${A}/highlights/e2e-tb-2`, ana))?.title)).toBe("Lance 4");
   });
 
   it("sessões de jogos diferentes não se juntam", async () => {

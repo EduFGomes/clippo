@@ -145,11 +145,14 @@ no fim, elas viram uma só.
    `offsetSeconds` recalculado pelo novo início); A passa a ter os participantes das duas, o período
    que cobre as duas e a soma dos lances; B ganha `mergedInto: A` e a mesma lista de participantes.
    Os contadores do perfil são acertados (a pessoa que estava nas duas fica com uma sessão só).
+   Os nomes automáticos ("Lance N") de A e dos copiados são renumerados na ordem do tempo
+   (`renumberDefaultTitles`), senão cada sessão trazia o seu "Lance 1"; nome dado pela pessoa fica.
 4. A Início **esconde** sessões com `mergedInto` (filtro no aparelho, sem índice novo). Os vídeos de B
    continuam em `sessions/B/...`; como B tem os mesmos participantes que A, as regras do Storage
    liberam o download. `updateSession` e `leaveSession` em A repetem a lista de participantes em B.
 5. O vídeo de B que ainda estava subindo, quando chega, marca `uploaded` nas duas cópias
-   (`onVideoUploaded`); um reenvio da fila de B grava o lance nas duas sessões (`saveSession`).
+   (`onVideoUploaded`); um reenvio da fila de B grava o lance nas duas sessões (`saveSession`), renumerando os nomes
+   automáticos de A do mesmo jeito.
 
 Limites: até 5 sessões juntadas numa só, 30 participantes e 200 lances no total.
 
