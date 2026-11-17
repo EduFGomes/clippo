@@ -202,6 +202,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  /// O favorito aberto é meu (aberto do meu perfil).
+  bool get _isMyFavorite =>
+      widget.favorite != null && _favoritesRepo != null && widget.favorite!.ownerId == _viewerId;
+
+  /// Desfavorita o favorito aberto (o meu) e fecha o Player: ele sai do perfil (R21).
+  Future<void> _unfavoriteThisPost() async {
+    final repo = _favoritesRepo;
+    final post = _post;
+    if (repo == null || post == null || _favoriteBusy) return;
+    final ok = await confirmHomeAction(
+      context,
+      title: 'Desfavoritar o lance?',
+      message: post.commentCount > 0
+          ? 'Ele sai do seu perfil com ${clippoCommentCount(post.commentCount)} e as curtidas. Não dá para desfazer.'
+          : 'Ele sai do seu perfil, com as curtidas.',
+      confirmLabel: 'Desfavoritar',
+      cancelLabel: 'Manter',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _favoriteBusy = true);
+    try {
+      await repo.unfavorite(sessionId: post.sessionId, highlightId: post.highlightId);
+      if (!mounted) return;
+      showHomeMessage(context, 'Lance tirado dos seus favoritos.');
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _favoriteBusy = false);
+        showHomeMessage(context, FavoritesFailure.from(e).message);
+      }
+    }
+  }
+
   Future<void> _toggleFavorite() async {
     final repo = _favoritesRepo;
     final sessionId = widget.sessionId;
@@ -910,13 +944,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _topBar(
             counter: widget.favorite == null ? '${_currentIndex + 1} de ${_items.length}' : null,
             actions: [
+              // Favoritar é a estrela; o coração é só o curtir, no favorito aberto do perfil.
               if (_canUseFavorites)
                 _CircleAction(
-                  icon: _mine != null ? 'heart-filled' : 'heart',
+                  icon: _mine != null ? 'star-filled' : 'star',
                   semanticLabel: _mine != null ? 'Desfavoritar' : 'Favoritar',
                   enabled: _canFavorite(highlight),
                   busy: _favoriteBusy,
                   onPressed: _toggleFavorite,
+                ),
+              // O meu próprio favorito, aberto do perfil: a estrela já vem cheia e desfavorita.
+              if (_isMyFavorite)
+                _CircleAction(
+                  icon: 'star-filled',
+                  semanticLabel: 'Desfavoritar',
+                  busy: _favoriteBusy,
+                  onPressed: _unfavoriteThisPost,
                 ),
               if (widget.favorite != null && _favoritesRepo != null) ...[
                 _CircleAction(

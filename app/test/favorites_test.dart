@@ -239,6 +239,22 @@ void main() {
       expect(find.text('11 set 2026 · 3 curtidas · nenhum comentário'), findsOneWidget);
     });
 
+    testWidgets('no próprio favorito a estrela vem cheia e desfavorita; o amigo só vê curtir', (tester) async {
+      var favorites = await open(tester, _post());
+      expect(find.bySemanticsLabel('Desfavoritar'), findsNothing);
+      expect(find.bySemanticsLabel('Favoritar'), findsNothing);
+      expect(find.bySemanticsLabel('Curtir'), findsOneWidget);
+
+      favorites = await open(tester, _post(), viewer: 'leo');
+      await tester.tap(find.bySemanticsLabel('Desfavoritar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Desfavoritar o lance?'), findsOneWidget);
+      await tester.tap(find.text('Desfavoritar').last);
+      await tester.pump();
+      await tester.pump();
+      expect(favorites.calls.last, 'unfavorite $_session/lance-0001');
+    });
+
     testWidgets('quem não favoritou não baixa nem compartilha; quem favoritou, sim', (tester) async {
       await open(tester, _post());
       expect(find.bySemanticsLabel('Baixar'), findsNothing);
