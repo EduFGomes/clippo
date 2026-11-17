@@ -360,7 +360,7 @@ A gravação ignora o tema claro/escuro.
 - **Avatar grande**, nome e @usuário (trocar a foto entra em breve).
 - **Três estatísticas**: sessões · highlights · amigos.
 - Linhas: **Nome ›**, **Usuário ›** (notificações ficam para o futuro).
-- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito, com curtir e comentar. Vazio: "Favorite um lance no Player para ele aparecer aqui".
+- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito: a estrela (desfavoritar, só no próprio) fica no topo; curtir e, logo abaixo, os comentários ficam no canto direito, acima da barra. Vazio: "Favorite um lance no Player para ele aparecer aqui".
 - **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 

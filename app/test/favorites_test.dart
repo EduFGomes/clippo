@@ -230,6 +230,19 @@ void main() {
       expect(find.text('Pelada de quinta'), findsNothing);
     });
 
+    testWidgets('curtir e, abaixo dele, os comentários ficam no canto direito, acima da barra', (tester) async {
+      await open(tester, _post());
+      final like = tester.getRect(find.bySemanticsLabel('Curtir'));
+      final comments = tester.getRect(find.bySemanticsLabel('Comentários (0)'));
+      final fullscreen = tester.getRect(find.bySemanticsLabel('Tela cheia'));
+      final close = tester.getRect(find.bySemanticsLabel('Fechar'));
+      expect(like.bottom, lessThanOrEqualTo(comments.top));
+      expect(comments.bottom, lessThanOrEqualTo(fullscreen.top));
+      expect(like.right, closeTo(fullscreen.right, 1));
+      // Não estão mais no topo.
+      expect(like.top, greaterThan(close.bottom));
+    });
+
     testWidgets('a amiga curte na hora e o servidor confirma a contagem', (tester) async {
       final favorites = await open(tester, _post());
       await tester.tap(find.bySemanticsLabel('Curtir'));

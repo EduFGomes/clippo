@@ -961,18 +961,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   busy: _favoriteBusy,
                   onPressed: _unfavoriteThisPost,
                 ),
-              if (widget.favorite != null && _favoritesRepo != null) ...[
-                _CircleAction(
-                  icon: _liked ? 'heart-filled' : 'heart',
-                  semanticLabel: _liked ? 'Descurtir' : 'Curtir',
-                  onPressed: _toggleLike,
-                ),
-                _CircleAction(
-                  icon: 'comment',
-                  semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
-                  onPressed: _openComments,
-                ),
-              ],
               if (_canDownload) ...[
                 _CircleAction(
                   icon: 'download',
@@ -1024,6 +1012,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   )
                 : const SizedBox.shrink(),
           ),
+          // No favorito aberto do perfil: curtir e, logo abaixo, os comentários, no canto direito,
+          // um pouco acima da barra (como nos vídeos curtos das redes).
+          if (widget.favorite != null && _favoritesRepo != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _CircleAction(
+                      icon: _liked ? 'heart-filled' : 'heart',
+                      semanticLabel: _liked ? 'Descurtir' : 'Curtir',
+                      onPressed: _toggleLike,
+                    ),
+                    const SizedBox(height: ClippoSpace.spaceS),
+                    _CircleAction(
+                      icon: 'comment',
+                      semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
+                      onPressed: _openComments,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               ClippoSpace.gutter,
