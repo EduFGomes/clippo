@@ -230,17 +230,19 @@ void main() {
       expect(find.text('Pelada de quinta'), findsNothing);
     });
 
-    testWidgets('curtir e, abaixo dele, os comentários ficam no canto direito, acima da barra', (tester) async {
+    testWidgets('curtir e, abaixo dele, os comentários: no canto direito, acima da barra, com o mesmo espaço', (tester) async {
       await open(tester, _post());
       final like = tester.getRect(find.bySemanticsLabel('Curtir'));
       final comments = tester.getRect(find.bySemanticsLabel('Comentários (0)'));
-      final fullscreen = tester.getRect(find.bySemanticsLabel('Tela cheia'));
+      final total = tester.getRect(find.text('0:30'));
       final close = tester.getRect(find.bySemanticsLabel('Fechar'));
       expect(like.bottom, lessThanOrEqualTo(comments.top));
-      expect(comments.bottom, lessThanOrEqualTo(fullscreen.top));
-      expect(like.right, closeTo(fullscreen.right, 1));
-      // Não estão mais no topo.
-      expect(like.top, greaterThan(close.bottom));
+      expect(comments.bottom, lessThanOrEqualTo(total.top));
+      expect(like.right, closeTo(comments.right, 0.5));
+      expect(comments.right, closeTo(total.right, 4));
+      expect(like.top, greaterThan(close.bottom)); // não estão mais no topo
+      // Vídeo em pé: sem tela cheia.
+      expect(find.bySemanticsLabel('Tela cheia'), findsNothing);
     });
 
     testWidgets('a amiga curte na hora e o servidor confirma a contagem', (tester) async {

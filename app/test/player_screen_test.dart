@@ -188,9 +188,9 @@ void main() {
         )
         .opacity;
 
-    Future<_PlayingController> openPlaying(WidgetTester tester) async {
+    Future<_PlayingController> openPlaying(WidgetTester tester, {Size size = const Size(720, 1280)}) async {
       _phone(tester);
-      final controller = _PlayingController();
+      final controller = _PlayingController(size: size);
       await tester.pumpWidget(_app(PlayerScreen(
         sessionName: 'Pelada de quinta',
         highlights: _highlights(),
@@ -229,24 +229,21 @@ void main() {
     });
 
     testWidgets('o botão de tela cheia fica logo acima do fim da barra', (tester) async {
-      await openPlaying(tester);
+      await openPlaying(tester, size: const Size(1280, 720));
       final button = tester.getRect(find.bySemanticsLabel('Tela cheia'));
       final total = tester.getRect(find.text('0:30'));
       expect(button.bottom, lessThanOrEqualTo(total.top));
       expect(button.right, closeTo(total.right, 4));
     });
 
-    testWidgets('vídeo em pé: tela cheia só esconde as barras, sem deitar o celular', (tester) async {
-      final calls = _recordSystemChrome(tester);
+    testWidgets('vídeo em pé já ocupa a tela: não tem botão de tela cheia', (tester) async {
       await openPlaying(tester);
-      await tester.tap(find.bySemanticsLabel('Tela cheia'));
-      await tester.pump();
-      expect(calls, ['ui SystemUiMode.immersiveSticky']);
+      expect(find.bySemanticsLabel('Tela cheia'), findsNothing);
     });
 
     testWidgets('fechar o Player em tela cheia devolve o app para em pé', (tester) async {
       final calls = _recordSystemChrome(tester);
-      await openPlaying(tester);
+      await openPlaying(tester, size: const Size(1280, 720));
       await tester.tap(find.bySemanticsLabel('Tela cheia'));
       await tester.pump();
       calls.clear();

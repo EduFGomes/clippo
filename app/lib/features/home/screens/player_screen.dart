@@ -890,6 +890,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final ready = _stage == _Stage.ready && controller != null;
     final visible = _controlsVisible || !_controlsCanHide;
 
+    // Vídeo em pé já ocupa a tela toda: a tela cheia só serve para o vídeo deitado. Já dentro
+    // dela, o botão de sair continua.
+    final wide = controller != null && ready && controller.value.aspectRatio > 1;
+    final sideActions = <Widget>[
+      if (widget.favorite != null && _favoritesRepo != null) ...[
+        _CircleAction(
+          icon: _liked ? 'heart-filled' : 'heart',
+          semanticLabel: _liked ? 'Descurtir' : 'Curtir',
+          onPressed: _toggleLike,
+        ),
+        _CircleAction(
+          icon: 'comment',
+          semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
+          onPressed: _openComments,
+        ),
+      ],
+      if (wide || _fullscreen)
+        _CircleAction(
+          icon: _fullscreen ? 'fullscreen-exit' : 'fullscreen',
+          semanticLabel: _fullscreen ? 'Sair da tela cheia' : 'Tela cheia',
+          onPressed: () => _setFullscreen(!_fullscreen),
+        ),
+    ];
+
     // A mesma chave sempre: virar o celular não recria as páginas nem perde o lance.
     final pages = PageView.builder(
       key: _pagesKey,
@@ -1012,31 +1036,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   )
                 : const SizedBox.shrink(),
           ),
-          // No favorito aberto do perfil: curtir e, logo abaixo, os comentários, no canto direito,
-          // um pouco acima da barra (como nos vídeos curtos das redes).
-          if (widget.favorite != null && _favoritesRepo != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-              child: Align(
-                alignment: AlignmentDirectional.centerEnd,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _CircleAction(
-                      icon: _liked ? 'heart-filled' : 'heart',
-                      semanticLabel: _liked ? 'Descurtir' : 'Curtir',
-                      onPressed: _toggleLike,
-                    ),
-                    const SizedBox(height: ClippoSpace.spaceS),
-                    _CircleAction(
-                      icon: 'comment',
-                      semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
-                      onPressed: _openComments,
-                    ),
-                  ],
-                ),
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               ClippoSpace.gutter,
@@ -1048,7 +1047,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Título e tempo à esquerda; a tela cheia à direita, logo acima do fim da barra.
+                // Título e tempo à esquerda. À direita, logo acima do fim da barra, uma coluna só,
+                // com o mesmo espaço entre os botões: curtir e comentários (no favorito aberto do
+                // perfil) e a tela cheia (só com vídeo deitado).
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -1084,12 +1085,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: ClippoSpace.spaceM),
-                    _CircleAction(
-                      icon: _fullscreen ? 'fullscreen-exit' : 'fullscreen',
-                      semanticLabel: _fullscreen ? 'Sair da tela cheia' : 'Tela cheia',
-                      onPressed: () => _setFullscreen(!_fullscreen),
-                    ),
+                    if (sideActions.isNotEmpty) ...[
+                      const SizedBox(width: ClippoSpace.spaceM),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < sideActions.length; i++) ...[
+                            if (i > 0) const SizedBox(height: ClippoSpace.spaceS),
+                            sideActions[i],
+                          ],
+                        ],
+                      ),
+                    ],
                   ],
                 ),
                 _ProgressBar(

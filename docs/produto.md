@@ -294,7 +294,7 @@ Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado
 **Controles por cima do vídeo**, com uma sombra em cima e embaixo para ficarem legíveis:
 - **Topo:** ✕ fechar · nome da sessão e "1 de 6" · **baixar** e **compartilhar**, só com ícone, no mesmo estilo do ✕. Enquanto baixa, um anel em volta do ícone mostra o progresso.
 - **Meio:** **voltar 5 s** · play/pause · **avançar 5 s**. Os botões de 5 s não passam do começo nem do fim e só aparecem com o vídeo carregado.
-- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás). O botão **tela cheia** fica à direita do título, logo acima do fim da barra.
+- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás). À direita do título, logo acima do fim da barra, fica uma coluna de botões com o mesmo espaço entre eles: curtir e comentários (no favorito aberto do perfil) e **tela cheia** (só com vídeo deitado; em pé, o vídeo já ocupa a tela).
 - Com o vídeo tocando, os controles **somem sozinhos** depois de 3,2 s (`playerControls`). Tocar em qualquer ponto do vídeo mostra ou esconde. Pausado, carregando, com erro ou com leitor de tela ligado, ficam à vista.
 
 **Gestos:**
@@ -302,7 +302,7 @@ Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado
 - **Segurar o terço direito** da tela toca em **2x** enquanto o dedo estiver lá, com o aviso "2x" no topo (como no Instagram). Soltou, volta a 1x.
 - **Pinça** dá zoom de até 4x. Com zoom, arrastar move o vídeo em vez de trocar de lance. Trocar de lance volta ao normal.
 
-**Tela cheia:** esconde as barras do Android. Com vídeo deitado, deita o celular também. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
+**Tela cheia** (só para vídeo deitado, 17/11/2026): deita o celular e esconde as barras do Android. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
 
 **Rotação no app:** só a Gravação gira com o celular; o resto do app fica sempre em pé (`ClippoOrientation`, 16/11/2026).
 
@@ -360,7 +360,7 @@ A gravação ignora o tema claro/escuro.
 - **Avatar grande**, nome e @usuário (trocar a foto entra em breve).
 - **Três estatísticas**: sessões · highlights · amigos.
 - Linhas: **Nome ›**, **Usuário ›** (notificações ficam para o futuro).
-- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito: a estrela (desfavoritar, só no próprio) fica no topo; curtir e, logo abaixo, os comentários ficam no canto direito, acima da barra. Vazio: "Favorite um lance no Player para ele aparecer aqui".
+- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito: a estrela (desfavoritar, só no próprio) fica no topo; curtir e, logo abaixo, os comentários ficam no canto direito, acima da barra, na mesma coluna da tela cheia. Vazio: "Favorite um lance no Player para ele aparecer aqui".
 - **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 
