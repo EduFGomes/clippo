@@ -310,7 +310,7 @@ void main() {
 
     testWidgets('segurar o lado direito toca em 2x até soltar', (tester) async {
       final controller = await openPlaying(tester);
-      final gesture = await tester.startGesture(const Offset(380, 457));
+      final gesture = await tester.startGesture(const Offset(380, 620));
       await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
       expect(controller.value.playbackSpeed, 2);
       expect(find.bySemanticsLabel('Velocidade 2x'), findsOneWidget);
@@ -323,7 +323,7 @@ void main() {
 
     testWidgets('segurar fora do lado direito não muda a velocidade', (tester) async {
       final controller = await openPlaying(tester);
-      final gesture = await tester.startGesture(const Offset(60, 457));
+      final gesture = await tester.startGesture(const Offset(60, 620));
       await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
       await gesture.up();
       await tester.pump();

@@ -961,155 +961,183 @@ class _PlayerScreenState extends State<PlayerScreen> {
       },
     );
 
-    final controls = SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _topBar(
-            counter: widget.favorite == null ? '${_currentIndex + 1} de ${_items.length}' : null,
-            actions: [
-              // Favoritar é a estrela; o coração é só o curtir, no favorito aberto do perfil.
-              if (_canUseFavorites)
-                _CircleAction(
-                  icon: _mine != null ? 'star-filled' : 'star',
-                  semanticLabel: _mine != null ? 'Desfavoritar' : 'Favoritar',
-                  enabled: _canFavorite(highlight),
-                  busy: _favoriteBusy,
-                  onPressed: _toggleFavorite,
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+
+    // No meio: voltar 5 s, play/pause e avançar 5 s. Fica preso no centro da tela, sem depender
+    // de quanto ocupam o topo e a parte de baixo (deitado, sobra pouca altura).
+    final Widget? centerRow = ready
+        ? Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+          child: Row(
+            children: [
+              _CircleAction(
+                icon: 'back-5',
+                semanticLabel: 'Voltar 5 segundos',
+                onPressed: () => _skipBy(forward: false),
+              ),
+              Expanded(
+                child: Center(
+                  child: _PlayPauseButton(
+                    playing: _playing,
+                    loading: _buffering,
+                    enabled: true,
+                    onPressed: _togglePlay,
+                  ),
                 ),
-              // O meu próprio favorito, aberto do perfil: a estrela já vem cheia e desfavorita.
-              if (_isMyFavorite)
-                _CircleAction(
-                  icon: 'star-filled',
-                  semanticLabel: 'Desfavoritar',
-                  busy: _favoriteBusy,
-                  onPressed: _unfavoriteThisPost,
-                ),
-              if (_canDownload) ...[
-                _CircleAction(
-                  icon: 'download',
-                  semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
-                  enabled: canAct,
-                  busy: _saving,
-                  progress: _downloadProgress,
-                  onPressed: _download,
-                ),
-                _CircleAction(
-                  icon: 'share',
-                  semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
-                  enabled: canAct,
-                  busy: _sharing,
-                  onPressed: _share,
-                ),
-              ],
+              ),
+              _CircleAction(
+                icon: 'forward-5',
+                semanticLabel: 'Avançar 5 segundos',
+                onPressed: () => _skipBy(forward: true),
+              ),
             ],
           ),
-          // Trocar de lance é deslizando. No meio: voltar 5 s, play/pause e avançar 5 s.
-          Expanded(
-            child: ready
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-                    child: Row(
-                      children: [
-                        _CircleAction(
-                          icon: 'back-5',
-                          semanticLabel: 'Voltar 5 segundos',
-                          onPressed: () => _skipBy(forward: false),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: _PlayPauseButton(
-                              playing: _playing,
-                              loading: _buffering,
-                              enabled: true,
-                              onPressed: _togglePlay,
+          )
+        : null;
+
+    final controls = SafeArea(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // Deitado, os controles ficam na largura do vídeo, e não colados à borda da tela, em
+          // cima da faixa preta.
+          var width = box.maxWidth;
+          if (landscape && controller != null && ready) {
+            final videoWidth = box.maxHeight * controller.value.aspectRatio;
+            if (videoWidth < width) width = videoWidth;
+          }
+          return Center(
+            child: SizedBox(
+              width: width,
+              height: box.maxHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _topBar(
+                        counter: widget.favorite == null ? '${_currentIndex + 1} de ${_items.length}' : null,
+                        actions: [
+                          // Favoritar é a estrela; o coração é só o curtir, no favorito aberto do perfil.
+                          if (_canUseFavorites)
+                            _CircleAction(
+                              icon: _mine != null ? 'star-filled' : 'star',
+                              semanticLabel: _mine != null ? 'Desfavoritar' : 'Favoritar',
+                              enabled: _canFavorite(highlight),
+                              busy: _favoriteBusy,
+                              onPressed: _toggleFavorite,
                             ),
-                          ),
-                        ),
-                        _CircleAction(
-                          icon: 'forward-5',
-                          semanticLabel: 'Avançar 5 segundos',
-                          onPressed: () => _skipBy(forward: true),
-                        ),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              ClippoSpace.gutter,
-              ClippoSpace.spaceM,
-              ClippoSpace.gutter,
-              ClippoSpace.spaceM,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Título e tempo à esquerda. À direita, logo acima do fim da barra, uma coluna só,
-                // com o mesmo espaço entre os botões: curtir e comentários (no favorito aberto do
-                // perfil) e a tela cheia (só com vídeo deitado).
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            highlight.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
-                          ),
-                          const SizedBox(height: ClippoSpace.spaceS),
-                          Row(
-                            children: [
-                              const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
-                              const SizedBox(width: ClippoSpace.spaceS),
-                              Flexible(
-                                child: Text(
-                                  _post != null
-                                      ? clippoFavoriteLine(_post!.playedAt, likes: _post!.likeCount, comments: _post!.commentCount)
-                                      : clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
-                                  style: ClippoText.label.copyWith(
-                                    color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
-                                    fontFeatures: ClippoText.tabular,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (sideActions.isNotEmpty) ...[
-                      const SizedBox(width: ClippoSpace.spaceM),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < sideActions.length; i++) ...[
-                            if (i > 0) const SizedBox(height: ClippoSpace.spaceS),
-                            sideActions[i],
+                          // O meu próprio favorito, aberto do perfil: a estrela já vem cheia e desfavorita.
+                          if (_isMyFavorite)
+                            _CircleAction(
+                              icon: 'star-filled',
+                              semanticLabel: 'Desfavoritar',
+                              busy: _favoriteBusy,
+                              onPressed: _unfavoriteThisPost,
+                            ),
+                          if (_canDownload) ...[
+                            _CircleAction(
+                              icon: 'download',
+                              semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
+                              enabled: canAct,
+                              busy: _saving,
+                              progress: _downloadProgress,
+                              onPressed: _download,
+                            ),
+                            _CircleAction(
+                              icon: 'share',
+                              semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
+                              enabled: canAct,
+                              busy: _sharing,
+                              onPressed: _share,
+                            ),
                           ],
                         ],
                       ),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          ClippoSpace.gutter,
+                          ClippoSpace.spaceM,
+                          ClippoSpace.gutter,
+                          ClippoSpace.spaceM,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Título e tempo à esquerda. À direita, logo acima do fim da barra, uma coluna só,
+                            // com o mesmo espaço entre os botões: curtir e comentários (no favorito aberto do
+                            // perfil) e a tela cheia (só com vídeo deitado).
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        highlight.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                                      ),
+                                      const SizedBox(height: ClippoSpace.spaceS),
+                                      Row(
+                                        children: [
+                                          const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
+                                          const SizedBox(width: ClippoSpace.spaceS),
+                                          Flexible(
+                                            child: Text(
+                                              _post != null
+                                                  ? clippoFavoriteLine(_post!.playedAt, likes: _post!.likeCount, comments: _post!.commentCount)
+                                                  : clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                                              style: ClippoText.label.copyWith(
+                                                color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
+                                                fontFeatures: ClippoText.tabular,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (sideActions.isNotEmpty) ...[
+                                  const SizedBox(width: ClippoSpace.spaceM),
+                                  // Em pé, em coluna; deitado (pouca altura), lado a lado.
+                                  Flex(
+                                    direction: landscape ? Axis.horizontal : Axis.vertical,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      for (var i = 0; i < sideActions.length; i++) ...[
+                                        if (i > 0) const SizedBox.square(dimension: ClippoSpace.spaceS),
+                                        sideActions[i],
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                            _ProgressBar(
+                              progress: progress,
+                              buffered: buffered,
+                              elapsedLabel: clippoPlayerProgress(position),
+                              totalLabel: clippoPlayerProgress(total),
+                              onSeek: ready ? _seekToFraction : null,
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
-                  ],
-                ),
-                _ProgressBar(
-                  progress: progress,
-                  buffered: buffered,
-                  elapsedLabel: clippoPlayerProgress(position),
-                  totalLabel: clippoPlayerProgress(total),
-                  onSeek: ready ? _seekToFraction : null,
-                ),
-              ],
+                  ),
+                  if (centerRow != null) Center(child: centerRow),
+                ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
 
@@ -1154,13 +1182,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
+                          // Em cima tão forte quanto embaixo: o nome no topo some sobre vídeo claro.
                           colors: [
-                            ClippoBrand.captureOverlay,
+                            ClippoBrand.captureScrim,
                             Colors.transparent,
                             Colors.transparent,
                             ClippoBrand.captureScrim,
                           ],
-                          stops: [0, 0.22, 0.6, 1],
+                          stops: [0, 0.28, 0.6, 1],
                         ),
                       ),
                     ),

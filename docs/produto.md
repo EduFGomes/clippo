@@ -302,7 +302,7 @@ Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado
 - **Segurar o terço direito** da tela toca em **2x** enquanto o dedo estiver lá, com o aviso "2x" no topo (como no Instagram). Soltou, volta a 1x.
 - **Pinça** dá zoom de até 4x. Com zoom, arrastar move o vídeo em vez de trocar de lance. Trocar de lance volta ao normal.
 
-**Tela cheia** (só para vídeo deitado, 17/11/2026): deita o celular e esconde as barras do Android. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
+**Tela cheia** (só para vídeo deitado, 17/11/2026): deita o celular e esconde as barras do Android. Deitado, os controles ficam na largura do vídeo (não na faixa preta), o play e os 5 s no meio da tela e os botões da direita lado a lado. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
 
 **Rotação no app:** só a Gravação gira com o celular; o resto do app fica sempre em pé (`ClippoOrientation`, 16/11/2026).
 

@@ -99,11 +99,14 @@ class _FakeFavorites extends FavoritesRepository {
 
 /// Player aberto e tocando, sem o plugin de vídeo.
 class _Controller extends VideoPlayerController {
-  _Controller() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+  _Controller({this.size = const Size(720, 1280)}) : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  /// Em pé por padrão; `Size(1280, 720)` para um vídeo deitado.
+  final Size size;
 
   @override
   Future<void> initialize() async {
-    value = const VideoPlayerValue(duration: Duration(seconds: 30), size: Size(720, 1280), isInitialized: true);
+    value = VideoPlayerValue(duration: const Duration(seconds: 30), size: size, isInitialized: true);
   }
 
   @override
@@ -307,6 +310,52 @@ void main() {
       await tester.tap(find.text('Comentar'));
       await tester.pump();
       expect(favorites.calls.last, 'comment   Top demais  ');
+    });
+  });
+
+  group('Player deitado, em tela cheia (print de 17/11/2026)', () {
+    Future<void> openLandscape(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(915, 412);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final post = _post();
+      await tester.pumpWidget(_app(PlayerScreen(
+        sessionName: 'Favorito de Leo',
+        highlights: [post.toHighlight()],
+        favorite: post,
+        favorites: _FakeFavorites(),
+        currentUserId: 'leo',
+        streamVideo: _stream,
+        streamControllerFactory: (_) => _Controller(size: const Size(1280, 720)),
+      )));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('o play e os 5 s ficam no meio da tela, na mesma linha', (tester) async {
+      await openLandscape(tester);
+      final play = tester.getCenter(find.bySemanticsLabel('Reproduzir'));
+      expect(play.dy, closeTo(206, 2));
+      expect(play.dx, closeTo(457.5, 2));
+      expect(tester.getCenter(find.bySemanticsLabel('Voltar 5 segundos')).dy, closeTo(play.dy, 1));
+      expect(tester.getCenter(find.bySemanticsLabel('Avançar 5 segundos')).dy, closeTo(play.dy, 1));
+    });
+
+    testWidgets('curtir, comentários e tela cheia ficam lado a lado, com o mesmo espaço', (tester) async {
+      await openLandscape(tester);
+      final like = tester.getRect(find.bySemanticsLabel('Curtir'));
+      final comments = tester.getRect(find.bySemanticsLabel('Comentários (0)'));
+      final fullscreen = tester.getRect(find.bySemanticsLabel('Tela cheia'));
+      expect(like.center.dy, closeTo(comments.center.dy, 0.5));
+      expect(comments.center.dy, closeTo(fullscreen.center.dy, 0.5));
+      expect(comments.left - like.right, closeTo(fullscreen.left - comments.right, 0.5));
+    });
+
+    testWidgets('os controles ficam na largura do vídeo, não na faixa preta', (tester) async {
+      await openLandscape(tester);
+      // Vídeo 16:9 em 412 de altura: 732 de largura, com ~91 de faixa preta de cada lado.
+      expect(tester.getRect(find.bySemanticsLabel('Fechar')).left, greaterThanOrEqualTo(91));
+      expect(tester.getRect(find.bySemanticsLabel('Tela cheia')).right, lessThanOrEqualTo(915 - 91));
     });
   });
 
