@@ -88,6 +88,10 @@ class HighlightMediaRepository {
     r'^sessions/[A-Za-z0-9_-]{6,64}/highlights/[A-Za-z0-9_-]{6,64}/(video\.mp4|thumb\.jpg)$',
   );
 
+  /// A cópia de um favorito (D19): `posts/{uid}__{sessionId}__{highlightId}/video.mp4` e
+  /// `thumb.jpg`. Só para ler: quem copia é a Function, e as regras recusam envio pelo app.
+  static final RegExp _postPathPattern = RegExp(r'^posts/[A-Za-z0-9_-]{14,200}/(video\.mp4|thumb\.jpg)$');
+
   final FirebaseStorage Function() _storage;
   final Future<Directory> Function() _cacheDir;
   final Future<String?> Function() _idToken;
@@ -109,7 +113,7 @@ class HighlightMediaRepository {
       _upload(storagePath, localFile, 'image/jpeg', maxThumbnailBytes, 'thumb.jpg');
 
   Future<void> _upload(String path, File file, String contentType, int maxBytes, String name) async {
-    checkPath(path, expectedFile: name);
+    checkPath(path, expectedFile: name, forUpload: true);
     final size = await file.length();
     if (size == 0 || size > maxBytes) {
       throw const HighlightMediaFailure('Esse arquivo não pode ser enviado.');
@@ -233,9 +237,11 @@ class HighlightMediaRepository {
     }
   }
 
-  /// Confere o caminho antes de chamar o Storage (o mesmo padrão de storage.rules).
-  static void checkPath(String path, {required String expectedFile}) {
-    if (!_pathPattern.hasMatch(path) || !path.endsWith('/$expectedFile')) {
+  /// Confere o caminho antes de chamar o Storage (o mesmo padrão de storage.rules). Para ler,
+  /// vale o lance da sessão e a cópia de um favorito; para enviar ([forUpload]), só o lance.
+  static void checkPath(String path, {required String expectedFile, bool forUpload = false}) {
+    final known = _pathPattern.hasMatch(path) || (!forUpload && _postPathPattern.hasMatch(path));
+    if (!known || !path.endsWith('/$expectedFile')) {
       throw const HighlightMediaFailure('Não foi possível carregar o lance.');
     }
   }

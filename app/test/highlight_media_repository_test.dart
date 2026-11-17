@@ -81,6 +81,31 @@ void main() {
       );
     });
 
+    test('aceita a cópia de um favorito para ler, mas não para enviar (D19)', () {
+      const video = 'posts/alice__sessao-0001__lance-0001/video.mp4';
+      HighlightMediaRepository.checkPath(video, expectedFile: 'video.mp4');
+      HighlightMediaRepository.checkPath('posts/alice__sessao-0001__lance-0001/thumb.jpg', expectedFile: 'thumb.jpg');
+      expect(
+        () => HighlightMediaRepository.checkPath(video, expectedFile: 'video.mp4', forUpload: true),
+        throwsA(isA<HighlightMediaFailure>()),
+      );
+      expect(
+        () => HighlightMediaRepository.checkPath('posts/curto/video.mp4', expectedFile: 'video.mp4'),
+        throwsA(isA<HighlightMediaFailure>()),
+      );
+    });
+
+    test('o Player de um favorito monta o streaming da cópia (bug de 17/11/2026)', () async {
+      final repo = HighlightMediaRepository(
+        storage: _FakeStorage(),
+        idToken: () async => 'id-token',
+        appCheckToken: () async => null,
+        emulatorOrigin: 'https://firebasestorage.googleapis.com',
+      );
+      final s = await repo.videoStream('posts/alice__sessao-0001__lance-0001/video.mp4');
+      expect(s.url.toString(), endsWith('/o/posts%2Falice__sessao-0001__lance-0001%2Fvideo.mp4?alt=media'));
+    });
+
     for (final ruim in [
       '',
       'sessions/sessao-0001/highlights/lance-0001/outro.mp4',
