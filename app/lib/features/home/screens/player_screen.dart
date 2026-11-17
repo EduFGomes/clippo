@@ -1289,6 +1289,10 @@ class _PlayPauseButton extends StatelessWidget {
   /// O vídeo está carregando: o botão mostra que está trabalhando, em vez de "pausar".
   final bool loading;
 
+  /// Com o vídeo rolando, o botão some no fundo para não cobrir o lance: sem o círculo, só o
+  /// ícone de pausar em vinho. Parado ou carregando, volta o círculo vinho com o ícone claro.
+  bool get _quiet => playing && !loading;
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -1300,17 +1304,26 @@ class _PlayPauseButton extends StatelessWidget {
           opacity: enabled ? 1 : ClippoOpacity.disabled,
           child: ClippoPressable(
             onTap: enabled ? onPressed : null,
-            child: Container(
+            child: AnimatedContainer(
+              duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+              curve: ClippoMotion.standard,
               width: ClippoSize.playerPlayButton,
               height: ClippoSize.playerPlayButton,
-              decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: _quiet ? Colors.transparent : ClippoBrand.wine,
+                shape: BoxShape.circle,
+              ),
               alignment: Alignment.center,
               child: loading
                   ? const SizedBox.square(
                       dimension: ClippoSize.spinner,
                       child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.onWine),
                     )
-                  : ClippoSvgIcon(playing ? 'pause' : 'play', size: ClippoSize.icon, color: ClippoBrand.onWine),
+                  : ClippoSvgIcon(
+                      playing ? 'pause' : 'play',
+                      size: ClippoSize.icon,
+                      color: _quiet ? ClippoBrand.wine : ClippoBrand.onWine,
+                    ),
             ),
           ),
         ),
