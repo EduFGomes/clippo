@@ -293,6 +293,72 @@ describe("sessionMergeRequests — pedido para juntar sessões (D18)", () => {
   });
 });
 
+describe("posts — favoritos (R18–R22, D19)", () => {
+  // alice favoritou um lance; bob é amigo dela; carol só pediu amizade (pending); dave não tem nada.
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "posts/alice__quinta__lance1"), {
+        ownerId: "alice",
+        title: "Golaço",
+        createdAt: new Date("2026-11-16T10:00:00Z"),
+      });
+      await setDoc(doc(db, "posts/carol__sabado__lance9"), {
+        ownerId: "carol",
+        title: "Saque",
+        createdAt: new Date("2026-11-16T11:00:00Z"),
+      });
+      await setDoc(doc(db, "posts/alice__quinta__lance1/comments/c-000001"), { authorId: "bob", text: "Boa!" });
+      await setDoc(doc(db, "posts/alice__quinta__lance1/likes/bob"), { uid: "bob" });
+    });
+  });
+
+  it("quem favoritou e os amigos leem o favorito, as curtidas e os comentários", async () => {
+    for (const uid of ["alice", "bob"]) {
+      const db = env.authenticatedContext(uid).firestore();
+      await assertSucceeds(getDoc(doc(db, "posts/alice__quinta__lance1")));
+      await assertSucceeds(getDocs(collection(db, "posts/alice__quinta__lance1/comments")));
+      await assertSucceeds(getDoc(doc(db, "posts/alice__quinta__lance1/likes/bob")));
+    }
+  });
+
+  it("o amigo lista os favoritos do perfil com o filtro por ownerId", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    const snap = await assertSucceeds(
+      getDocs(query(collection(db, "posts"), where("ownerId", "==", "alice"), orderBy("createdAt", "desc"))),
+    );
+    expect(snap.docs.map((d) => d.id)).toEqual(["alice__quinta__lance1"]);
+  });
+
+  it("quem NÃO é amigo (pedido pendente ou nenhum) não lê o favorito nem os comentários", async () => {
+    for (const uid of ["carol", "dave"]) {
+      const db = env.authenticatedContext(uid).firestore();
+      await assertFails(getDoc(doc(db, "posts/alice__quinta__lance1")));
+      await assertFails(getDocs(collection(db, "posts/alice__quinta__lance1/comments")));
+      await assertFails(getDocs(query(collection(db, "posts"), where("ownerId", "==", "alice"))));
+    }
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), "posts/alice__quinta__lance1")));
+  });
+
+  it("listar sem o filtro falha (bob não é amigo da carol)", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    await assertFails(getDocs(collection(db, "posts")));
+  });
+
+  it("ninguém favorita, curte ou comenta gravando direto pelo app (só Functions)", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(setDoc(doc(db, "posts/alice__quinta__lance2"), { ownerId: "alice" }));
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(setDoc(doc(bob, "posts/alice__quinta__lance1/likes/bob"), { uid: "bob" }));
+    await assertFails(setDoc(doc(bob, "posts/alice__quinta__lance1/comments/c-000002"), { authorId: "bob", text: "Oi" }));
+  });
+
+  it("outra subcoleção do favorito continua bloqueada", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(getDoc(doc(db, "posts/alice__quinta__lance1/segredos/x")));
+  });
+});
+
 describe("o resto continua bloqueado", () => {
   it("usuário logado não grava em coleções sem regra", async () => {
     const db = env.authenticatedContext("alice").firestore();

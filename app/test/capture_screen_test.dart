@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clippo/app.dart';
@@ -173,6 +174,21 @@ UploadQueue _queue(FakeUploadBackend backend) => UploadQueue(
 /// A legenda do botão de gravar, que também é o rótulo de acessibilidade dele.
 const startLabel = r'Iniciar detecção de gesto \ o /';
 
+/// O que a tela pediu ao Android sobre posição e barras (SystemChrome), na ordem.
+List<String> _recordSystemChrome(WidgetTester tester) {
+  final calls = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+    if (call.method == 'SystemChrome.setPreferredOrientations') {
+      calls.add('orientations ${(call.arguments as List).join(',')}');
+    } else if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+      calls.add('ui ${call.arguments}');
+    }
+    return null;
+  });
+  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+  return calls;
+}
+
 void main() {
   Future<void> open(
     WidgetTester tester, {
@@ -232,6 +248,18 @@ void main() {
 
   bool isSelected(WidgetTester tester, String label) =>
       tester.widget<ClippoCaptureChip>(find.widgetWithText(ClippoCaptureChip, label)).selected;
+
+  testWidgets('só a Gravação gira com o celular; ao sair, o app volta a ficar em pé', (tester) async {
+    final calls = _recordSystemChrome(tester);
+    await open(tester, camera: _FakeCamera());
+    expect(calls, [
+      'orientations DeviceOrientation.portraitUp,DeviceOrientation.landscapeLeft,DeviceOrientation.landscapeRight',
+    ]);
+
+    calls.clear();
+    await tester.pumpWidget(const SizedBox());
+    expect(calls, ['orientations DeviceOrientation.portraitUp']);
+  });
 
   testWidgets('sem permissão, explica e pede a câmera', (tester) async {
     await open(tester, camera: _FakeCamera(permission: false));

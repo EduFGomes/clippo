@@ -16,6 +16,7 @@ import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/widgets/clippo_avatar.dart';
+import 'package:clippo/core/widgets/clippo_favorites_section.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
 import 'package:clippo/core/widgets/clippo_highlight_tile.dart';
 import 'package:clippo/core/widgets/clippo_location_button.dart';
@@ -326,6 +327,7 @@ class _SessionScreenState extends State<SessionScreen> {
       MaterialPageRoute<void>(
         builder: (_) => PlayerScreen(
           sessionName: _session.name,
+          sessionId: _session.id,
           highlights: items,
           initialIndex: index,
           mediaRepository: widget.mediaRepository,
@@ -1974,6 +1976,19 @@ class _ParticipantProfileScreenState extends State<_ParticipantProfileScreen> {
               ),
             ),
           ),
+          // Os favoritos só aparecem para a própria pessoa e os amigos dela (R19).
+          if (widget.isFriend || widget.isSelf) ...[
+            const SizedBox(height: ClippoSpace.section),
+            ClippoFavoritesSection(
+              ownerId: participant.uid,
+              emptyText: widget.isSelf
+                  ? 'Favorite um lance no Player para ele aparecer aqui.'
+                  : '${participant.firstName} ainda não favoritou nenhum lance.',
+              onOpen: (post) => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => PlayerScreen.favorite(post)),
+              ),
+            ),
+          ],
         ],
       ),
     );

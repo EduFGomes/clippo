@@ -131,6 +131,7 @@ Usuário ──< Participante >── Sessão ──< Highlight
 - Editar nome e nome de usuário. **Foto do perfil**: adicionar, trocar (galeria ou câmera) e remover, desde 12/11/2026. Notificações ficam para o futuro e não aparecem na tela.
 - Sair da conta (com confirmação).
 - Excluir a conta (LGPD): some o perfil, as amizades e as sessões que a pessoa gravou; das sessões dos outros, ela sai.
+- **Favoritos** (R18–R22): os lances que a pessoa favoritou, em lista de cards. O perfil de um amigo (aberto em Amigos ou na Sessão) mostra os favoritos dele.
 
 ---
 
@@ -156,10 +157,19 @@ Regras marcadas com 🟡 são **propostas ainda não confirmadas pelo grupo** �
 |---|---|
 | R9 | Quem inicia a gravação é o **dono** da sessão e também é participante. |
 | R10 | Os participantes são escolhidos **entre os amigos** do dono. |
-| R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. |
+| R11 | **Todo participante vê todos os highlights** da sessão. Quem não é participante não vê nada da sessão. A única exceção é o lance que um participante **favoritou** (R18): os amigos dele veem só esse lance, no perfil dele, sem a sessão. |
 | R12 | Só o dono edita nome/local/data e horário da sessão, renomeia os lances, adiciona ou remove participantes depois da gravação e exclui a sessão (para todos, com os lances e os vídeos). |
 | R13 | Um highlight salvo **nunca pode se perder** por falta de internet na quadra: ele fica guardado na pasta interna do app. Ao **"Salvar sessão"**, se houver internet, os vídeos sobem para o banco (a interface mostra que está "enviando") e, quando o envio termina, saem da pasta do app para poupar espaço. Sem internet, os vídeos continuam no app, o usuário pode baixá-los para a galeria, e o app tenta enviar de novo sozinho quando a internet voltar (mesmo com o app fechado). Um vídeo só sai do aparelho depois que o envio for confirmado e o highlight estiver marcado como enviado no banco. |
 | R14 | A sessão pode ser abandonada de duas formas: **"Cancelar gravação"** (durante) e **"Descartar"** (na confirmação). As duas **perguntam antes** e, confirmadas, jogam fora todos os highlights da sessão. **Não existe sessão padrão** (grupo, 12/11/2026). Sessão sem nenhum highlight pode ser salva. |
+
+### Favoritos (aprovado em 16/11/2026)
+| # | Regra |
+|---|---|
+| R18 | **Qualquer participante favorita** um lance que já subiu, pelo Player. O lance favoritado aparece no **perfil** de quem favoritou, como uma publicação. |
+| R19 | Só os **amigos** de quem favoritou (e a própria pessoa) veem o favorito. Eles **assistem, curtem e comentam**, mesmo sem ter participado da sessão. |
+| R20 | O favorito mostra **o vídeo, o título do lance, a data e quem favoritou**. O nome da sessão, o local e os participantes **não** aparecem. |
+| R21 | O favorito **some**, com as curtidas e os comentários, quando: quem favoritou desfavorita (o app pergunta antes se houver comentários); o dono apaga o lance ou a sessão; ou quem favoritou sai ou é tirado da sessão. Excluir a conta apaga os favoritos, as curtidas e os comentários da pessoa. |
+| R22 | O comentário tem de 1 a 300 caracteres e até 6 linhas. O autor apaga o próprio comentário; quem favoritou apaga qualquer comentário do seu favorito. |
 
 ### Amigos
 | # | Regra |
@@ -277,11 +287,26 @@ O app abre aqui quando ninguém está logado. Quem está logado sem perfil cai d
 
 ### 4.4 Player
 
-🟡 *Ainda não desenhado.* Diretrizes:
-- Vídeo em tela cheia sobre fundo preto.
-- Controles mínimos: play/pause, fechar, compartilhar.
-- Título do lance e nome da sessão em texto pequeno, sem cobrir o vídeo.
-- Deslizar para o próximo/anterior highlight da mesma sessão. O Player **não** passa sozinho para o próximo lance (grupo, 12/11/2026).
+Redesenhado em 16/11/2026 no padrão dos players de vídeo conhecidos e revisado com o Gabriel. Como a Gravação, ignora o tema claro/escuro (fundo preto, cores `capture*`).
+
+**Vídeo:** ocupa a tela inteira sobre o preto, sem cortar (faixas pretas quando a proporção não bate). O Player fica **em pé**, como o resto do app; ele só deita na tela cheia.
+
+**Controles por cima do vídeo**, com uma sombra em cima e embaixo para ficarem legíveis:
+- **Topo:** ✕ fechar · nome da sessão e "1 de 6" · **baixar** e **compartilhar**, só com ícone, no mesmo estilo do ✕. Enquanto baixa, um anel em volta do ícone mostra o progresso.
+- **Meio:** **voltar 5 s** · play/pause · **avançar 5 s**. Os botões de 5 s não passam do começo nem do fim e só aparecem com o vídeo carregado.
+- **Embaixo:** título do lance, linha de tempo ("00:04:15 · 30s" ou "enviando…"), barra de progresso (tocar ou arrastar pula; o trecho já baixado aparece atrás). À direita do título, logo acima do fim da barra, fica uma coluna de botões com o mesmo espaço entre eles: curtir e comentários (no favorito aberto do perfil) e **tela cheia** (só com vídeo deitado; em pé, o vídeo já ocupa a tela).
+- Com o vídeo tocando, os controles **somem sozinhos** depois de 3,2 s (`playerControls`). Tocar em qualquer ponto do vídeo mostra ou esconde. Pausado, carregando, com erro ou com leitor de tela ligado, ficam à vista.
+
+**Gestos:**
+- **Deslizar** para o lance anterior/próximo da mesma sessão (não há setas). O Player **não** passa sozinho para o próximo lance (grupo, 12/11/2026).
+- **Segurar o terço direito** da tela toca em **2x** enquanto o dedo estiver lá, com o aviso "2x" no topo (como no Instagram). Soltou, volta a 1x.
+- **Pinça** dá zoom de até 4x. Com zoom, arrastar move o vídeo em vez de trocar de lance. Trocar de lance volta ao normal.
+
+**Tela cheia** (só para vídeo deitado, 17/11/2026): deita o celular e esconde as barras do Android. Deitado, os controles ficam na largura do vídeo (não na faixa preta), o play e os 5 s no meio da tela e os botões da direita lado a lado. O "Voltar" do Android sai da tela cheia antes de fechar o Player, e fechar o Player devolve o app para em pé.
+
+**Rotação no app:** só a Gravação gira com o celular; o resto do app fica sempre em pé (`ClippoOrientation`, 16/11/2026).
+
+Os controles e o título cobrem o vídeo enquanto estão à vista. Isso substitui a diretriz antiga de "título sem cobrir o vídeo", porque eles somem sozinhos.
 
 ### 4.5 Gravação — 4 estados
 
@@ -335,6 +360,7 @@ A gravação ignora o tema claro/escuro.
 - **Avatar grande**, nome e @usuário (trocar a foto entra em breve).
 - **Três estatísticas**: sessões · highlights · amigos.
 - Linhas: **Nome ›**, **Usuário ›** (notificações ficam para o futuro).
+- **Favoritos**: lista de cards com a miniatura de cada lance favoritado, o título e as contagens de curtidas e comentários. Tocar abre o Player do favorito: a estrela (desfavoritar, só no próprio) fica no topo; curtir e, logo abaixo, os comentários ficam no canto direito, acima da barra, na mesma coluna da tela cheia. Vazio: "Favorite um lance no Player para ele aparecer aqui".
 - **"Sair da conta"** (pergunta antes) e **"Excluir conta"** (pergunta antes, com o que some), no fim.
 - Navegação com **Perfil** ativo.
 
@@ -356,7 +382,7 @@ Início → Sessão → Gravação (A–D) são o núcleo da proposta e precisam
 | Recuperação de senha | "Esqueci a senha" manda o e-mail padrão do Firebase (10/11/2026). Falta decidir o texto do e-mail e se a nova senha é criada dentro do app. |
 | Tela de permissões | ~~Quando pedir?~~ Câmera e microfone ao entrar na Gravação; localização só no "Usar localização atual" (12/11/2026). |
 | Privacidade | Escrever a política de privacidade completa (o cadastro mostra um resumo provisório). |
-| Favoritos e retenção | Vídeos apagados depois de 60 dias, menos os favoritos (12/11/2026). Favoritar ainda não existe: precisa vir antes da limpeza. |
+| Favoritos e retenção | Vídeos apagados depois de 60 dias, menos os favoritos (12/11/2026). Favoritar existe desde 16/11/2026 (R18–R22); falta a limpeza, que deve pular os lances com `favoriteCount > 0`. |
 | Telas internas | Início, Sessão, Player, Gravação, Amigos e Perfil ainda vão ser redesenhadas na direção C. |
 | Entrega final | ~~04/12/2026?~~ Nova data: 25/11/2026 (12/11/2026). |
 

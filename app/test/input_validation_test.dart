@@ -348,4 +348,38 @@ void main() {
       expect(validateHighlightDuration(highlightSecondsMax), isNull);
     });
   });
+
+  // Os mesmos casos de backend/functions/test/favorites.validation.test.ts (R22).
+  group('comentário de favorito', () {
+    test('tira os espaços das pontas e troca a quebra de linha do Windows', () {
+      expect(normalizeComment('  Que golaço!  '), 'Que golaço!');
+      expect(normalizeComment('linha 1\r\nlinha 2'), 'linha 1\nlinha 2');
+      expect(validateComment('  Que golaço!  '), isNull);
+    });
+
+    test('vazio ou só espaços pede para escrever', () {
+      for (final raw in ['', '   ', '\n\n', null]) {
+        expect(validateComment(raw), 'Escreva um comentário.');
+      }
+    });
+
+    test('até 300 caracteres', () {
+      expect(validateComment('a' * commentMax), isNull);
+      expect(validateComment('a' * (commentMax + 1)), 'O comentário pode ter até 300 caracteres.');
+    });
+
+    test('até 6 linhas', () {
+      final six = List.generate(commentMaxLines, (i) => 'linha $i').join('\n');
+      expect(validateComment(six), isNull);
+      expect(validateComment('$six\nmais uma'), 'O comentário pode ter até 6 linhas.');
+    });
+
+    test('ids do favorito e do comentário no formato do servidor', () {
+      expect(validatePostId('alice__quinta01__lance01'), isNull);
+      expect(validatePostId('curto'), 'Esse favorito não foi encontrado. Tente de novo.');
+      expect(validatePostId('a/b/c__d__eeeeee'), isNotNull);
+      expect(validateCommentId('c-12345'), isNull);
+      expect(validateCommentId('com espaço'), 'Esse comentário não foi encontrado. Tente de novo.');
+    });
+  });
 }

@@ -117,6 +117,22 @@ String clippoSharedSessionsCount(int count) {
   return count == 1 ? '1 sessão juntos' : '$count sessões juntos';
 }
 
+/// "3 curtidas", "1 curtida", "nenhuma curtida".
+String clippoLikeCount(int count) {
+  if (count <= 0) return 'nenhuma curtida';
+  return count == 1 ? '1 curtida' : '$count curtidas';
+}
+
+/// "2 comentários", "1 comentário", "nenhum comentário".
+String clippoCommentCount(int count) {
+  if (count <= 0) return 'nenhum comentário';
+  return count == 1 ? '1 comentário' : '$count comentários';
+}
+
+/// A linha de um favorito (R20): "11 set 2026 · 3 curtidas · 1 comentário". Sem a sessão.
+String clippoFavoriteLine(DateTime playedAt, {required int likes, required int comments}) =>
+    clippoDotList([clippoDate(playedAt), clippoLikeCount(likes), clippoCommentCount(comments)]);
+
 /// "Bom dia" até 11:59, "Boa tarde" até 17:59, "Boa noite" a partir das 18:00.
 String clippoGreeting(DateTime now) {
   if (now.hour < 12) return 'Bom dia';

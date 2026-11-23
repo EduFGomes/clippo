@@ -2,7 +2,7 @@
 ///
 /// Regra do projeto (AGENTS.md): nada vai para o Auth, o Firestore, o Storage ou uma
 /// Cloud Function sem ser validado no app E no servidor. Estas são as regras do app; as do
-/// servidor estão em backend/functions/src/{users,sessions}/validation.ts, com as MESMAS mensagens.
+/// servidor estão em backend/functions/src/{users,sessions,favorites}/validation.ts, com as MESMAS mensagens.
 /// Mudou uma? Mude a outra no mesmo PR.
 ///
 /// Cada `validate…` devolve a mensagem de erro pronta para a tela, ou null se está tudo certo.
@@ -342,3 +342,36 @@ final RegExp _uidPattern = RegExp(r'^[A-Za-z0-9]{1,128}$');
 
 /// Uid do Firebase Auth (não é digitado, mas o servidor confere e o app também).
 String? validateUid(String raw) => _uidPattern.hasMatch(raw) ? null : 'Não encontramos essa pessoa.';
+
+// ---------------------------------------------------------------------------
+// Favoritos (R18–R22). Espelha backend/functions/src/favorites/validation.ts: mesmas regras e
+// mensagens. Mudou uma? Mude a outra no mesmo PR.
+// ---------------------------------------------------------------------------
+
+/// Até quantos caracteres um comentário pode ter (R22). Mesmo `COMMENT_MAX` do servidor.
+const int commentMax = 300;
+
+/// Até quantas linhas um comentário pode ter (R22). Mesmo `COMMENT_MAX_LINES` do servidor.
+const int commentMaxLines = 6;
+
+/// O comentário como vai para o servidor: sem espaços nas pontas e com "\n" no lugar de "\r\n".
+String normalizeComment(String? raw) => (raw ?? '').replaceAll(RegExp(r'\r\n?'), '\n').trim();
+
+/// Texto do comentário: de 1 a [commentMax] caracteres e até [commentMaxLines] linhas.
+String? validateComment(String? raw) {
+  final text = normalizeComment(raw);
+  if (text.isEmpty) return 'Escreva um comentário.';
+  if (text.length > commentMax) return 'O comentário pode ter até $commentMax caracteres.';
+  if (text.split('\n').length > commentMaxLines) return 'O comentário pode ter até $commentMaxLines linhas.';
+  return null;
+}
+
+final RegExp _postIdPattern = RegExp(r'^[A-Za-z0-9_-]{14,200}$');
+
+/// Id do favorito (`{uid}__{sessionId}__{highlightId}`), como o `normalizePostId` do servidor.
+String? validatePostId(String raw) =>
+    _postIdPattern.hasMatch(raw) ? null : 'Esse favorito não foi encontrado. Tente de novo.';
+
+/// Id do comentário, gerado pelo app (como o `normalizeCommentId` do servidor).
+String? validateCommentId(String raw) =>
+    _entityIdPattern.hasMatch(raw) ? null : 'Esse comentário não foi encontrado. Tente de novo.';

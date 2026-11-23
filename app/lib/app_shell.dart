@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/favorite.dart';
 import 'package:clippo/core/data/friends_repository.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
@@ -12,6 +13,7 @@ import 'package:clippo/core/widgets/clippo_radial_nav.dart';
 import 'package:clippo/features/capture/screens/capture_screen.dart';
 import 'package:clippo/features/friends/screens/friends_screen.dart';
 import 'package:clippo/features/home/screens/home_screen.dart';
+import 'package:clippo/features/home/screens/player_screen.dart';
 import 'package:clippo/features/home/screens/session_screen.dart';
 import 'package:clippo/features/profile/screens/profile_screen.dart';
 
@@ -120,6 +122,13 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  /// Um favorito aberto do Perfil ou do perfil de um amigo (R18–R20), no Player da Início.
+  void _openFavorite(FavoritePost post) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => PlayerScreen.favorite(post)),
+    );
+  }
+
   void _openSessionFromFriends(Session session) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => SessionScreen(session: session)),
@@ -164,9 +173,10 @@ class _AppShellState extends State<AppShell> {
                 HomeScreen(
                   sessions: isUserSignedIn ? null : _homeSessionsStream,
                   onRecord: _openCapture,
+                  onOpenProfile: () => setState(() => _current = _profile),
                 ),
-                FriendsScreen(onOpenSession: _openSessionFromFriends),
-                const ProfileScreen(),
+                FriendsScreen(onOpenSession: _openSessionFromFriends, onOpenFavorite: _openFavorite),
+                ProfileScreen(onOpenFavorite: _openFavorite),
               ],
             ),
           ),

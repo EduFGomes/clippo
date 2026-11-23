@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:clippo/app.dart';
+import 'package:clippo/core/device/screen_orientation.dart';
 import 'package:clippo/core/firebase/firebase_setup.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _registerFontLicenses();
+  // Em pé em todo o app; só a Gravação e a tela cheia do Player giram.
+  await ClippoOrientation.portrait();
   await setupFirebase();
   runApp(const ClippoApp());
 }

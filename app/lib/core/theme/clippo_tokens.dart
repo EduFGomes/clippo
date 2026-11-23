@@ -374,6 +374,9 @@ class ClippoMotion {
   static const Duration savedBanner = Duration(milliseconds: 2600); // aviso "Highlight salvo"
   static const Duration stopControls = Duration(milliseconds: 3200); // controles após um toque
 
+  // Player (docs/produto.md › 4.4).
+  static const Duration playerControls = Duration(milliseconds: 3200); // controles somem com o vídeo tocando
+
   static const Duration wheelOpen = Duration(milliseconds: 360); // roda abrindo
   static const Duration wheelClose = Duration(milliseconds: 180); // roda fechando
   static const Duration navPreview = Duration(milliseconds: 90); // balão acima da seção surgindo

@@ -176,6 +176,19 @@ void main() {
     expect(gravou, 1);
   });
 
+  testWidgets('tocar na foto do topo chama quem liga o Perfil', (tester) async {
+    var abriu = 0;
+    await tester.pumpWidget(_app(HomeScreen(
+      sessions: Stream.value(_fromServer(const <Session>[])),
+      profile: Stream<UserProfile?>.value(null),
+      onOpenProfile: () => abriu++,
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Abrir seu perfil'));
+    expect(abriu, 1);
+  });
+
   testWidgets('erro de rede vira frase amigável, não código técnico', (tester) async {
     await tester.pumpWidget(_app(_home(Stream<SessionsSnapshot>.error(FirebaseException(plugin: 'cloud_firestore', code: 'unavailable')))));
     await tester.pumpAndSettle();

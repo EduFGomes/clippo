@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:clippo/core/camera/clippo_camera.dart';
 import 'package:clippo/core/data/friendship.dart';
+import 'package:clippo/core/device/screen_orientation.dart';
 import 'package:clippo/core/data/session.dart';
 import 'package:clippo/core/data/sessions_repository.dart';
 import 'package:clippo/core/format/clippo_format.dart';
@@ -229,6 +230,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   @override
   void initState() {
     super.initState();
+    // Só aqui o app gira com o celular: dá para gravar deitado. Ao sair, volta a ficar em pé.
+    unawaited(ClippoOrientation.free());
     _listenToFriends();
     final now = DateTime.now();
     _nameController = TextEditingController(text: _defaultSessionName(now));
@@ -273,6 +276,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   void dispose() {
+    unawaited(ClippoOrientation.portrait());
     _lifecycle.dispose();
     _controlsTimer?.cancel();
     _toastTimer?.cancel();

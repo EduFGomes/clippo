@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
 
@@ -92,12 +94,62 @@ class _BufferingController extends VideoPlayerController {
   Future<void> seekTo(Duration position) async {}
 }
 
+/// Player aberto e tocando (sem o plugin de vídeo): play e pause só trocam o estado.
+class _PlayingController extends VideoPlayerController {
+  _PlayingController({this.size = const Size(720, 1280)})
+      : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
+
+  /// Em pé por padrão; `Size(1280, 720)` para um vídeo deitado.
+  final Size size;
+
+  @override
+  Future<void> initialize() async {
+    value = VideoPlayerValue(
+      duration: const Duration(seconds: 30),
+      size: size,
+      isInitialized: true,
+    );
+  }
+
+  final List<Duration> seeks = [];
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    seeks.add(position);
+    value = value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async => value = value.copyWith(playbackSpeed: speed);
+}
+
 /// Player que nunca termina de abrir (sem o plugin de vídeo, nos testes).
 class _HangingController extends VideoPlayerController {
   _HangingController() : super.networkUrl(Uri.parse('https://exemplo.invalid/video.mp4'));
 
   @override
   Future<void> initialize() => Completer<void>().future;
+}
+
+/// O que a tela pediu ao Android sobre posição e barras (SystemChrome), na ordem.
+List<String> _recordSystemChrome(WidgetTester tester) {
+  final calls = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+    if (call.method == 'SystemChrome.setPreferredOrientations') {
+      calls.add('orientations ${(call.arguments as List).join(',')}');
+    } else if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+      calls.add('ui ${call.arguments}');
+    }
+    return null;
+  });
+  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+  return calls;
 }
 
 void main() {
@@ -111,7 +163,7 @@ void main() {
     )));
     await tester.pump();
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
 
     tester.view.physicalSize = const Size(915, 412);
     await tester.pump();
@@ -119,14 +171,219 @@ void main() {
     expect(find.text('2 de 2'), findsOneWidget);
     expect(find.bySemanticsLabel('Fechar'), findsOneWidget);
     expect(find.text('Carregando o lance…'), findsOneWidget);
-    // Só o essencial por cima do vídeo.
-    expect(find.text('Baixar'), findsNothing);
+    // Deitado, os mesmos controles por cima do vídeo.
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
 
     tester.view.physicalSize = const Size(412, 915);
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('2 de 2'), findsOneWidget);
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
+  });
+
+  group('controles por cima do vídeo', () {
+    double controlsOpacity(WidgetTester tester) => tester
+        .widget<AnimatedOpacity>(
+          find.ancestor(of: find.bySemanticsLabel('Fechar'), matching: find.byType(AnimatedOpacity)).first,
+        )
+        .opacity;
+
+    Future<_PlayingController> openPlaying(WidgetTester tester, {Size size = const Size(720, 1280)}) async {
+      _phone(tester);
+      final controller = _PlayingController(size: size);
+      await tester.pumpWidget(_app(PlayerScreen(
+        sessionName: 'Pelada de quinta',
+        highlights: _highlights(),
+        streamVideo: (path) async => HighlightVideoStream(url: Uri.parse('https://exemplo.invalid/v.mp4'), headers: const {}),
+        streamControllerFactory: (s) => controller,
+      )));
+      await tester.pump();
+      await tester.pump();
+      return controller;
+    }
+
+    testWidgets('tela cheia deita o celular e esconde as barras; o Voltar sai dela', (tester) async {
+      final calls = _recordSystemChrome(tester);
+      // Vídeo deitado.
+      _phone(tester);
+      final controller = _PlayingController(size: const Size(1280, 720));
+      await tester.pumpWidget(_app(PlayerScreen(
+        highlights: _highlights(),
+        streamVideo: (path) async => HighlightVideoStream(url: Uri.parse('https://exemplo.invalid/v.mp4'), headers: const {}),
+        streamControllerFactory: (s) => controller,
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.bySemanticsLabel('Tela cheia'));
+      await tester.pump();
+      expect(calls, ['ui SystemUiMode.immersiveSticky', 'orientations DeviceOrientation.landscapeLeft,DeviceOrientation.landscapeRight']);
+      expect(find.bySemanticsLabel('Sair da tela cheia'), findsOneWidget);
+
+      calls.clear();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(calls, ['ui SystemUiMode.edgeToEdge', 'orientations DeviceOrientation.portraitUp']);
+      // Saiu da tela cheia, mas continua no Player.
+      expect(find.bySemanticsLabel('Tela cheia'), findsOneWidget);
+    });
+
+    testWidgets('o botão de tela cheia fica logo acima do fim da barra', (tester) async {
+      await openPlaying(tester, size: const Size(1280, 720));
+      final button = tester.getRect(find.bySemanticsLabel('Tela cheia'));
+      final total = tester.getRect(find.text('0:30'));
+      expect(button.bottom, lessThanOrEqualTo(total.top));
+      expect(button.right, closeTo(total.right, 4));
+    });
+
+    testWidgets('vídeo em pé já ocupa a tela: não tem botão de tela cheia', (tester) async {
+      await openPlaying(tester);
+      expect(find.bySemanticsLabel('Tela cheia'), findsNothing);
+    });
+
+    testWidgets('fechar o Player em tela cheia devolve o app para em pé', (tester) async {
+      final calls = _recordSystemChrome(tester);
+      await openPlaying(tester, size: const Size(1280, 720));
+      await tester.tap(find.bySemanticsLabel('Tela cheia'));
+      await tester.pump();
+      calls.clear();
+      await tester.pumpWidget(const SizedBox());
+      expect(calls, contains('orientations DeviceOrientation.portraitUp'));
+      expect(calls, contains('ui SystemUiMode.edgeToEdge'));
+    });
+
+    testWidgets('voltar 5 segundos, sem passar do começo', (tester) async {
+      final controller = await openPlaying(tester);
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 12));
+      await tester.tap(find.bySemanticsLabel('Voltar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 7));
+
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 3));
+      await tester.tap(find.bySemanticsLabel('Voltar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, Duration.zero);
+    });
+
+    testWidgets('os botões de 5 s ficam dos dois lados do play', (tester) async {
+      await openPlaying(tester);
+      final play = tester.getCenter(find.bySemanticsLabel('Pausar'));
+      final back = tester.getCenter(find.bySemanticsLabel('Voltar 5 segundos'));
+      final forward = tester.getCenter(find.bySemanticsLabel('Avançar 5 segundos'));
+      expect(back.dx, lessThan(play.dx));
+      expect(forward.dx, greaterThan(play.dx));
+      expect(back.dy, closeTo(play.dy, 1));
+      expect(forward.dy, closeTo(play.dy, 1));
+    });
+
+    testWidgets('dois dedos na tela (pinça) não trocam de lance', (tester) async {
+      await openPlaying(tester);
+      final first = await tester.startGesture(const Offset(150, 457), pointer: 1);
+      final second = await tester.startGesture(const Offset(260, 457), pointer: 2);
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+
+      await first.moveBy(const Offset(-80, 0));
+      await second.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await first.up();
+      await second.up();
+      await tester.pump(const Duration(milliseconds: 500));
+      // Abrir os dedos deu zoom: continua no mesmo lance e, com zoom, deslizar não troca.
+      expect(find.text('1 de 2'), findsOneWidget);
+      final zoom = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer)).transformationController!;
+      expect(zoom.value.getMaxScaleOnAxis(), greaterThan(1));
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+    });
+
+    testWidgets('avançar 5 segundos, sem passar do fim', (tester) async {
+      final controller = await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Avançar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 5));
+
+      controller.value = controller.value.copyWith(position: const Duration(seconds: 28));
+      await tester.tap(find.bySemanticsLabel('Avançar 5 segundos'));
+      await tester.pump();
+      expect(controller.seeks.last, const Duration(seconds: 30));
+    });
+
+    testWidgets('segurar o lado direito toca em 2x até soltar', (tester) async {
+      final controller = await openPlaying(tester);
+      final gesture = await tester.startGesture(const Offset(380, 620));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      expect(controller.value.playbackSpeed, 2);
+      expect(find.bySemanticsLabel('Velocidade 2x'), findsOneWidget);
+
+      await gesture.up();
+      await tester.pump();
+      expect(controller.value.playbackSpeed, 1);
+      expect(find.bySemanticsLabel('Velocidade 2x'), findsNothing);
+    });
+
+    testWidgets('segurar fora do lado direito não muda a velocidade', (tester) async {
+      final controller = await openPlaying(tester);
+      final gesture = await tester.startGesture(const Offset(60, 620));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.up();
+      await tester.pump();
+      expect(controller.value.playbackSpeed, 1);
+    });
+
+    testWidgets('pinça no vídeo dá zoom e, com zoom, arrastar não troca de lance', (tester) async {
+      await openPlaying(tester);
+      final viewer = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+      expect(viewer.maxScale, greaterThan(1));
+      viewer.transformationController!.value = Matrix4.diagonal3Values(2, 2, 1);
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isA<NeverScrollableScrollPhysics>());
+
+      viewer.transformationController!.value = Matrix4.identity();
+      await tester.pump();
+      expect(tester.widget<PageView>(find.byType(PageView)).physics, isNull);
+    });
+
+    testWidgets('somem sozinhos com o vídeo tocando e voltam ao tocar no vídeo', (tester) async {
+      await openPlaying(tester);
+      expect(controlsOpacity(tester), 1);
+      expect(find.bySemanticsLabel('Pausar'), findsOneWidget);
+
+      await tester.pump(ClippoMotion.playerControls);
+      await tester.pump(ClippoMotion.enable);
+      expect(controlsOpacity(tester), 0);
+
+      await tester.tapAt(const Offset(206, 457));
+      await tester.pump();
+      expect(controlsOpacity(tester), 1);
+
+      // Tocar de novo esconde, como nos players de vídeo conhecidos.
+      await tester.tapAt(const Offset(206, 300));
+      await tester.pump();
+      expect(controlsOpacity(tester), 0);
+    });
+
+    testWidgets('pausado, os controles ficam à vista', (tester) async {
+      await openPlaying(tester);
+      await tester.tap(find.bySemanticsLabel('Pausar'));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Reproduzir'), findsOneWidget);
+
+      await tester.pump(ClippoMotion.playerControls * 2);
+      expect(controlsOpacity(tester), 1);
+    });
+
+    testWidgets('baixar e compartilhar são só ícones, sem texto', (tester) async {
+      await openPlaying(tester);
+      expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
+      expect(find.bySemanticsLabel('Compartilhar'), findsOneWidget);
+      expect(find.text('Baixar'), findsNothing);
+      expect(find.text('Compartilhar'), findsNothing);
+    });
+
+    testWidgets('o vídeo ocupa a largura toda da tela', (tester) async {
+      await openPlaying(tester);
+      expect(tester.getSize(find.byType(VideoPlayer)).width, 412);
+    });
   });
 
   testWidgets('mostra a sessão, o lance e carrega o vídeo pelo repositório', (tester) async {
@@ -178,8 +435,8 @@ void main() {
     expect(find.text('Enviando o lance…'), findsOneWidget);
     expect(find.text('00:04:15 · enviando…'), findsOneWidget);
 
-    await tester.tap(find.text('Baixar'));
-    await tester.tap(find.text('Compartilhar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Compartilhar'));
     await tester.pump();
 
     expect(baixou, 0);
@@ -306,7 +563,7 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Baixar'));
+      await tester.tap(find.bySemanticsLabel('Baixar'));
       await tester.pump();
       await tester.pump();
 
@@ -343,7 +600,7 @@ void main() {
       await tester.pump();
       expect(pedidos, [_videoH1]);
 
-      await tester.tap(find.text('Baixar'));
+      await tester.tap(find.bySemanticsLabel('Baixar'));
       await tester.pump();
       await tester.pump();
       expect(salvos, [_videoH1]);
@@ -386,7 +643,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
     await tester.pump();
     await tester.pump();
 
@@ -411,22 +668,22 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Baixar'));
+    await tester.tap(find.bySemanticsLabel('Baixar'));
     await tester.pump();
-    expect(find.text('Baixando…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixando…'), findsOneWidget);
 
     report(0.42);
     await tester.pump();
-    expect(find.text('Baixando 42 %'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixando 42 %'), findsOneWidget);
 
     report(1);
     await tester.pump();
-    expect(find.text('Salvando na galeria…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Salvando na galeria…'), findsOneWidget);
 
     done.complete();
     await tester.pump();
     await tester.pump();
-    expect(find.text('Baixar'), findsOneWidget);
+    expect(find.bySemanticsLabel('Baixar'), findsOneWidget);
     expect(find.text('Lance salvo na galeria.'), findsOneWidget);
   });
 
@@ -452,7 +709,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.text('Compartilhar'));
+    await tester.tap(find.bySemanticsLabel('Compartilhar'));
     await tester.pump();
     await tester.pump();
 
@@ -460,7 +717,7 @@ void main() {
     expect(lance?.id, 'h1');
   });
 
-  testWidgets('navega para o próximo e o anterior lance da sessão', (tester) async {
+  testWidgets('deslizar leva ao próximo e ao anterior lance da sessão (sem setas)', (tester) async {
     _phone(tester);
     final pedidos = <String>[];
 
@@ -475,14 +732,15 @@ void main() {
     await tester.pump();
 
     // O indicador de carregando gira para sempre: avança o tempo em vez de esperar parar.
-    await tester.tap(find.bySemanticsLabel('Próximo lance'));
+    expect(find.bySemanticsLabel('Próximo lance'), findsNothing);
+    await tester.drag(find.byType(PageView), const Offset(-300, 0));
     await _settlePage(tester);
 
     expect(find.text('2 de 2'), findsOneWidget);
     expect(find.text('Ponto antológico'), findsOneWidget);
     expect(find.text('00:12:40 · 30s'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('Lance anterior'));
+    await tester.drag(find.byType(PageView), const Offset(300, 0));
     await _settlePage(tester);
 
     expect(find.text('1 de 2'), findsOneWidget);

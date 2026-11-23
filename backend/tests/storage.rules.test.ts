@@ -174,6 +174,44 @@ describe("foto do perfil", () => {
   });
 });
 
+describe("cópia do vídeo de um favorito (D19)", () => {
+  const POST_VIDEO = "posts/alice__quinta1__lance02/video.mp4";
+  const POST_THUMB = "posts/alice__quinta1__lance02/thumb.jpg";
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "posts/alice__quinta1__lance02"), { ownerId: "alice" });
+      // dave é amigo da alice e não jogou a sessão; carol só pediu amizade.
+      await setDoc(doc(db, "friendships/alice_dave"), { uids: ["alice", "dave"], status: "accepted" });
+      await setDoc(doc(db, "friendships/alice_carol"), { uids: ["alice", "carol"], status: "pending" });
+      await uploadBytes(ref(ctx.storage(), POST_VIDEO), bytes(10), mp4);
+      await uploadBytes(ref(ctx.storage(), POST_THUMB), bytes(10), jpeg);
+    });
+  });
+
+  it("quem favoritou e um amigo que não jogou a sessão assistem", async () => {
+    await assertSucceeds(getBytes(ref(env.authenticatedContext("alice").storage(), POST_VIDEO)));
+    await assertSucceeds(getBytes(ref(env.authenticatedContext("dave").storage(), POST_VIDEO)));
+    await assertSucceeds(getBytes(ref(env.authenticatedContext("dave").storage(), POST_THUMB)));
+  });
+
+  it("o amigo do favorito continua sem ver o vídeo original da sessão (R11)", async () => {
+    await assertFails(getBytes(ref(env.authenticatedContext("dave").storage(), UPLOADED_VIDEO)));
+  });
+
+  it("quem não é amigo (pedido pendente) e quem não entrou não assistem", async () => {
+    await assertFails(getBytes(ref(env.authenticatedContext("carol").storage(), POST_VIDEO)));
+    await assertFails(getBytes(ref(env.unauthenticatedContext().storage(), POST_VIDEO)));
+  });
+
+  it("ninguém envia nem apaga a cópia pelo app", async () => {
+    const storage = env.authenticatedContext("alice").storage();
+    await assertFails(uploadBytes(ref(storage, "posts/alice__quinta1__lance03/video.mp4"), bytes(10), mp4));
+    await assertFails(deleteObject(ref(storage, POST_VIDEO)));
+  });
+});
+
 describe("sobrescrever, apagar e outros caminhos", () => {
   it("nem quem gravou apaga o vídeo pelo app", async () => {
     const storage = env.authenticatedContext("alice").storage();

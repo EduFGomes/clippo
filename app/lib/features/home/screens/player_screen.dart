@@ -6,13 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import 'package:clippo/core/data/auth_repository.dart';
+import 'package:clippo/core/data/favorite.dart';
+import 'package:clippo/core/data/favorites_repository.dart';
 import 'package:clippo/core/data/highlight.dart';
 import 'package:clippo/core/data/highlight_media_repository.dart';
+import 'package:clippo/core/device/screen_orientation.dart';
 import 'package:clippo/core/format/clippo_format.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/widgets/clippo_capture_chip.dart';
 import 'package:clippo/core/widgets/clippo_pressable.dart';
 import 'package:clippo/core/widgets/clippo_svg_icon.dart';
+import 'package:clippo/features/home/widgets/favorite_comments_sheet.dart';
 import 'package:clippo/features/home/widgets/home_feedback.dart';
 
 /// Baixa o vídeo do lance para um arquivo local (D17: nunca por `getDownloadURL()`).
@@ -30,7 +35,10 @@ typedef HighlightStreamControllerFactory = VideoPlayerController Function(Highli
 /// Compartilha o arquivo do lance com outro app.
 typedef HighlightVideoSharer = Future<void> Function(File file, Highlight highlight, String sessionName);
 
-/// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4).
+/// Player: o vídeo de um lance em tela cheia sobre o preto (docs/produto.md › 4.4), com os
+/// controles por cima, como nos players de vídeo conhecidos: somem com o vídeo tocando e
+/// voltam ao tocar nele. Fica em pé; o botão de tela cheia deita o celular (vídeo deitado) e
+/// esconde as barras do Android. Botões de voltar e avançar 5 s ao lado do play. Deslizar troca de lance; segurar o lado direito toca em 2x; pinça dá zoom.
 ///
 /// Toca o vídeo da nuvem enquanto ele chega (streaming, sem link público: D17), ou do cache se
 /// já foi baixado; se o streaming falhar, baixa o arquivo inteiro e toca. Baixa para a
@@ -55,7 +63,30 @@ class PlayerScreen extends StatefulWidget {
     this.localFileExists,
     this.streamVideo,
     this.streamControllerFactory,
+    this.sessionId,
+    this.favorite,
+    this.favorites,
+    this.currentUserId,
   });
+
+  /// O Player de um lance favoritado (R18–R20), aberto do perfil de quem favoritou: toca a cópia
+  /// do favorito, mostra a data em vez do momento na sessão e tem curtir e comentar.
+  factory PlayerScreen.favorite(
+    FavoritePost post, {
+    Key? key,
+    FavoritesRepository? favorites,
+    HighlightMediaRepository? mediaRepository,
+    String? currentUserId,
+  }) =>
+      PlayerScreen(
+        key: key,
+        sessionName: 'Favorito de ${post.ownerFirstName}',
+        highlights: [post.toHighlight()],
+        favorite: post,
+        favorites: favorites,
+        mediaRepository: mediaRepository,
+        currentUserId: currentUserId,
+      );
 
   /// Nome da sessão, discreto no topo.
   final String sessionName;
@@ -97,6 +128,18 @@ class PlayerScreen extends StatefulWidget {
   /// Substitui `VideoPlayerController.networkUrl` (testes).
   final HighlightStreamControllerFactory? streamControllerFactory;
 
+  /// A sessão dos lances. Com ela, o participante favorita o lance pelo coração no topo (R18).
+  final String? sessionId;
+
+  /// O favorito que este Player mostra ([PlayerScreen.favorite]). Nulo: lances de uma sessão.
+  final FavoritePost? favorite;
+
+  /// Favoritos, curtidas e comentários. No app, `favoritesRepository` (com alguém logado).
+  final FavoritesRepository? favorites;
+
+  /// Quem está vendo. Nulo = o do Firebase Auth.
+  final String? currentUserId;
+
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
@@ -121,6 +164,262 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Quanto do vídeo já chegou no "Baixar" (0 a 1); nulo enquanto não se sabe.
   double? _downloadProgress;
   bool _sharing = false;
+
+  FavoritesRepository? get _favoritesRepo => widget.favorites ?? (isUserSignedIn ? favoritesRepository : null);
+
+  String? get _viewerId {
+    if (widget.currentUserId != null) return widget.currentUserId;
+    return isUserSignedIn ? authRepository.currentUser?.uid : null;
+  }
+
+  // Lances de uma sessão: o MEU favorito do lance na tela (coração cheio) ou nulo.
+  StreamSubscription<FavoritePost?>? _mineSubscription;
+  FavoritePost? _mine;
+  bool _favoriteBusy = false;
+
+  bool get _canUseFavorites => widget.favorite == null && widget.sessionId != null && _favoritesRepo != null;
+
+  /// Só dá para favoritar o que já subiu: o favorito copia o vídeo da nuvem (D19).
+  bool _canFavorite(Highlight h) =>
+      h.status == HighlightStatus.uploaded && !h.isUploading && (h.videoPath ?? '').isNotEmpty;
+
+  void _watchMine() {
+    _mineSubscription?.cancel();
+    _mineSubscription = null;
+    _mine = null;
+    final repo = _favoritesRepo;
+    final sessionId = widget.sessionId;
+    if (!_canUseFavorites || repo == null || sessionId == null || _items.isEmpty) return;
+    try {
+      _mineSubscription = repo.watchMyFavorite(sessionId: sessionId, highlightId: _current.id).listen(
+        (post) {
+          if (mounted) setState(() => _mine = post);
+        },
+        onError: (Object _) {}, // sem internet: o coração fica vazio até conectar
+      );
+    } on FavoritesFailure {
+      // Sem login: o coração não aparece marcado.
+    }
+  }
+
+  /// O favorito aberto é meu (aberto do meu perfil).
+  bool get _isMyFavorite =>
+      widget.favorite != null && _favoritesRepo != null && widget.favorite!.ownerId == _viewerId;
+
+  /// Desfavorita o favorito aberto (o meu) e fecha o Player: ele sai do perfil (R21).
+  Future<void> _unfavoriteThisPost() async {
+    final repo = _favoritesRepo;
+    final post = _post;
+    if (repo == null || post == null || _favoriteBusy) return;
+    final ok = await confirmHomeAction(
+      context,
+      title: 'Desfavoritar o lance?',
+      message: post.commentCount > 0
+          ? 'Ele sai do seu perfil com ${clippoCommentCount(post.commentCount)} e as curtidas. Não dá para desfazer.'
+          : 'Ele sai do seu perfil, com as curtidas.',
+      confirmLabel: 'Desfavoritar',
+      cancelLabel: 'Manter',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _favoriteBusy = true);
+    try {
+      await repo.unfavorite(sessionId: post.sessionId, highlightId: post.highlightId);
+      if (!mounted) return;
+      showHomeMessage(context, 'Lance tirado dos seus favoritos.');
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _favoriteBusy = false);
+        showHomeMessage(context, FavoritesFailure.from(e).message);
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final repo = _favoritesRepo;
+    final sessionId = widget.sessionId;
+    if (repo == null || sessionId == null || _favoriteBusy || _items.isEmpty) return;
+    final highlight = _current;
+    final mine = _mine;
+    if (mine != null && mine.commentCount > 0) {
+      final ok = await confirmHomeAction(
+        context,
+        title: 'Desfavoritar o lance?',
+        message: 'Ele sai do seu perfil com ${clippoCommentCount(mine.commentCount)} e as curtidas. '
+            'Não dá para desfazer.',
+        confirmLabel: 'Desfavoritar',
+        cancelLabel: 'Manter',
+        destructive: true,
+      );
+      if (!ok || !mounted) return;
+    }
+    setState(() => _favoriteBusy = true);
+    try {
+      if (mine != null) {
+        await repo.unfavorite(sessionId: sessionId, highlightId: highlight.id);
+        if (mounted) {
+          setState(() => _mine = null);
+          showHomeMessage(context, 'Lance tirado dos seus favoritos.');
+        }
+      } else {
+        await repo.favorite(sessionId: sessionId, highlightId: highlight.id);
+        if (mounted) showHomeMessage(context, 'Lance favoritado. Seus amigos veem no seu perfil.');
+      }
+    } catch (e) {
+      if (mounted) showHomeMessage(context, FavoritesFailure.from(e).message);
+    } finally {
+      if (mounted) {
+        setState(() => _favoriteBusy = false);
+        _scheduleHide();
+      }
+    }
+  }
+
+  // Favorito aberto do perfil: as contagens ao vivo e se eu curti.
+  late FavoritePost? _post = widget.favorite;
+  StreamSubscription<FavoritePost?>? _postSubscription;
+  StreamSubscription<bool>? _likedSubscription;
+  bool _liked = false;
+  bool _likeBusy = false;
+
+  void _watchPost() {
+    final post = widget.favorite;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null) return;
+    try {
+      _postSubscription = repo.watchPost(post.id).listen((p) {
+        if (mounted && p != null) setState(() => _post = p);
+      }, onError: (Object _) {});
+      _likedSubscription = repo.watchLiked(post.id).listen((liked) {
+        if (mounted && !_likeBusy) setState(() => _liked = liked);
+      }, onError: (Object _) {});
+    } on FavoritesFailure {
+      // Sem login: mostra o favorito como veio, sem contagens ao vivo.
+    }
+  }
+
+  /// Curtir na hora (o coração enche já) e confirmar no servidor; se falhar, volta como estava.
+  Future<void> _toggleLike() async {
+    final post = _post;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null || _likeBusy) return;
+    final liked = !_liked;
+    final before = post;
+    setState(() {
+      _likeBusy = true;
+      _liked = liked;
+      _post = post.copyWith(likeCount: (post.likeCount + (liked ? 1 : -1)).clamp(0, 1 << 30));
+    });
+    try {
+      final count = await repo.setLiked(post.id, liked: liked);
+      if (mounted) setState(() => _post = _post?.copyWith(likeCount: count));
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _liked = !liked;
+          _post = before;
+        });
+        showHomeMessage(context, FavoritesFailure.from(e).message);
+      }
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
+    }
+  }
+
+  Future<void> _openComments() async {
+    final post = _post;
+    final repo = _favoritesRepo;
+    if (post == null || repo == null) return;
+    _hideTimer?.cancel();
+    await showFavoriteComments(context, post: post, repository: repo, viewerId: _viewerId);
+    if (mounted) _scheduleHide();
+  }
+
+  /// Baixar e compartilhar: nos lances da sessão, todo participante (R11). No favorito de outra
+  /// pessoa, não: os amigos assistem, curtem e comentam (R19), mas o vídeo fica no perfil dela.
+  bool get _canDownload => widget.favorite == null || widget.favorite!.ownerId == _viewerId;
+
+  /// Tela cheia: sem as barras do Android e, com vídeo deitado, o celular deitado também.
+  /// Fora dela o Player fica em pé, como o resto do app.
+  bool _fullscreen = false;
+
+  Future<void> _setFullscreen(bool on) async {
+    if (on == _fullscreen) return;
+    setState(() => _fullscreen = on);
+    if (on) {
+      final wide = (_controller?.value.aspectRatio ?? 1) > 1;
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      if (wide) await ClippoOrientation.landscape();
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await ClippoOrientation.portrait();
+    }
+  }
+
+  /// Segurando o lado direito da tela: o vídeo toca em [_fastSpeed] enquanto o dedo estiver lá.
+  bool _fast = false;
+  static const double _fastSpeed = 2;
+
+  /// Quanto o "Avançar" pula.
+  static const Duration _skip = Duration(seconds: 5);
+
+  /// Zoom com pinça no vídeo. Com zoom, arrastar move o vídeo em vez de trocar de lance.
+  final TransformationController _zoom = TransformationController();
+  bool _zoomed = false;
+  static const double _maxZoom = 4;
+
+  /// Dedos na tela agora. Com dois ou mais (pinça), deslizar não troca de lance: sem isso o
+  /// PageView pegava o gesto antes do zoom.
+  int _fingers = 0;
+  bool get _pinching => _fingers >= 2;
+
+  void _fingerDown(PointerDownEvent _) {
+    _fingers++;
+    if (_fingers == 2) setState(() {});
+  }
+
+  void _fingerUp(PointerEvent _) {
+    if (_fingers > 0) _fingers--;
+    if (_fingers == 1) setState(() {});
+  }
+
+  void _onZoomChanged() {
+    final zoomed = _zoom.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+  }
+
+  /// Os controles por cima do vídeo (fechar, baixar, play, barra…) estão à vista.
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
+
+  /// Com leitor de tela os controles nunca somem: não haveria como trazê-los de volta.
+  bool get _controlsCanHide => !MediaQuery.accessibleNavigationOf(context);
+
+  /// Com o vídeo tocando, os controles somem depois de [ClippoMotion.playerControls].
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    if (!mounted || !_playing) return;
+    _hideTimer = Timer(ClippoMotion.playerControls, () {
+      if (!mounted || !_playing || !_controlsCanHide || _seekingTo != null || _saving || _sharing) return;
+      setState(() => _controlsVisible = false);
+    });
+  }
+
+  void _revealControls() {
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _scheduleHide();
+  }
+
+  /// Tocar no vídeo: esconde os controles se estão à vista (e o vídeo toca); se não, mostra.
+  void _onVideoTap() {
+    if (_controlsVisible && _playing && _controlsCanHide) {
+      _hideTimer?.cancel();
+      setState(() => _controlsVisible = false);
+    } else {
+      _revealControls();
+    }
+  }
 
   Highlight get _current => _items[_currentIndex];
 
@@ -157,14 +456,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _zoom.addListener(_onZoomChanged);
     if (_items.isNotEmpty) _load();
+    _watchMine();
+    _watchPost();
   }
 
   @override
   void dispose() {
+    if (_fullscreen) {
+      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+      unawaited(ClippoOrientation.portrait());
+    }
+    _hideTimer?.cancel();
+    unawaited(_mineSubscription?.cancel());
+    unawaited(_postSubscription?.cancel());
+    unawaited(_likedSubscription?.cancel());
     _loadToken++;
     _releaseController();
     _pageController.dispose();
+    _zoom.dispose();
     super.dispose();
   }
 
@@ -173,6 +484,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controller = null;
     _file = null;
     _seekingTo = null;
+    _fast = false;
     if (old != null) {
       old.removeListener(_onTick);
       unawaited(old.dispose());
@@ -298,6 +610,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _message = null;
     });
     if (_wantsPlay) await controller.play();
+    _scheduleHide();
   }
 
   void _onTick() {
@@ -308,7 +621,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (target != null && value != null && !value.isBuffering && (value.position - target).abs() < _seekTolerance) {
       _seekingTo = null;
     }
-    setState(() {});
+    setState(() {
+      // O vídeo parou (chegou ao fim, por exemplo): os controles voltam.
+      if (!(value?.isPlaying ?? false)) {
+        _hideTimer?.cancel();
+        _controlsVisible = true;
+      }
+    });
   }
 
   /// Para onde a pessoa pulou na barra, até o vídeo chegar lá (nulo: sem pulo em andamento).
@@ -325,7 +644,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (controller == null || _stage != _Stage.ready) return;
     if (controller.value.isPlaying) {
       _wantsPlay = false;
+      _hideTimer?.cancel();
       await controller.pause();
+      if (mounted) setState(() => _controlsVisible = true);
     } else {
       _wantsPlay = true;
       final value = controller.value;
@@ -333,35 +654,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await controller.seekTo(Duration.zero);
       }
       await controller.play();
-    }
-  }
-
-  void _goToIndex(int index) {
-    if (index < 0 || index >= _items.length || index == _currentIndex) return;
-    if (ClippoMotion.reduced(context)) {
-      _pageController.jumpToPage(index);
-    } else {
-      _pageController.animateToPage(index, duration: ClippoMotion.enable, curve: ClippoMotion.standard);
+      _scheduleHide();
     }
   }
 
   void _onPageChanged(int index) {
-    setState(() => _currentIndex = index);
+    _zoom.value = Matrix4.identity();
+    setState(() {
+      _currentIndex = index;
+      _favoriteBusy = false;
+      _controlsVisible = true;
+    });
+    _hideTimer?.cancel();
     _load();
+    _watchMine();
   }
 
   void _seekToFraction(double fraction) {
     final controller = _controller;
     if (controller == null) return;
+    _seekTo(controller.value.duration * fraction.clamp(0.0, 1.0));
+  }
+
+  /// Avança (ou volta, com [forward] falso) [_skip], sem passar do fim nem do começo.
+  void _skipBy({required bool forward}) {
+    final controller = _controller;
+    if (controller == null || _stage != _Stage.ready) return;
     final total = controller.value.duration;
-    final target = total * fraction.clamp(0.0, 1.0);
+    final from = _seekingTo ?? controller.value.position;
+    final target = forward ? from + _skip : from - _skip;
+    _seekTo(target > total ? total : (target < Duration.zero ? Duration.zero : target));
+  }
+
+  void _seekTo(Duration target) {
+    final controller = _controller;
+    if (controller == null) return;
     // A barra vai na hora para onde a pessoa tocou, mesmo antes de o vídeo chegar lá.
     setState(() => _seekingTo = target);
+    _scheduleHide();
     controller.seekTo(target).whenComplete(() {
       // Rede de segurança: o pulo acabou e nada está carregando, mesmo que a posição não bata.
       if (!mounted || _seekingTo != target || !identical(controller, _controller)) return;
       if (!controller.value.isBuffering) setState(() => _seekingTo = null);
     });
+  }
+
+  /// Segurou o lado direito da tela (como no Instagram): toca em 2x até soltar.
+  void _startFast(LongPressStartDetails details) {
+    final controller = _controller;
+    if (controller == null || _stage != _Stage.ready || !_playing) return;
+    if (details.globalPosition.dx < MediaQuery.sizeOf(context).width * 2 / 3) return;
+    HapticFeedback.selectionClick();
+    _hideTimer?.cancel();
+    setState(() {
+      _fast = true;
+      _controlsVisible = false;
+    });
+    unawaited(controller.setPlaybackSpeed(_fastSpeed));
+  }
+
+  void _stopFast() {
+    if (!_fast) return;
+    setState(() => _fast = false);
+    final controller = _controller;
+    if (controller != null) unawaited(controller.setPlaybackSpeed(1));
   }
 
   Future<void> _download() async {
@@ -398,6 +754,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _saving = false;
           _downloadProgress = null;
         });
+        _scheduleHide();
       }
     }
   }
@@ -412,7 +769,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {
       if (mounted) showHomeMessage(context, HighlightMediaFailure.from(e).message);
     } finally {
-      if (mounted) setState(() => _sharing = false);
+      if (mounted) {
+        setState(() => _sharing = false);
+        _scheduleHide();
+      }
     }
   }
 
@@ -432,14 +792,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: ClippoBrand.captureBackground,
       ),
-      child: Scaffold(
-        backgroundColor: ClippoBrand.captureBackground,
-        body: SafeArea(child: _items.isEmpty ? _buildEmpty() : _buildPlayer()),
+      // Na tela cheia, o "Voltar" do Android sai dela antes de fechar o Player.
+      child: PopScope(
+        canPop: !_fullscreen,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _setFullscreen(false);
+        },
+        child: Scaffold(
+          backgroundColor: ClippoBrand.captureBackground,
+          body: _items.isEmpty ? SafeArea(child: _buildEmpty()) : _buildPlayer(),
+        ),
       ),
     );
   }
 
-  Widget _topBar({String? counter}) {
+  /// Fechar, a sessão e o contador à esquerda; baixar e compartilhar à direita, só com ícone.
+  Widget _topBar({String? counter, List<Widget> actions = const []}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         ClippoSpace.gutter,
@@ -458,29 +826,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (widget.sessionName.isNotEmpty)
                   Text(
                     widget.sessionName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
                     style: ClippoText.label.copyWith(color: ClippoBrand.captureTextMuted),
                   ),
                 if (counter != null) ...[
                   const SizedBox(height: ClippoSpace.labelToValue),
                   Text(
                     counter,
-                    textAlign: TextAlign.center,
                     style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular),
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: ClippoSpace.spaceM),
-          // Mantém o título centralizado: o espaço do botão de fechar, do outro lado.
-          const SizedBox.square(dimension: ClippoSize.minTouchTarget),
+          for (final action in actions) ...[
+            const SizedBox(width: ClippoSpace.spaceS),
+            action,
+          ],
         ],
       ),
     );
@@ -507,180 +875,329 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Como os players de vídeo conhecidos: o vídeo ocupa a tela toda, deitado ou em pé, e os
+  /// controles ficam por cima dele. Com o vídeo tocando eles somem sozinhos; tocar no vídeo
+  /// traz de volta (ou esconde). Pausado, carregando ou com erro, ficam à vista.
   Widget _buildPlayer() {
     final highlight = _current;
-    final hasPrev = _currentIndex > 0;
-    final hasNext = _currentIndex < _items.length - 1;
     final controller = _controller;
     final value = controller?.value;
     final total = (value != null && value.duration > Duration.zero) ? value.duration : highlight.duration;
     final position = _seekingTo ?? value?.position ?? Duration.zero;
     final buffered = _bufferedFraction(value, total);
     final progress = total.inMilliseconds <= 0 ? 0.0 : position.inMilliseconds / total.inMilliseconds;
-    final canFetch = _canAct(highlight);
+    final canAct = _canAct(highlight);
     final ready = _stage == _Stage.ready && controller != null;
+    final visible = _controlsVisible || !_controlsCanHide;
 
-    final counter = '${_currentIndex + 1} de ${_items.length}';
-    // A mesma chave nos dois desenhos: virar o celular não recria as páginas nem perde o lance.
+    // Vídeo em pé já ocupa a tela toda: a tela cheia só serve para o vídeo deitado. Já dentro
+    // dela, o botão de sair continua.
+    final wide = controller != null && ready && controller.value.aspectRatio > 1;
+    final sideActions = <Widget>[
+      if (widget.favorite != null && _favoritesRepo != null) ...[
+        _CircleAction(
+          icon: _liked ? 'heart-filled' : 'heart',
+          semanticLabel: _liked ? 'Descurtir' : 'Curtir',
+          onPressed: _toggleLike,
+        ),
+        _CircleAction(
+          icon: 'comment',
+          semanticLabel: 'Comentários (${_post?.commentCount ?? 0})',
+          onPressed: _openComments,
+        ),
+      ],
+      if (wide || _fullscreen)
+        _CircleAction(
+          icon: _fullscreen ? 'fullscreen-exit' : 'fullscreen',
+          semanticLabel: _fullscreen ? 'Sair da tela cheia' : 'Tela cheia',
+          onPressed: () => _setFullscreen(!_fullscreen),
+        ),
+    ];
+
+    // A mesma chave sempre: virar o celular não recria as páginas nem perde o lance.
     final pages = PageView.builder(
-            key: _pagesKey,
-            controller: _pageController,
-            itemCount: _items.length,
-            onPageChanged: _onPageChanged,
-            itemBuilder: (context, index) {
-              final isCurrent = index == _currentIndex;
-              if (isCurrent && ready) {
-                return Center(
-                  child: Semantics(
-                    button: true,
-                    label: _playing ? 'Pausar vídeo' : 'Reproduzir vídeo',
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _togglePlay,
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            VideoPlayer(controller),
-                            if (_buffering)
-                              const _BufferingBadge()
-                            else if (!_playing)
-                              const _PlayBadge(),
+      key: _pagesKey,
+      controller: _pageController,
+      // Com zoom, arrastar move o vídeo; sem zoom, troca de lance.
+      physics: _zoomed || _pinching ? const NeverScrollableScrollPhysics() : null,
+      itemCount: _items.length,
+      onPageChanged: _onPageChanged,
+      itemBuilder: (context, index) {
+        final isCurrent = index == _currentIndex;
+        final Widget content;
+        if (isCurrent && ready) {
+          content = InteractiveViewer(
+            transformationController: _zoom,
+            minScale: 1,
+            maxScale: _maxZoom,
+            panEnabled: _zoomed,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
+              ),
+            ),
+          );
+        } else {
+          content = AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _VideoPlaceholder(
+              stage: isCurrent ? _stage : _Stage.loading,
+              message: isCurrent ? _message : null,
+              onRetry: isCurrent && _stage == _Stage.error ? _load : null,
+            ),
+          );
+        }
+        // Toque em qualquer ponto (inclusive nas faixas pretas) mostra ou esconde os controles.
+        // Segurar no terço direito toca em 2x enquanto o dedo estiver lá.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _onVideoTap,
+          onLongPressStart: isCurrent && ready ? _startFast : null,
+          onLongPressEnd: isCurrent && ready ? (_) => _stopFast() : null,
+          onLongPressCancel: isCurrent && ready ? _stopFast : null,
+          child: Center(child: content),
+        );
+      },
+    );
+
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+
+    // No meio: voltar 5 s, play/pause e avançar 5 s. Fica preso no centro da tela, sem depender
+    // de quanto ocupam o topo e a parte de baixo (deitado, sobra pouca altura).
+    final Widget? centerRow = ready
+        ? Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
+          child: Row(
+            children: [
+              _CircleAction(
+                icon: 'back-5',
+                semanticLabel: 'Voltar 5 segundos',
+                onPressed: () => _skipBy(forward: false),
+              ),
+              Expanded(
+                child: Center(
+                  child: _PlayPauseButton(
+                    playing: _playing,
+                    loading: _buffering,
+                    enabled: true,
+                    onPressed: _togglePlay,
+                  ),
+                ),
+              ),
+              _CircleAction(
+                icon: 'forward-5',
+                semanticLabel: 'Avançar 5 segundos',
+                onPressed: () => _skipBy(forward: true),
+              ),
+            ],
+          ),
+          )
+        : null;
+
+    final controls = SafeArea(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // Deitado, os controles ficam na largura do vídeo, e não colados à borda da tela, em
+          // cima da faixa preta.
+          var width = box.maxWidth;
+          if (landscape && controller != null && ready) {
+            final videoWidth = box.maxHeight * controller.value.aspectRatio;
+            if (videoWidth < width) width = videoWidth;
+          }
+          return Center(
+            child: SizedBox(
+              width: width,
+              height: box.maxHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _topBar(
+                        counter: widget.favorite == null ? '${_currentIndex + 1} de ${_items.length}' : null,
+                        actions: [
+                          // Favoritar é a estrela; o coração é só o curtir, no favorito aberto do perfil.
+                          if (_canUseFavorites)
+                            _CircleAction(
+                              icon: _mine != null ? 'star-filled' : 'star',
+                              semanticLabel: _mine != null ? 'Desfavoritar' : 'Favoritar',
+                              enabled: _canFavorite(highlight),
+                              busy: _favoriteBusy,
+                              onPressed: _toggleFavorite,
+                            ),
+                          // O meu próprio favorito, aberto do perfil: a estrela já vem cheia e desfavorita.
+                          if (_isMyFavorite)
+                            _CircleAction(
+                              icon: 'star-filled',
+                              semanticLabel: 'Desfavoritar',
+                              busy: _favoriteBusy,
+                              onPressed: _unfavoriteThisPost,
+                            ),
+                          if (_canDownload) ...[
+                            _CircleAction(
+                              icon: 'download',
+                              semanticLabel: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
+                              enabled: canAct,
+                              busy: _saving,
+                              progress: _downloadProgress,
+                              onPressed: _download,
+                            ),
+                            _CircleAction(
+                              icon: 'share',
+                              semanticLabel: _sharing ? 'Preparando…' : 'Compartilhar',
+                              enabled: canAct,
+                              busy: _sharing,
+                              onPressed: _share,
+                            ),
                           ],
+                        ],
+                      ),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          ClippoSpace.gutter,
+                          ClippoSpace.spaceM,
+                          ClippoSpace.gutter,
+                          ClippoSpace.spaceM,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Título e tempo à esquerda. À direita, logo acima do fim da barra, uma coluna só,
+                            // com o mesmo espaço entre os botões: curtir e comentários (no favorito aberto do
+                            // perfil) e a tela cheia (só com vídeo deitado).
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        highlight.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
+                                      ),
+                                      const SizedBox(height: ClippoSpace.spaceS),
+                                      Row(
+                                        children: [
+                                          const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
+                                          const SizedBox(width: ClippoSpace.spaceS),
+                                          Flexible(
+                                            child: Text(
+                                              _post != null
+                                                  ? clippoFavoriteLine(_post!.playedAt, likes: _post!.likeCount, comments: _post!.commentCount)
+                                                  : clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
+                                              style: ClippoText.label.copyWith(
+                                                color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
+                                                fontFeatures: ClippoText.tabular,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (sideActions.isNotEmpty) ...[
+                                  const SizedBox(width: ClippoSpace.spaceM),
+                                  // Em pé, em coluna; deitado (pouca altura), lado a lado.
+                                  Flex(
+                                    direction: landscape ? Axis.horizontal : Axis.vertical,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      for (var i = 0; i < sideActions.length; i++) ...[
+                                        if (i > 0) const SizedBox.square(dimension: ClippoSpace.spaceS),
+                                        sideActions[i],
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                            _ProgressBar(
+                              progress: progress,
+                              buffered: buffered,
+                              elapsedLabel: clippoPlayerProgress(position),
+                              totalLabel: clippoPlayerProgress(total),
+                              onSeek: ready ? _seekToFraction : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (centerRow != null) Center(child: centerRow),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Listener(
+          onPointerDown: _fingerDown,
+          onPointerUp: _fingerUp,
+          onPointerCancel: _fingerUp,
+          child: pages,
+        ),
+        // Com os controles escondidos, o "carregando" continua à vista no meio do vídeo.
+        if (ready && _buffering && !visible) const IgnorePointer(child: Center(child: _BufferingBadge())),
+        if (_fast)
+          const IgnorePointer(
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(top: ClippoSpace.spaceL),
+                  child: _FastBadge(),
+                ),
+              ),
+            ),
+          ),
+        IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+            curve: ClippoMotion.standard,
+            child: ExcludeSemantics(
+              excluding: !visible,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Sombra em cima e embaixo para os controles aparecerem sobre qualquer vídeo.
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          // Em cima tão forte quanto embaixo: o nome no topo some sobre vídeo claro.
+                          colors: [
+                            ClippoBrand.captureScrim,
+                            Colors.transparent,
+                            Colors.transparent,
+                            ClippoBrand.captureScrim,
+                          ],
+                          stops: [0, 0.28, 0.6, 1],
                         ),
                       ),
                     ),
                   ),
-                );
-              }
-              return Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: _VideoPlaceholder(
-                    stage: isCurrent ? _stage : _Stage.loading,
-                    message: isCurrent ? _message : null,
-                    onRetry: isCurrent && _stage == _Stage.error ? _load : null,
-                  ),
-                ),
-              );
-            },
-          );
-    final bar = _ProgressBar(
-      progress: progress,
-      buffered: buffered,
-      elapsedLabel: clippoPlayerProgress(position),
-      totalLabel: clippoPlayerProgress(total),
-      onSeek: ready ? _seekToFraction : null,
-    );
-
-    // Celular deitado: o vídeo ocupa a tela toda (é o gesto natural para ver um lance gravado
-    // na horizontal). Ficam só fechar, o contador e a barra, por cima; tocar no vídeo pausa.
-    // Baixar, compartilhar e as setas voltam ao levantar o celular; deslizar troca de lance.
-    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          pages,
-          Align(alignment: Alignment.topCenter, child: _topBar(counter: counter)),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.gutter),
-              child: bar,
+                  controls,
+                ],
+              ),
             ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _topBar(counter: counter),
-        Expanded(child: pages),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            ClippoSpace.gutter,
-            ClippoSpace.spaceL,
-            ClippoSpace.gutter,
-            ClippoSpace.screenBottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                highlight.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ClippoText.titleS.copyWith(color: ClippoBrand.onWine),
-              ),
-              const SizedBox(height: ClippoSpace.spaceS),
-              Row(
-                children: [
-                  const ClippoSvgIcon('clock', size: ClippoSize.checkIcon, color: ClippoBrand.captureTextMuted),
-                  const SizedBox(width: ClippoSpace.spaceS),
-                  Flexible(
-                    child: Text(
-                      clippoHighlightTiming(highlight.offset, highlight.duration, uploading: highlight.isUploading),
-                      style: ClippoText.label.copyWith(
-                        color: highlight.isUploading ? ClippoBrand.peach : ClippoBrand.captureTextMuted,
-                        fontFeatures: ClippoText.tabular,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              Opacity(
-                opacity: canFetch ? 1 : ClippoOpacity.disabled,
-                child: Wrap(
-                  spacing: ClippoSpace.spaceM,
-                  runSpacing: ClippoSpace.spaceS,
-                  children: [
-                    ClippoCaptureChip(
-                      label: _saving ? clippoDownloadProgress(_downloadProgress) : 'Baixar',
-                      selected: false,
-                      onPressed: canFetch ? _download : null,
-                    ),
-                    ClippoCaptureChip(
-                      label: _sharing ? 'Preparando…' : 'Compartilhar',
-                      selected: false,
-                      onPressed: canFetch ? _share : null,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: ClippoSpace.spaceM),
-              bar,
-              const SizedBox(height: ClippoSpace.spaceL),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _CircleAction(
-                    icon: 'chevron-left',
-                    semanticLabel: 'Lance anterior',
-                    enabled: hasPrev,
-                    onPressed: () => _goToIndex(_currentIndex - 1),
-                  ),
-                  const SizedBox(width: ClippoSpace.gutter),
-                  _PlayPauseButton(
-                    playing: _playing,
-                    loading: _stage == _Stage.loading || (ready && _buffering),
-                    enabled: ready,
-                    onPressed: _togglePlay,
-                  ),
-                  const SizedBox(width: ClippoSpace.gutter),
-                  _CircleAction(
-                    icon: 'chevron-right',
-                    semanticLabel: 'Próximo lance',
-                    enabled: hasNext,
-                    onPressed: () => _goToIndex(_currentIndex + 1),
-                  ),
-                ],
-              ),
-            ],
           ),
         ),
       ],
@@ -694,12 +1211,20 @@ class _CircleAction extends StatelessWidget {
     required this.semanticLabel,
     required this.onPressed,
     this.enabled = true,
+    this.busy = false,
+    this.progress,
   });
 
   final String icon;
   final String semanticLabel;
   final VoidCallback onPressed;
   final bool enabled;
+
+  /// Trabalhando (baixando, preparando): um anel gira em volta do ícone e o toque não repete.
+  final bool busy;
+
+  /// Quanto já foi (0 a 1) enquanto [busy]; nulo, o anel gira sem parar.
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -711,20 +1236,34 @@ class _CircleAction extends StatelessWidget {
         child: Opacity(
           opacity: enabled ? 1 : ClippoOpacity.disabled,
           child: ClippoPressable(
-            onTap: enabled ? onPressed : null,
+            onTap: enabled && !busy ? onPressed : null,
             child: SizedBox.square(
               dimension: ClippoSize.minTouchTarget,
               child: Center(
-                child: Container(
-                  width: ClippoSize.control,
-                  height: ClippoSize.control,
-                  decoration: BoxDecoration(
-                    color: ClippoBrand.captureChip,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: ClippoBrand.captureChipBorder, width: ClippoSize.border),
-                  ),
+                child: Stack(
                   alignment: Alignment.center,
-                  child: ClippoSvgIcon(icon, size: ClippoSize.fieldIcon, color: ClippoBrand.onWine),
+                  children: [
+                    Container(
+                      width: ClippoSize.control,
+                      height: ClippoSize.control,
+                      decoration: BoxDecoration(
+                        color: ClippoBrand.captureChip,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: ClippoBrand.captureChipBorder, width: ClippoSize.border),
+                      ),
+                      alignment: Alignment.center,
+                      child: ClippoSvgIcon(icon, size: ClippoSize.fieldIcon, color: ClippoBrand.onWine),
+                    ),
+                    if (busy)
+                      SizedBox.square(
+                        dimension: ClippoSize.control,
+                        child: CircularProgressIndicator(
+                          value: progress?.clamp(0.0, 1.0),
+                          strokeWidth: ClippoSize.border,
+                          color: ClippoBrand.peach,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -750,6 +1289,10 @@ class _PlayPauseButton extends StatelessWidget {
   /// O vídeo está carregando: o botão mostra que está trabalhando, em vez de "pausar".
   final bool loading;
 
+  /// Com o vídeo rolando, o botão some no fundo para não cobrir o lance: sem o círculo, só o
+  /// ícone de pausar em vinho. Parado ou carregando, volta o círculo vinho com o ícone claro.
+  bool get _quiet => playing && !loading;
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -761,17 +1304,26 @@ class _PlayPauseButton extends StatelessWidget {
           opacity: enabled ? 1 : ClippoOpacity.disabled,
           child: ClippoPressable(
             onTap: enabled ? onPressed : null,
-            child: Container(
+            child: AnimatedContainer(
+              duration: ClippoMotion.reduced(context) ? Duration.zero : ClippoMotion.enable,
+              curve: ClippoMotion.standard,
               width: ClippoSize.playerPlayButton,
               height: ClippoSize.playerPlayButton,
-              decoration: const BoxDecoration(color: ClippoBrand.wine, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: _quiet ? Colors.transparent : ClippoBrand.wine,
+                shape: BoxShape.circle,
+              ),
               alignment: Alignment.center,
               child: loading
                   ? const SizedBox.square(
                       dimension: ClippoSize.spinner,
                       child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.onWine),
                     )
-                  : ClippoSvgIcon(playing ? 'pause' : 'play', size: ClippoSize.icon, color: ClippoBrand.onWine),
+                  : ClippoSvgIcon(
+                      playing ? 'pause' : 'play',
+                      size: ClippoSize.icon,
+                      color: _quiet ? ClippoBrand.wine : ClippoBrand.onWine,
+                    ),
             ),
           ),
         ),
@@ -870,6 +1422,36 @@ double _bufferedFraction(VideoPlayerValue? value, Duration total) {
   return end.inMilliseconds / total.inMilliseconds;
 }
 
+/// "2x" no topo enquanto a pessoa segura o lado direito da tela.
+class _FastBadge extends StatelessWidget {
+  const _FastBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Velocidade 2x',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: ClippoSpace.spaceM, vertical: ClippoSpace.spaceS),
+          decoration: BoxDecoration(
+            color: ClippoBrand.captureOverlay,
+            borderRadius: BorderRadius.circular(ClippoRadius.radiusPill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('2x', style: ClippoText.label.copyWith(color: ClippoBrand.onWine, fontFeatures: ClippoText.tabular)),
+              const SizedBox(width: ClippoSpace.spaceS),
+              const ClippoSvgIcon('fast-forward', size: ClippoSize.checkIcon, color: ClippoBrand.onWine),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Sobre o vídeo enquanto ele espera chegar mais um pedaço ou pula para outro ponto.
 class _BufferingBadge extends StatelessWidget {
   const _BufferingBadge();
@@ -889,21 +1471,6 @@ class _BufferingBadge extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: ClippoSize.border, color: ClippoBrand.peach),
         ),
       ),
-    );
-  }
-}
-
-class _PlayBadge extends StatelessWidget {
-  const _PlayBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: ClippoSize.navButton,
-      height: ClippoSize.navButton,
-      decoration: const BoxDecoration(color: ClippoBrand.captureOverlay, shape: BoxShape.circle),
-      alignment: Alignment.center,
-      child: const ClippoSvgIcon('play', size: ClippoSize.icon, color: ClippoBrand.onWine),
     );
   }
 }

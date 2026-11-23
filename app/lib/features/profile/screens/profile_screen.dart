@@ -9,7 +9,9 @@ import 'package:clippo/core/data/user_profile.dart';
 import 'package:clippo/core/theme/clippo_tokens.dart';
 import 'package:clippo/core/validation/input_validation.dart';
 import 'package:clippo/core/upload/upload_queue.dart';
+import 'package:clippo/core/data/favorite.dart';
 import 'package:clippo/core/widgets/clippo_back_button.dart';
+import 'package:clippo/core/widgets/clippo_favorites_section.dart';
 import 'package:clippo/core/widgets/clippo_confirm_dialog.dart';
 import 'package:clippo/core/widgets/clippo_message.dart';
 import 'package:clippo/core/widgets/clippo_primary_button.dart';
@@ -41,7 +43,16 @@ class ProfileScreen extends StatefulWidget {
     this.pickPhoto,
     this.savePhoto,
     this.removePhoto,
+    this.onOpenFavorite,
+    this.favorites,
   });
+
+  /// Abre um favorito no Player. Vem de fora porque o Player é da feature Início (regra 3):
+  /// quem liga as duas é o `AppShell`.
+  final ValueChanged<FavoritePost>? onOpenFavorite;
+
+  /// Substitui os favoritos (testes). Null = `favoritesRepository`, ou nenhum sem login.
+  final Stream<List<FavoritePost>>? favorites;
 
   /// Abre a galeria ou a câmera e devolve a foto já reduzida (testes trocam). Nulo = image_picker.
   final Future<File?> Function(ImageSource source)? pickPhoto;
@@ -358,13 +369,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (me == null) {
                 return _Problem(message: 'Não achamos seu perfil.', onRetry: _retry);
               }
-              return _Content(
-                me: me,
-                onEditName: () => _editName(me),
-                onEditUsername: () => _editUsername(me),
-                // Sem login (catálogo) e sem quem envie a foto, o botão não aparece.
-                onEditPhoto: _useFirebase || widget.savePhoto != null ? () => _editPhoto(me) : null,
-                photoBusy: _photoBusy,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Content(
+                    me: me,
+                    onEditName: () => _editName(me),
+                    onEditUsername: () => _editUsername(me),
+                    // Sem login (catálogo) e sem quem envie a foto, o botão não aparece.
+                    onEditPhoto: _useFirebase || widget.savePhoto != null ? () => _editPhoto(me) : null,
+                    photoBusy: _photoBusy,
+                  ),
+                  const SizedBox(height: ClippoSpace.section),
+                  // Os lances que eu favoritei (R18), que meus amigos veem no meu perfil (R19).
+                  ClippoFavoritesSection(
+                    ownerId: me.uid,
+                    posts: widget.favorites,
+                    emptyText: 'Favorite um lance no Player para ele aparecer aqui.',
+                    onOpen: widget.onOpenFavorite ?? (_) {},
+                  ),
+                ],
               );
             },
           ),

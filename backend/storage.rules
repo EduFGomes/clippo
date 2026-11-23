@@ -84,6 +84,29 @@ service firebase.storage {
       allow delete: if false;
     }
 
+    // Cópia do vídeo e da miniatura de um favorito (D19). Quem favoritou e os AMIGOS dela
+    // assistem (R19), sem precisar participar da sessão; a amizade é o documento
+    // friendships/{uidA_uidB} (D16), com os uids em ordem: confere as duas ordens.
+    // Quem copia e apaga é a Function (Admin SDK): ninguém envia pelo app.
+    function friendshipAccepted(pairId) {
+      return firestore.exists(/databases/(default)/documents/friendships/$(pairId))
+        && firestore.get(/databases/(default)/documents/friendships/$(pairId)).data.status == 'accepted';
+    }
+
+    function canSeePost(postId) {
+      let owner = firestore.get(/databases/(default)/documents/posts/$(postId)).data.ownerId;
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/posts/$(postId))
+        && (request.auth.uid == owner
+          || friendshipAccepted(request.auth.uid + '_' + owner)
+          || friendshipAccepted(owner + '_' + request.auth.uid));
+    }
+
+    match /posts/{postId}/{file} {
+      allow read: if (file == 'video.mp4' || file == 'thumb.jpg') && canSeePost(postId);
+      allow write: if false;
+    }
+
     // Qualquer outro caminho continua bloqueado.
     match /{allPaths=**} {
       allow read, write: if false;
