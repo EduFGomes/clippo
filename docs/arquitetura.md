@@ -382,8 +382,8 @@ funciona). Até publicar, use builds de debug com token, inclusive na demo.
 Para publicar:
 
 1. **Conta de desenvolvedor** no [Google Play Console](https://play.google.com/console) (taxa única de US$ 25).
-2. **Chave de upload própria** (hoje o release é assinado com a chave de debug, ver `TODO` em
-   `app/android/app/build.gradle.kts`):
+2. **Chave de upload própria** (hoje o release é assinado com a chave de debug, ver o comentário em
+   `buildTypes.release` de `app/android/app/build.gradle.kts`):
    - gerar: `keytool -genkey -v -keystore clippo-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`;
    - guardar o `.jks` e as senhas **fora do repositório** (num cofre do grupo) e ler por um `key.properties`
      ignorado pelo Git ([guia do Flutter](https://docs.flutter.dev/deployment/android#sign-the-app));

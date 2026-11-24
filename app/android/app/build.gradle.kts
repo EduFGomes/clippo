@@ -18,10 +18,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Id do app no Android e no Firebase: não mude (o google-services.json e o App Check dependem dele).
         applicationId = "com.clippoapp.clippo"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
@@ -42,7 +40,7 @@ android {
     productFlavors {
         create("app") {
             dimension = "variant"
-            resValue("string", "app_name", "clippo")
+            resValue("string", "app_name", "Clippo")
         }
         create("lab") {
             dimension = "variant"
@@ -59,8 +57,8 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Por enquanto assinado com a chave de debug, para `flutter run --release` funcionar. A
+            // chave própria vem antes da Play Store: docs/arquitetura.md › Rumo à Play Store.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

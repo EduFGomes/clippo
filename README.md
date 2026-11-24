@@ -4,6 +4,31 @@
 
 App Android que guarda sempre os últimos 30 segundos de uma partida amadora. Quando um jogador faz o gesto **\ o /** para a câmera, o trecho vira um *highlight* que todos os participantes da sessão veem.
 
+## Para a banca (entrega de 25/11/2026)
+
+**O que funciona hoje**
+
+- **Conta:** criar conta, entrar, "Esqueci a senha", completar o perfil (nome, @, foto) e excluir a conta.
+- **Gravação:** o celular guarda os últimos segundos da partida (15 a 60 s). O gesto **\ o /** é detectado no próprio aparelho, sem internet, e o highlight é salvo com bip, flash e vibração.
+- **Sessões:** a sessão gravada aparece no Início de todos os participantes. O dono renomeia ou apaga lances, adiciona amigos e junta duas sessões do mesmo jogo.
+- **Envio:** os vídeos sobem numa fila que aguenta queda de internet e tenta de novo sozinha.
+- **Player:** assistir aos highlights, com curtir (favoritos) e comentários.
+- **Amigos e Perfil:** busca, convites com aceite e perfil com estatísticas.
+
+**Roteiro da demo:** o [fluxo principal em `docs/produto.md`](docs/produto.md#fluxo-principal-caminho-feliz-da-demo). Os critérios de aceite estão em [Critérios de aceite](docs/produto.md#critérios-de-aceite), e o roteiro para medir o gesto está em [`app/lib/core/gesture/README.md`](app/lib/core/gesture/README.md).
+
+**Qualidade:** em 24/11/2026 passavam **522 testes do app**, **126 das Cloud Functions** e **58 das Security Rules**, e o `flutter analyze` não dava nenhum aviso. Todo dado digitado é validado duas vezes, no app e no servidor (regra 0 do [`AGENTS.md`](AGENTS.md)).
+
+**Próximos passos** (decisões em aberto 🟡, detalhadas em [`docs/arquitetura.md`](docs/arquitetura.md#decisões-em-aberto-) e [`docs/produto.md`](docs/produto.md#5-decisões-em-aberto--de-produto)):
+
+- Medir a detecção com 3 a 6 pessoas no quadro.
+- Fazer a fila de envio rodar com o app fechado (WorkManager).
+- Fazer a limpeza automática dos vídeos depois de 60 dias, sem apagar os favoritos.
+- Fazer o "Continuar com Google".
+- Escrever a política de privacidade completa.
+- Redesenhar as telas internas na direção C e definir o logotipo e o ícone definitivo.
+- Publicar o app na faixa de teste interno da Play Store.
+
 ## O que tem aqui
 
 | Pasta | O que é | Comece por |

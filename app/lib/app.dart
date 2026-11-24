@@ -130,6 +130,11 @@ class StartupLoading extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // O mesmo \O/ da abertura do Android, para a troca não dar um pulo.
+              ExcludeSemantics(
+                child: Text(r'\O/', style: ClippoText.displayL.copyWith(color: ClippoBrand.peach)),
+              ),
+              const SizedBox(height: ClippoSpace.spaceM),
               ExcludeSemantics(
                 child: Text('CLIPPO', style: ClippoText.wordmark.copyWith(color: ClippoBrand.onWine)),
               ),

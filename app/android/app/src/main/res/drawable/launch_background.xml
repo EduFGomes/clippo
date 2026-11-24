@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Abertura do app: vinho liso (ClippoBrand.wine), a mesma cor da Boas-vindas, até o Flutter
-     desenhar a primeira tela. O logotipo entra aqui quando existir. -->
+<!-- Abertura do app (Android 11 ou mais velho): vinho (ClippoBrand.wine), a mesma cor da
+     Boas-vindas, com o \O/ em pêssego no meio, até o Flutter desenhar a primeira tela.
+     A imagem vem de tool/make_launcher_icons.py. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/clippo_wine" />
+    <item>
+        <bitmap android:gravity="center" android:src="@drawable/splash_mark" />
+    </item>
 </layer-list>
