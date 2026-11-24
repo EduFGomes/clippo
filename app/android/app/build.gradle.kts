@@ -42,7 +42,7 @@ android {
     productFlavors {
         create("app") {
             dimension = "variant"
-            resValue("string", "app_name", "clippo")
+            resValue("string", "app_name", "Clippo")
         }
         create("lab") {
             dimension = "variant"

@@ -361,7 +361,7 @@ A camada vinho só aparece na saída da boas-vindas ("Começar" e "Já tenho con
 
 - **Abertura** (12/11/2026): o Android abre em `wine` liso (`launch_background` e, do Android 12 em diante, `windowSplashScreenBackground`), e o app continua no mesmo vinho com **CLIPPO** em `wordmark` / `onWine` enquanto descobre quem está logado (`StartupLoading` em `app.dart`). Se a abertura não conseguir seguir (sem internet na primeira vez num celular), `StartupProblem` explica, tenta de novo e deixa sair da conta. O logotipo entra no centro quando existir.
 - Ainda **não há logotipo** 🟡. O nome aparece como texto: **CLIPPO** em `wordmark`.
-- Ícone do app: 🟡 a definir. Sugestão coerente: fundo `wine` sólido com **\O/** em `peach`.
+- Ícone do app: 🟡 provisório desde 24/11/2026, com a sugestão do design system: fundo `wine` sólido com **\O/** em `peach` (Anton). O Clippo Lab inverte as cores e leva **LAB** embaixo. Gerado por `app/tool/make_launcher_icons.py` (ícone adaptativo, monocromático e o PNG antigo); para trocar, edite o script e rode de novo.
 - Frase-assinatura: **"Levantou os braços, o lance está salvo."**
 
 ---
