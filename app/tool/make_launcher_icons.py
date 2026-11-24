@@ -12,6 +12,8 @@ Gera, para cada sabor (main = Clippo, lab = Clippo Lab):
   - mipmap-*/ic_launcher_foreground.png  camada da frente do ícone adaptativo (Android 8+);
   - mipmap-anydpi-v26/ic_launcher.xml    ícone adaptativo (fundo de cor + frente + monocromático);
   - values/ic_launcher_colors.xml        a cor de fundo do ícone.
+
+E, para a abertura do app, main/res/drawable-*/splash_mark.png (\\O/ em pêssego, sem fundo).
 """
 
 from pathlib import Path
@@ -127,6 +129,15 @@ def main() -> None:
         write(res / "mipmap-anydpi-v26" / "ic_launcher.xml", ADAPTIVE_XML)
         write(res / "values" / "ic_launcher_colors.xml", COLORS_XML.format(bg=bg))
         print(f"{flavor}: ok")
+
+    # Abertura (os dois sabores): \O/ em pêssego sobre o vinho do launch_background. 288 dp é o
+    # tamanho do ícone da abertura do Android 12+ sem fundo (aparece só o círculo de 192 dp);
+    # antes do 12, o launch_background centraliza a mesma imagem.
+    for density, factor in DENSITIES.items():
+        folder = RES / "main" / "res" / f"drawable-{density}"
+        folder.mkdir(parents=True, exist_ok=True)
+        draw_mark(round(288 * factor), 0.42, PEACH, None).save(folder / "splash_mark.png")
+    print("abertura: ok")
 
 
 if __name__ == "__main__":
